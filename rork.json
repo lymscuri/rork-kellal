@@ -1,0 +1,9 @@
+{
+  "apps": [
+    {
+      "name": "SanteConnect",
+      "path": "expo",
+      "framework": "react-native"
+    }
+  ]
+}
