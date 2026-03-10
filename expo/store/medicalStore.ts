@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { zustandStorage } from './storage';
 import type { 
   MedicalProfile, 
   MaternityData, 
@@ -327,7 +327,7 @@ export const useMedicalStore = create<MedicalStore>()(
     }),
     {
       name: 'santeconnect-medical-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => zustandStorage),
     }
   )
 );

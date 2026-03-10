@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppStorage } from './storage';
 import { create } from 'zustand';
 
 
@@ -39,7 +39,7 @@ const AUTH_KEY = 'santeconnect-auth';
 
 async function getStoredUsers(): Promise<Array<SignupData & { id: string }>> {
   try {
-    const raw = await AsyncStorage.getItem(USERS_KEY);
+    const raw = await AppStorage.getItem(USERS_KEY);
     if (raw) {
       return JSON.parse(raw);
     }
@@ -51,7 +51,7 @@ async function getStoredUsers(): Promise<Array<SignupData & { id: string }>> {
 
 async function saveUsers(users: Array<SignupData & { id: string }>): Promise<void> {
   try {
-    await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+    await AppStorage.setItem(USERS_KEY, JSON.stringify(users));
   } catch (e) {
     console.error('[Auth] Failed to save users:', e);
     throw e;
@@ -60,7 +60,7 @@ async function saveUsers(users: Array<SignupData & { id: string }>): Promise<voi
 
 async function saveAuthState(user: User | null, isAuthenticated: boolean): Promise<void> {
   try {
-    await AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ user, isAuthenticated }));
+    await AppStorage.setItem(AUTH_KEY, JSON.stringify({ user, isAuthenticated }));
   } catch (e) {
     console.error('[Auth] Failed to save auth state:', e);
   }
@@ -81,7 +81,7 @@ export const useAuthStore = create<AuthStore>()(
     hydrate: async () => {
       try {
         console.log('[Auth] Starting hydration...');
-        const raw = await AsyncStorage.getItem(AUTH_KEY);
+        const raw = await AppStorage.getItem(AUTH_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
           console.log('[Auth] Hydrated auth state, isAuthenticated:', parsed.isAuthenticated);
@@ -178,7 +178,7 @@ export const useAuthStore = create<AuthStore>()(
 
     logout: async () => {
       try {
-        await AsyncStorage.removeItem(AUTH_KEY);
+        await AppStorage.removeItem(AUTH_KEY);
       } catch (e) {
         console.error('[Auth] Failed to clear auth state:', e);
       }
