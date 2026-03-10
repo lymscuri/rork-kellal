@@ -1,14 +1,66 @@
 import { useCallback, useMemo, useState } from "react";
-import { Modal, ScrollView, Share, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Modal, Platform, ScrollView, Share, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Button, Card, Chip, Divider, IconButton, List, Surface, Text, TextInput } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import QRCode from "react-native-qrcode-svg";
 import { MedicalColors } from "@/constants/colors";
 import { useMedicalStore } from "@/store/medicalStore";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "expo-router";
 import type { BloodGroup } from "@/types/medical";
 import { AlertTriangle, Droplet, HeartPulse, Pill, Trash2, User, X, Share2, Maximize2, AlertCircle, Phone, LogOut } from "lucide-react-native";
+
+let QRCode: React.ComponentType<{ value: string; size: number; color: string; backgroundColor: string }> | null = null;
+try {
+  if (Platform.OS !== "web") {
+    QRCode = require("react-native-qrcode-svg").default;
+  }
+} catch {
+  QRCode = null;
+}
+
+function QRCodeDisplay({ value, size, color }: { value: string; size: number; color: string }) {
+  if (Platform.OS === "web" || !QRCode) {
+    return (
+      <View style={[qrFallbackStyles.container, { width: size, height: size }]}>
+        <View style={qrFallbackStyles.inner}>
+          <Text style={qrFallbackStyles.icon}>📱</Text>
+          <Text style={qrFallbackStyles.text}>QR Code</Text>
+          <Text style={qrFallbackStyles.subtext}>Disponible sur mobile</Text>
+        </View>
+      </View>
+    );
+  }
+  return <QRCode value={value} size={size} color={color} backgroundColor={MedicalColors.white} />;
+}
+
+const qrFallbackStyles = StyleSheet.create({
+  container: {
+    backgroundColor: MedicalColors.medicalLight,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: MedicalColors.medical,
+    borderStyle: "dashed",
+  },
+  inner: {
+    alignItems: "center",
+  },
+  icon: {
+    fontSize: 32,
+    marginBottom: 4,
+  },
+  text: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: MedicalColors.medical,
+  },
+  subtext: {
+    fontSize: 10,
+    color: MedicalColors.textSecondary,
+    marginTop: 2,
+  },
+});
 
 const BLOOD_GROUPS: BloodGroup[] = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -34,9 +86,8 @@ export default function MedicalRecordScreen() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [activeSection, setActiveSection] = useState<"info" | "history" | "treatments" | "contacts">("info");
   
-  // Form states
   const [newAllergy, setNewAllergy] = useState("");
-  const [allergyType, _setAllergyType] = useState<"medicament" | "alimentaire" | "autre">("medicament");
+  const [allergyType] = useState<"medicament" | "alimentaire" | "autre">("medicament");
   const [newDisease, setNewDisease] = useState("");
   const [newMedication, setNewMedication] = useState({ name: "", dosage: "", frequency: [] as string[] });
   const [newContact, setNewContact] = useState({ fullName: "", relationship: "", phoneNumber: "" });
@@ -49,7 +100,7 @@ export default function MedicalRecordScreen() {
     router.replace("/auth/login");
   }, [logout, router]);
 
-const handleShareQR = useCallback(async () => {
+  const handleShareQR = useCallback(async () => {
     try {
       await Share.share({
         message: `Mon dossier médical d'urgence: ${qrData}`,
@@ -103,9 +154,13 @@ const handleShareQR = useCallback(async () => {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header avec QR Code */}
       <Surface style={styles.header}>
-        <Text style={styles.headerTitle}>Mon Dossier Médical</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Mon Dossier Médical</Text>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <LogOut size={20} color={MedicalColors.urgency} />
+          </TouchableOpacity>
+        </View>
         
         {criticalAllergies.length > 0 && (
           <Surface style={styles.criticalAlert}>
@@ -118,12 +173,7 @@ const handleShareQR = useCallback(async () => {
         
         <TouchableOpacity style={styles.qrContainer} onPress={() => setShowQRModal(true)}>
           <Surface style={styles.qrSurface}>
-            <QRCode
-              value={qrData}
-              size={120}
-              color={MedicalColors.medical}
-              backgroundColor={MedicalColors.white}
-            />
+            <QRCodeDisplay value={qrData} size={100} color={MedicalColors.medical} />
             <Text style={styles.qrLabel}>QR Code d'urgence</Text>
           </Surface>
           <View style={styles.qrActions}>
@@ -135,15 +185,10 @@ const handleShareQR = useCallback(async () => {
               <Share2 size={20} color={MedicalColors.medical} />
               <Text style={styles.qrActionText}>Partager</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.qrAction, styles.logoutAction]} onPress={handleLogout}>
-              <LogOut size={20} color={MedicalColors.urgency} />
-              <Text style={[styles.qrActionText, styles.logoutText]}>Déconnexion</Text>
-            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Surface>
 
-      {/* Navigation des sections */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionNav}>
         <TouchableOpacity
           style={[styles.sectionTab, activeSection === "info" && styles.sectionTabActive]}
@@ -178,7 +223,6 @@ const handleShareQR = useCallback(async () => {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {activeSection === "info" && (
           <>
-            {/* Groupe sanguin */}
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>
@@ -224,7 +268,6 @@ const handleShareQR = useCallback(async () => {
               </Card.Content>
             </Card>
 
-            {/* Allergies */}
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>Allergies</Text>
@@ -276,7 +319,6 @@ const handleShareQR = useCallback(async () => {
 
         {activeSection === "history" && (
           <>
-            {/* Maladies chroniques */}
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>Maladies chroniques</Text>
@@ -327,7 +369,6 @@ const handleShareQR = useCallback(async () => {
 
         {activeSection === "treatments" && (
           <>
-            {/* Traitements en cours */}
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>Traitements en cours</Text>
@@ -414,7 +455,6 @@ const handleShareQR = useCallback(async () => {
 
         {activeSection === "contacts" && (
           <>
-            {/* Contacts d'urgence */}
             <Card style={styles.card}>
               <Card.Content>
                 <Text style={styles.cardTitle}>Contacts d'urgence</Text>
@@ -467,7 +507,7 @@ const handleShareQR = useCallback(async () => {
                     key={contact.id}
                     title={contact.fullName}
                     description={`${contact.relationship} - ${contact.phoneNumber}`}
-                    left={() => <View style={{ marginLeft: 8, justifyContent: 'center' }}><User size={24} color={MedicalColors.medical} /></View>}
+                    left={() => <View style={{ marginLeft: 8, justifyContent: "center" }}><User size={24} color={MedicalColors.medical} /></View>}
                     right={(props) => (
                       <IconButton
                         {...props}
@@ -488,7 +528,6 @@ const handleShareQR = useCallback(async () => {
         )}
       </ScrollView>
 
-      {/* Modal QR Code */}
       <Modal visible={showQRModal} transparent animationType="fade" onRequestClose={() => setShowQRModal(false)}>
         <View style={styles.modalOverlay}>
           <Surface style={styles.modalContent}>
@@ -498,12 +537,7 @@ const handleShareQR = useCallback(async () => {
             </View>
             
             <View style={styles.modalQRContainer}>
-              <QRCode
-                value={qrData}
-                size={250}
-                color={MedicalColors.medical}
-                backgroundColor={MedicalColors.white}
-              />
+              <QRCodeDisplay value={qrData} size={250} color={MedicalColors.medical} />
             </View>
             
             <Text style={styles.modalDescription}>
@@ -527,12 +561,6 @@ const handleShareQR = useCallback(async () => {
 }
 
 const styles = StyleSheet.create({
-  logoutAction: {
-    backgroundColor: MedicalColors.urgencyLight,
-  },
-  logoutText: {
-    color: MedicalColors.urgency,
-  },
   container: {
     flex: 1,
     backgroundColor: MedicalColors.background,
@@ -545,11 +573,21 @@ const styles = StyleSheet.create({
     borderBottomColor: MedicalColors.border,
     borderBottomWidth: 1,
   },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: "bold",
     color: MedicalColors.medical,
-    marginBottom: 12,
+  },
+  logoutButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: MedicalColors.urgencyLight,
   },
   criticalAlert: {
     flexDirection: "row",
@@ -572,7 +610,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   qrSurface: {
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     backgroundColor: MedicalColors.white,
     alignItems: "center",

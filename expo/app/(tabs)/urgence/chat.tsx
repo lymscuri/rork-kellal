@@ -1,7 +1,7 @@
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Linking, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Surface, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
@@ -68,6 +68,8 @@ export default function EmergencyChatScreen() {
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || isSending) return;
 
+    Keyboard.dismiss();
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -127,7 +129,7 @@ export default function EmergencyChatScreen() {
   const scrollToEnd = useCallback(() => {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    }, 150);
   }, []);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => (
@@ -178,9 +180,9 @@ export default function EmergencyChatScreen() {
       </Surface>
 
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -191,6 +193,7 @@ export default function EmergencyChatScreen() {
           onContentSizeChange={scrollToEnd}
           onLayout={scrollToEnd}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
         />
 
         {isSending && (
@@ -205,7 +208,7 @@ export default function EmergencyChatScreen() {
           <Text style={styles.emergencyCallText}>Appeler le 15</Text>
         </TouchableOpacity>
 
-        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
             style={styles.input}
             placeholder="Décrivez la situation d'urgence..."
@@ -218,6 +221,7 @@ export default function EmergencyChatScreen() {
             activeOutlineColor={MedicalColors.urgency}
             disabled={isSending}
             onFocus={scrollToEnd}
+            onSubmitEditing={handleSendMessage}
           />
           <TouchableOpacity 
             style={[styles.sendButton, (!inputText.trim() || isSending) && styles.sendButtonDisabled]} 
@@ -380,6 +384,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: MedicalColors.background,
     maxHeight: 100,
+    fontSize: 15,
   },
   sendButton: {
     width: 44,
