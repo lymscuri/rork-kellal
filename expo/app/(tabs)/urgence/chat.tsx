@@ -25,11 +25,10 @@ export default function EmergencyChatScreen() {
   const criticalAllergies = getCriticalAllergies();
   const [isSending, setIsSending] = useState(false);
 
-  // Générer le contexte système
   const getSystemContext = useCallback(() => {
-    let context = 'Tu es un assistant médical de premiers secours pour l\'application SanteConnect. ';
-    context += 'Tu dois donner des conseils de premiers secours clairs et précis en français. ';
-    context += 'Tu dois toujours recommander de contacter les secours médicaux pour les situations graves. ';
+    let context = "Tu es un assistant médical de premiers secours pour l'application SanteConnect. ";
+    context += "Tu dois donner des conseils de premiers secours clairs et précis en français. ";
+    context += "Tu dois toujours recommander de contacter les secours médicaux pour les situations graves. ";
     
     if (medicalProfile.bloodGroup) {
       context += `Le patient a le groupe sanguin ${medicalProfile.bloodGroup}. `;
@@ -49,13 +48,12 @@ export default function EmergencyChatScreen() {
       context += `Maladies chroniques: ${medicalProfile.chronicDiseases.map(d => d.name).join(', ')}. `;
     }
     
-    context += 'Réponds de manière concise et structurée. Ne donne pas de diagnostic médical définitif. ';
-    context += 'Sois empathique et rassurant tout en restant professionnel.';
+    context += "Réponds de manière concise et structurée. Ne donne pas de diagnostic médical définitif. ";
+    context += "Sois empathique et rassurant tout en restant professionnel.";
     
     return context;
   }, [medicalProfile, criticalAllergies, isPregnant, getCurrentPregnancyWeek]);
 
-  // Message de bienvenue
   useEffect(() => {
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
@@ -78,6 +76,7 @@ export default function EmergencyChatScreen() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputText.trim();
     setInputText('');
     setIsSending(true);
 
@@ -92,7 +91,7 @@ export default function EmergencyChatScreen() {
         messages: [
           { role: 'assistant', content: systemContext },
           ...conversationHistory,
-          { role: 'user', content: userMessage.content },
+          { role: 'user', content: currentInput },
         ],
       });
 
@@ -125,6 +124,12 @@ export default function EmergencyChatScreen() {
     }
   }, []);
 
+  const scrollToEnd = useCallback(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, []);
+
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => (
     <View style={[styles.messageContainer, item.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
       <Surface style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
@@ -140,7 +145,6 @@ export default function EmergencyChatScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header avec info contexte */}
       <Surface style={[styles.contextHeader, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -174,40 +178,37 @@ export default function EmergencyChatScreen() {
       </Surface>
 
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={0}
       >
-        {/* Liste des messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={scrollToEnd}
+          onLayout={scrollToEnd}
+          keyboardShouldPersistTaps="handled"
         />
 
-        {/* Indicateur de chargement */}
         {isSending && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator color={MedicalColors.urgency} size="small" />
-            <Text style={styles.loadingText}>L&apos;assistant réfléchit...</Text>
+            <Text style={styles.loadingText}>{"L'assistant réfléchit..."}</Text>
           </View>
         )}
 
-        {/* Bouton appel d&apos;urgence */}
         <TouchableOpacity style={styles.emergencyCallButton} onPress={handleCallEmergency}>
           <Phone size={20} color={MedicalColors.white} />
           <Text style={styles.emergencyCallText}>Appeler le 15</Text>
         </TouchableOpacity>
 
-        {/* Zone de saisie */}
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8 }]}>
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
           <TextInput
             style={styles.input}
-            placeholder="Décrivez la situation d&apos;urgence..."
+            placeholder="Décrivez la situation d'urgence..."
             value={inputText}
             onChangeText={setInputText}
             multiline
@@ -216,6 +217,7 @@ export default function EmergencyChatScreen() {
             outlineColor={MedicalColors.border}
             activeOutlineColor={MedicalColors.urgency}
             disabled={isSending}
+            onFocus={scrollToEnd}
           />
           <TouchableOpacity 
             style={[styles.sendButton, (!inputText.trim() || isSending) && styles.sendButtonDisabled]} 
@@ -260,7 +262,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     color: MedicalColors.text,
   },
   headerSubtitle: {
@@ -292,7 +294,7 @@ const styles = StyleSheet.create({
   },
   contextBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     color: MedicalColors.text,
   },
   messagesList: {
@@ -361,7 +363,7 @@ const styles = StyleSheet.create({
   },
   emergencyCallText: {
     color: MedicalColors.white,
-    fontWeight: 'bold',
+    fontWeight: 'bold' as const,
     fontSize: 16,
   },
   inputContainer: {

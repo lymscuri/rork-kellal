@@ -467,7 +467,7 @@ const handleShareQR = useCallback(async () => {
                     key={contact.id}
                     title={contact.fullName}
                     description={`${contact.relationship} - ${contact.phoneNumber}`}
-                    left={(props) => <User {...props} size={24} color={MedicalColors.medical} />}
+                    left={() => <View style={{ marginLeft: 8, justifyContent: 'center' }}><User size={24} color={MedicalColors.medical} /></View>}
                     right={(props) => (
                       <IconButton
                         {...props}

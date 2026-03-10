@@ -30,7 +30,43 @@ const MOCK_HOSPITALS: Hospital[] = [
   { id: "7", name: "Maternité de Bè", type: "hospital", latitude: 6.148, longitude: 1.22, address: "Quartier Bè, Lomé", phone: "+228 22 28 88 88", is24h: false, hasMaternity: true, distance: 2.1 },
 ];
 
-function MapComponent({
+function getMarkerColorHelper(type: Hospital["type"]) {
+  switch (type) {
+    case "hospital":
+      return MedicalColors.urgency;
+    case "pharmacy":
+      return MedicalColors.life;
+    case "rescue":
+      return MedicalColors.maternity;
+    default:
+      return MedicalColors.medical;
+  }
+}
+
+function WebMapFallback({
+  location,
+  hospitals,
+}: {
+  location: Location.LocationObject | null;
+  hospitals: Hospital[];
+}) {
+  return (
+    <View style={[styles.map, styles.mapFallback]}>
+      <Building2 size={64} color={MedicalColors.medical} />
+      <Text style={styles.mapFallbackTitle}>Carte des établissements de santé</Text>
+      <Text style={styles.mapFallbackText}>
+        {location
+          ? `Position: ${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`
+          : "Localisation en cours..."}
+      </Text>
+      <Text style={styles.mapFallbackSubtext}>
+        {hospitals.length} établissement(s) à proximité
+      </Text>
+    </View>
+  );
+}
+
+function NativeMapComponent({
   location,
   hospitals,
   onMarkerPress,
@@ -39,23 +75,6 @@ function MapComponent({
   hospitals: Hospital[];
   onMarkerPress: (h: Hospital) => void;
 }) {
-  if (Platform.OS === "web") {
-    return (
-      <View style={[styles.map, styles.mapFallback]}>
-        <Building2 size={64} color={MedicalColors.medical} />
-        <Text style={styles.mapFallbackTitle}>Carte des établissements de santé</Text>
-        <Text style={styles.mapFallbackText}>
-          {location
-            ? `Position: ${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`
-            : "Localisation en cours..."}
-        </Text>
-        <Text style={styles.mapFallbackSubtext}>
-          {hospitals.length} établissement(s) à proximité
-        </Text>
-      </View>
-    );
-  }
-
   const MapView = require("react-native-maps").default;
   const { Marker, Circle } = require("react-native-maps");
 
@@ -75,19 +94,6 @@ function MapComponent({
       longitudeDelta: 0.05,
     };
   }, [location]);
-
-  const getMarkerColor = useCallback((type: Hospital["type"]) => {
-    switch (type) {
-      case "hospital":
-        return MedicalColors.urgency;
-      case "pharmacy":
-        return MedicalColors.life;
-      case "rescue":
-        return MedicalColors.maternity;
-      default:
-        return MedicalColors.medical;
-    }
-  }, []);
 
   return (
     <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation showsMyLocationButton>
@@ -109,7 +115,7 @@ function MapComponent({
             latitude: hospital.latitude,
             longitude: hospital.longitude,
           }}
-          pinColor={getMarkerColor(hospital.type)}
+          pinColor={getMarkerColorHelper(hospital.type)}
           title={hospital.name}
           onPress={() => onMarkerPress(hospital)}
         />
@@ -121,14 +127,13 @@ function MapComponent({
 export default function MapScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [loading, setLoading] = useState(true);
-  const [_errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<"all" | "hospital" | "pharmacy" | "rescue">("all");
+  const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [filters, setFilters] = useState({
     maternity: false,
     emergency24h: false,
     onDuty: false,
   });
-  const [selectedType, setSelectedType] = useState<"all" | "hospital" | "pharmacy" | "rescue">("all");
-  const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
 
   useEffect(() => {
     void requestLocation();
@@ -136,9 +141,13 @@ export default function MapScreen() {
 
   const requestLocation = async () => {
     try {
+      if (Platform.OS === "web") {
+        setLoading(false);
+        return;
+      }
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setErrorMsg("Permission de localisation refusée");
+        console.log("Permission de localisation refusée");
         setLoading(false);
         return;
       }
@@ -147,8 +156,8 @@ export default function MapScreen() {
         accuracy: Location.Accuracy.Balanced,
       });
       setLocation(currentLocation);
-    } catch {
-      setErrorMsg("Erreur de localisation");
+    } catch (err) {
+      console.error("Erreur de localisation:", err);
     } finally {
       setLoading(false);
     }
@@ -169,19 +178,6 @@ export default function MapScreen() {
     const url = `tel:${phone.replace(/\s/g, "")}`;
     if (await Linking.canOpenURL(url)) {
       await Linking.openURL(url);
-    }
-  }, []);
-
-  const getMarkerColor = useCallback((type: Hospital["type"]) => {
-    switch (type) {
-      case "hospital":
-        return MedicalColors.urgency;
-      case "pharmacy":
-        return MedicalColors.life;
-      case "rescue":
-        return MedicalColors.maternity;
-      default:
-        return MedicalColors.medical;
     }
   }, []);
 
@@ -261,11 +257,15 @@ export default function MapScreen() {
         </View>
       </Surface>
 
-      <MapComponent
-        location={location}
-        hospitals={filteredHospitals}
-        onMarkerPress={setSelectedHospital}
-      />
+      {Platform.OS === "web" ? (
+        <WebMapFallback location={location} hospitals={filteredHospitals} />
+      ) : (
+        <NativeMapComponent
+          location={location}
+          hospitals={filteredHospitals}
+          onMarkerPress={setSelectedHospital}
+        />
+      )}
 
       {selectedHospital && (
         <Surface style={styles.selectedCard}>
@@ -292,7 +292,7 @@ export default function MapScreen() {
         <Text style={styles.resultsText}>{filteredHospitals.length} établissement(s) trouvé(s)</Text>
         {filteredHospitals.map((hospital) => (
           <TouchableOpacity key={hospital.id} style={styles.hospitalCard} onPress={() => handleCall(hospital.phone)}>
-            <View style={[styles.hospitalIcon, { backgroundColor: getMarkerColor(hospital.type) }]}>
+            <View style={[styles.hospitalIcon, { backgroundColor: getMarkerColorHelper(hospital.type) }]}>
               {hospital.type === "hospital" ? (
                 <Building2 size={20} color={MedicalColors.white} />
               ) : hospital.type === "pharmacy" ? (
@@ -323,7 +323,7 @@ export default function MapScreen() {
                 )}
               </View>
             </View>
-            {hospital.distance && (
+            {hospital.distance != null && (
               <View style={styles.distanceContainer}>
                 <Text style={styles.distanceText}>{hospital.distance} km</Text>
               </View>
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
   },
   mapFallbackTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "bold" as const,
     color: MedicalColors.text,
     marginTop: 16,
   },
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: MedicalColors.medical,
     marginTop: 8,
-    fontWeight: "600",
+    fontWeight: "600" as const,
   },
   selectedCard: {
     position: "absolute",
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   },
   selectedName: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "bold" as const,
     color: MedicalColors.text,
     flex: 1,
   },
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   },
   callButtonText: {
     color: MedicalColors.white,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     fontSize: 14,
   },
   listContainer: {
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
   },
   resultsText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: MedicalColors.textSecondary,
     marginBottom: 8,
   },
@@ -509,7 +509,7 @@ const styles = StyleSheet.create({
   },
   hospitalName: {
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: MedicalColors.text,
   },
   hospitalAddress: {
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
   },
   distanceText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: MedicalColors.medical,
   },
 });
