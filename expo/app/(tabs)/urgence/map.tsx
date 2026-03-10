@@ -4,7 +4,7 @@ import { Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } fro
 import { ActivityIndicator, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MedicalColors } from "@/constants/colors";
-import { Building2, Clock, Cross, Phone, Stethoscope } from "lucide-react-native";
+import { Building2, Clock, Cross, MapPin, Navigation, Phone, Stethoscope } from "lucide-react-native";
 
 interface Hospital {
   id: string;
@@ -30,105 +30,34 @@ const MOCK_HOSPITALS: Hospital[] = [
   { id: "7", name: "Maternité de Bè", type: "hospital", latitude: 6.148, longitude: 1.22, address: "Quartier Bè, Lomé", phone: "+228 22 28 88 88", is24h: false, hasMaternity: true, distance: 2.1 },
 ];
 
-function getMarkerColorHelper(type: Hospital["type"]) {
+function getTypeLabel(type: Hospital["type"]) {
   switch (type) {
-    case "hospital":
-      return MedicalColors.urgency;
-    case "pharmacy":
-      return MedicalColors.life;
-    case "rescue":
-      return MedicalColors.maternity;
-    default:
-      return MedicalColors.medical;
+    case "hospital": return "Hôpital";
+    case "pharmacy": return "Pharmacie";
+    case "rescue": return "Secours";
   }
 }
 
-function WebMapFallback({
-  location,
-  hospitals,
-}: {
-  location: Location.LocationObject | null;
-  hospitals: Hospital[];
-}) {
-  return (
-    <View style={[styles.map, styles.mapFallback]}>
-      <Building2 size={64} color={MedicalColors.medical} />
-      <Text style={styles.mapFallbackTitle}>Carte des établissements de santé</Text>
-      <Text style={styles.mapFallbackText}>
-        {location
-          ? `Position: ${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`
-          : "Localisation en cours..."}
-      </Text>
-      <Text style={styles.mapFallbackSubtext}>
-        {hospitals.length} établissement(s) à proximité
-      </Text>
-    </View>
-  );
+function getTypeColor(type: Hospital["type"]) {
+  switch (type) {
+    case "hospital": return MedicalColors.urgency;
+    case "pharmacy": return MedicalColors.life;
+    case "rescue": return MedicalColors.maternity;
+  }
 }
 
-function NativeMapComponent({
-  location,
-  hospitals,
-  onMarkerPress,
-}: {
-  location: Location.LocationObject | null;
-  hospitals: Hospital[];
-  onMarkerPress: (h: Hospital) => void;
-}) {
-  const MapView = require("react-native-maps").default;
-  const { Marker, Circle } = require("react-native-maps");
-
-  const initialRegion = useMemo(() => {
-    if (location) {
-      return {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
-    }
-    return {
-      latitude: 6.137,
-      longitude: 1.212,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
-    };
-  }, [location]);
-
-  return (
-    <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation showsMyLocationButton>
-      {location && (
-        <Circle
-          center={{
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          }}
-          radius={1000}
-          strokeColor={MedicalColors.urgency}
-          fillColor="rgba(220, 53, 69, 0.1)"
-        />
-      )}
-      {hospitals.map((hospital) => (
-        <Marker
-          key={hospital.id}
-          coordinate={{
-            latitude: hospital.latitude,
-            longitude: hospital.longitude,
-          }}
-          pinColor={getMarkerColorHelper(hospital.type)}
-          title={hospital.name}
-          onPress={() => onMarkerPress(hospital)}
-        />
-      ))}
-    </MapView>
-  );
+function getTypeIcon(type: Hospital["type"]) {
+  switch (type) {
+    case "hospital": return Building2;
+    case "pharmacy": return Cross;
+    case "rescue": return Stethoscope;
+  }
 }
 
 export default function MapScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<"all" | "hospital" | "pharmacy" | "rescue">("all");
-  const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
   const [filters, setFilters] = useState({
     maternity: false,
     emergency24h: false,
@@ -170,7 +99,7 @@ export default function MapScreen() {
       if (filters.emergency24h && !h.is24h) return false;
       if (filters.onDuty && h.type === "pharmacy" && !h.isOnDuty) return false;
       return true;
-    });
+    }).sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99));
   }, [filters, selectedType]);
 
   const handleCall = useCallback(async (phone?: string) => {
@@ -181,17 +110,37 @@ export default function MapScreen() {
     }
   }, []);
 
+  const handleOpenMaps = useCallback((hospital: Hospital) => {
+    const url = Platform.select({
+      ios: `maps:0,0?q=${hospital.latitude},${hospital.longitude}(${encodeURIComponent(hospital.name)})`,
+      android: `geo:${hospital.latitude},${hospital.longitude}?q=${hospital.latitude},${hospital.longitude}(${encodeURIComponent(hospital.name)})`,
+      default: `https://www.google.com/maps/search/?api=1&query=${hospital.latitude},${hospital.longitude}`,
+    });
+    void Linking.openURL(url);
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={MedicalColors.urgency} />
-        <Text style={styles.loadingText}>Chargement de la carte...</Text>
+        <Text style={styles.loadingText}>Chargement...</Text>
       </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <Surface style={styles.headerSection}>
+        <View style={styles.locationRow}>
+          <MapPin size={18} color={MedicalColors.medical} />
+          <Text style={styles.locationText}>
+            {location
+              ? `Position: ${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`
+              : "Position non disponible"}
+          </Text>
+        </View>
+      </Surface>
+
       <Surface style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
           <Chip
@@ -200,7 +149,7 @@ export default function MapScreen() {
             style={[styles.filterChip, selectedType === "all" && styles.filterChipActive]}
             textStyle={selectedType === "all" ? styles.filterChipTextActive : undefined}
           >
-            Tout
+            Tout ({MOCK_HOSPITALS.length})
           </Chip>
           <Chip
             selected={selectedType === "hospital"}
@@ -257,79 +206,82 @@ export default function MapScreen() {
         </View>
       </Surface>
 
-      {Platform.OS === "web" ? (
-        <WebMapFallback location={location} hospitals={filteredHospitals} />
-      ) : (
-        <NativeMapComponent
-          location={location}
-          hospitals={filteredHospitals}
-          onMarkerPress={setSelectedHospital}
-        />
-      )}
-
-      {selectedHospital && (
-        <Surface style={styles.selectedCard}>
-          <View style={styles.selectedHeader}>
-            <Text style={styles.selectedName}>{selectedHospital.name}</Text>
-            <TouchableOpacity onPress={() => setSelectedHospital(null)}>
-              <Text style={styles.closeButton}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.selectedType}>
-            {selectedHospital.type === "hospital" ? "Hôpital" : selectedHospital.type === "pharmacy" ? "Pharmacie" : "Secours"}
-          </Text>
-          {selectedHospital.address && <Text style={styles.selectedAddress}>{selectedHospital.address}</Text>}
-          {selectedHospital.phone && (
-            <TouchableOpacity style={styles.callButton} onPress={() => handleCall(selectedHospital.phone)}>
-              <Phone size={16} color={MedicalColors.white} />
-              <Text style={styles.callButtonText}>{selectedHospital.phone}</Text>
-            </TouchableOpacity>
-          )}
-        </Surface>
-      )}
+      <View style={styles.resultsHeader}>
+        <Text style={styles.resultsText}>{filteredHospitals.length} établissement(s) trouvé(s)</Text>
+      </View>
 
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.resultsText}>{filteredHospitals.length} établissement(s) trouvé(s)</Text>
-        {filteredHospitals.map((hospital) => (
-          <TouchableOpacity key={hospital.id} style={styles.hospitalCard} onPress={() => handleCall(hospital.phone)}>
-            <View style={[styles.hospitalIcon, { backgroundColor: getMarkerColorHelper(hospital.type) }]}>
-              {hospital.type === "hospital" ? (
-                <Building2 size={20} color={MedicalColors.white} />
-              ) : hospital.type === "pharmacy" ? (
-                <Cross size={20} color={MedicalColors.white} />
-              ) : (
-                <Stethoscope size={20} color={MedicalColors.white} />
-              )}
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>{hospital.name}</Text>
-              <Text style={styles.hospitalAddress}>{hospital.address}</Text>
-              <View style={styles.hospitalBadges}>
-                {hospital.is24h && (
-                  <View style={styles.hospitalBadge}>
-                    <Clock size={12} color={MedicalColors.life} />
-                    <Text style={styles.hospitalBadgeText}>24h/24</Text>
+        {filteredHospitals.map((hospital) => {
+          const IconComponent = getTypeIcon(hospital.type);
+          const typeColor = getTypeColor(hospital.type);
+
+          return (
+            <Surface key={hospital.id} style={styles.hospitalCard}>
+              <View style={styles.hospitalCardContent}>
+                <View style={[styles.hospitalIcon, { backgroundColor: typeColor }]}>
+                  <IconComponent size={22} color={MedicalColors.white} />
+                </View>
+
+                <View style={styles.hospitalInfo}>
+                  <Text style={styles.hospitalName}>{hospital.name}</Text>
+                  <Text style={styles.hospitalType}>{getTypeLabel(hospital.type)}</Text>
+                  {hospital.address && (
+                    <Text style={styles.hospitalAddress}>{hospital.address}</Text>
+                  )}
+
+                  <View style={styles.hospitalBadges}>
+                    {hospital.is24h && (
+                      <View style={[styles.badge, styles.badge24h]}>
+                        <Clock size={10} color={MedicalColors.life} />
+                        <Text style={styles.badge24hText}>24h/24</Text>
+                      </View>
+                    )}
+                    {hospital.hasMaternity && (
+                      <View style={[styles.badge, styles.badgeMaternity]}>
+                        <Text style={styles.badgeMaternityText}>Maternité</Text>
+                      </View>
+                    )}
+                    {hospital.isOnDuty && (
+                      <View style={[styles.badge, styles.badgeDuty]}>
+                        <Text style={styles.badgeDutyText}>De garde</Text>
+                      </View>
+                    )}
                   </View>
-                )}
-                {hospital.hasMaternity && (
-                  <View style={styles.hospitalBadge}>
-                    <Text style={styles.hospitalBadgeTextMaternity}>Maternité</Text>
-                  </View>
-                )}
-                {hospital.isOnDuty && (
-                  <View style={styles.hospitalBadge}>
-                    <Text style={styles.hospitalBadgeTextDuty}>De garde</Text>
+                </View>
+
+                {hospital.distance != null && (
+                  <View style={styles.distanceContainer}>
+                    <Text style={styles.distanceValue}>{hospital.distance}</Text>
+                    <Text style={styles.distanceUnit}>km</Text>
                   </View>
                 )}
               </View>
-            </View>
-            {hospital.distance != null && (
-              <View style={styles.distanceContainer}>
-                <Text style={styles.distanceText}>{hospital.distance} km</Text>
+
+              <View style={styles.hospitalActions}>
+                {hospital.phone && (
+                  <TouchableOpacity style={styles.actionButton} onPress={() => handleCall(hospital.phone)}>
+                    <Phone size={16} color={MedicalColors.white} />
+                    <Text style={styles.actionButtonText}>Appeler</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.actionButtonNav} onPress={() => handleOpenMaps(hospital)}>
+                  <Navigation size={16} color={MedicalColors.medical} />
+                  <Text style={styles.actionButtonNavText}>Itinéraire</Text>
+                </TouchableOpacity>
               </View>
-            )}
-          </TouchableOpacity>
-        ))}
+            </Surface>
+          );
+        })}
+
+        {filteredHospitals.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <MapPin size={48} color={MedicalColors.textSecondary} />
+            <Text style={styles.emptyText}>Aucun établissement trouvé</Text>
+            <Text style={styles.emptySubtext}>Essayez de modifier vos filtres</Text>
+          </View>
+        )}
+
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -349,6 +301,22 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    color: MedicalColors.textSecondary,
+  },
+  headerSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: MedicalColors.white,
+    borderBottomColor: MedicalColors.border,
+    borderBottomWidth: 1,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  locationText: {
+    fontSize: 13,
     color: MedicalColors.textSecondary,
   },
   filtersContainer: {
@@ -395,111 +363,34 @@ const styles = StyleSheet.create({
   secondaryFilterTextActive: {
     color: MedicalColors.white,
   },
-  map: {
-    flex: 1,
-  },
-  mapFallback: {
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: MedicalColors.medicalLight,
-  },
-  mapFallbackTitle: {
-    fontSize: 20,
-    fontWeight: "bold" as const,
-    color: MedicalColors.text,
-    marginTop: 16,
-  },
-  mapFallbackText: {
-    fontSize: 14,
-    color: MedicalColors.textSecondary,
-    marginTop: 8,
-  },
-  mapFallbackSubtext: {
-    fontSize: 16,
-    color: MedicalColors.medical,
-    marginTop: 8,
-    fontWeight: "600" as const,
-  },
-  selectedCard: {
-    position: "absolute",
-    top: 140,
-    left: 16,
-    right: 16,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: MedicalColors.white,
-    shadowColor: MedicalColors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    zIndex: 100,
-  },
-  selectedHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  selectedName: {
-    fontSize: 18,
-    fontWeight: "bold" as const,
-    color: MedicalColors.text,
-    flex: 1,
-  },
-  closeButton: {
-    fontSize: 20,
-    color: MedicalColors.textSecondary,
-    padding: 4,
-  },
-  selectedType: {
-    fontSize: 14,
-    color: MedicalColors.textSecondary,
-    marginTop: 4,
-  },
-  selectedAddress: {
-    fontSize: 14,
-    color: MedicalColors.text,
-    marginTop: 8,
-  },
-  callButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: MedicalColors.urgency,
+  resultsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 12,
-    gap: 8,
-    alignSelf: "flex-start",
-  },
-  callButtonText: {
-    color: MedicalColors.white,
-    fontWeight: "600" as const,
-    fontSize: 14,
-  },
-  listContainer: {
-    maxHeight: 200,
-    backgroundColor: MedicalColors.white,
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
   resultsText: {
     fontSize: 14,
     fontWeight: "600" as const,
     color: MedicalColors.textSecondary,
-    marginBottom: 8,
+  },
+  listContainer: {
+    flex: 1,
+    paddingHorizontal: 16,
   },
   hospitalCard: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 14,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  hospitalCardContent: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomColor: MedicalColors.border,
-    borderBottomWidth: 1,
+    alignItems: "flex-start",
+    padding: 14,
   },
   hospitalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -508,43 +399,121 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   hospitalName: {
-    fontSize: 15,
-    fontWeight: "600" as const,
+    fontSize: 16,
+    fontWeight: "700" as const,
     color: MedicalColors.text,
   },
-  hospitalAddress: {
+  hospitalType: {
     fontSize: 12,
     color: MedicalColors.textSecondary,
     marginTop: 2,
   },
-  hospitalBadges: {
-    flexDirection: "row",
-    gap: 6,
+  hospitalAddress: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
     marginTop: 4,
   },
-  hospitalBadge: {
+  hospitalBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  badge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
   },
-  hospitalBadgeText: {
+  badge24h: {
+    backgroundColor: MedicalColors.lifeLight,
+  },
+  badge24hText: {
     fontSize: 11,
+    fontWeight: "600" as const,
     color: MedicalColors.life,
   },
-  hospitalBadgeTextMaternity: {
+  badgeMaternity: {
+    backgroundColor: MedicalColors.maternityLight,
+  },
+  badgeMaternityText: {
     fontSize: 11,
+    fontWeight: "600" as const,
     color: MedicalColors.maternity,
   },
-  hospitalBadgeTextDuty: {
+  badgeDuty: {
+    backgroundColor: MedicalColors.urgencyLight,
+  },
+  badgeDutyText: {
     fontSize: 11,
+    fontWeight: "600" as const,
     color: MedicalColors.urgency,
   },
   distanceContainer: {
-    alignItems: "flex-end",
+    alignItems: "center",
+    marginLeft: 8,
+    paddingTop: 2,
   },
-  distanceText: {
-    fontSize: 12,
-    fontWeight: "600" as const,
+  distanceValue: {
+    fontSize: 18,
+    fontWeight: "700" as const,
     color: MedicalColors.medical,
+  },
+  distanceUnit: {
+    fontSize: 11,
+    color: MedicalColors.textSecondary,
+  },
+  hospitalActions: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: MedicalColors.border,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    backgroundColor: MedicalColors.urgency,
+    gap: 6,
+  },
+  actionButtonText: {
+    color: MedicalColors.white,
+    fontWeight: "600" as const,
+    fontSize: 14,
+  },
+  actionButtonNav: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    backgroundColor: MedicalColors.medicalLight,
+    gap: 6,
+  },
+  actionButtonNavText: {
+    color: MedicalColors.medical,
+    fontWeight: "600" as const,
+    fontSize: 14,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 48,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "600" as const,
+    color: MedicalColors.text,
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: MedicalColors.textSecondary,
+    marginTop: 4,
+  },
+  bottomSpacer: {
+    height: 24,
   },
 });
