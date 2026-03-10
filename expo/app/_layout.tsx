@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PaperProvider } from "react-native-paper";
 import { View, ActivityIndicator } from "react-native";
@@ -16,22 +16,11 @@ const queryClient = new QueryClient();
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
-  const { isAuthenticated, isHydrated, setHydrated } = useAuthStore();
-  const hydrationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { isAuthenticated, isHydrated, hydrate } = useAuthStore();
 
   useEffect(() => {
-    if (!isHydrated) {
-      hydrationTimeout.current = setTimeout(() => {
-        console.log('[AuthGuard] Hydration timeout - forcing hydrated state');
-        setHydrated(true);
-      }, 3000);
-    }
-    return () => {
-      if (hydrationTimeout.current) {
-        clearTimeout(hydrationTimeout.current);
-      }
-    };
-  }, [isHydrated, setHydrated]);
+    void hydrate();
+  }, [hydrate]);
 
   useEffect(() => {
     if (!isHydrated) {
