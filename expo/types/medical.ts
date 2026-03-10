@@ -110,6 +110,67 @@ export interface MaternityData {
   vaccines: Vaccine[];
 }
 
+// Dossier médical avancé
+export interface DoctorInfo {
+  id: string;
+  fullName: string;
+  specialty: string;
+  phone?: string;
+  hospital?: string;
+}
+
+export interface MedicalConsultation {
+  id: string;
+  date: string;
+  doctorName: string;
+  specialty: string;
+  diagnosis: string;
+  notes?: string;
+  prescriptions?: string[];
+  hospital?: string;
+  type: 'consultation' | 'urgence' | 'suivi' | 'specialiste';
+}
+
+export interface LabResult {
+  id: string;
+  date: string;
+  testName: string;
+  category: 'sang' | 'urine' | 'imagerie' | 'autre';
+  result: string;
+  normalRange?: string;
+  isAbnormal?: boolean;
+  labName?: string;
+  notes?: string;
+}
+
+export interface MedicalDocument {
+  id: string;
+  title: string;
+  type: 'ordonnance' | 'analyse' | 'imagerie' | 'certificat' | 'compte_rendu' | 'autre';
+  date: string;
+  doctorName?: string;
+  notes?: string;
+}
+
+export interface SharedAccess {
+  id: string;
+  doctorName: string;
+  specialty: string;
+  grantedDate: string;
+  expiresDate?: string;
+  accessLevel: 'complet' | 'partiel' | 'urgence';
+  isActive: boolean;
+}
+
+export interface MedicalTimeline {
+  id: string;
+  date: string;
+  type: 'consultation' | 'analyse' | 'hospitalisation' | 'chirurgie' | 'document' | 'medication';
+  title: string;
+  subtitle?: string;
+  icon?: string;
+}
+
 // Chat IA
 export interface ChatMessage {
   id: string;

@@ -7,19 +7,52 @@ export default function DossierLayout() {
     <Stack
       screenOptions={{
         headerStyle: {
-          backgroundColor: MedicalColors.medical,
+          backgroundColor: MedicalColors.white,
         },
-        headerTintColor: MedicalColors.white,
+        headerTintColor: MedicalColors.medical,
         headerTitleStyle: {
           fontWeight: "bold",
         },
+        headerShadowVisible: false,
       }}
     >
       <Stack.Screen
         name="index"
         options={{
-          title: "Mon Dossier Médical",
+          title: "Mon Dossier",
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="consultations"
+        options={{
+          title: "Consultations",
+        }}
+      />
+      <Stack.Screen
+        name="add-record"
+        options={{
+          title: "Nouveau",
+          presentation: "modal",
+        }}
+      />
+      <Stack.Screen
+        name="lab-results"
+        options={{
+          title: "Analyses",
+        }}
+      />
+      <Stack.Screen
+        name="share"
+        options={{
+          title: "Partager",
+          presentation: "modal",
+        }}
+      />
+      <Stack.Screen
+        name="profile-edit"
+        options={{
+          title: "Mon Profil",
         }}
       />
     </Stack>

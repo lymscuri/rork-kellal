@@ -12,7 +12,11 @@ import type {
   EmergencyContact,
   Pregnancy,
   WeeklyCheckup,
-  Child
+  Child,
+  MedicalConsultation,
+  LabResult,
+  MedicalDocument,
+  SharedAccess,
 } from '@/types/medical';
 
 // État initial du profil médical
@@ -54,7 +58,6 @@ const initialMaternityData: MaternityData = {
 };
 
 interface MedicalStore {
-  // Profil médical
   medicalProfile: MedicalProfile;
   setBloodGroup: (bloodGroup: MedicalProfile['bloodGroup']) => void;
   setRhFactor: (rhFactor: MedicalProfile['rhFactor']) => void;
@@ -72,7 +75,23 @@ interface MedicalStore {
   removeEmergencyContact: (id: string) => void;
   updateMedicalProfile: (profile: Partial<MedicalProfile>) => void;
   
-  // Maternité
+  consultations: MedicalConsultation[];
+  addConsultation: (consultation: Omit<MedicalConsultation, 'id'>) => void;
+  removeConsultation: (id: string) => void;
+  
+  labResults: LabResult[];
+  addLabResult: (result: Omit<LabResult, 'id'>) => void;
+  removeLabResult: (id: string) => void;
+  
+  documents: MedicalDocument[];
+  addDocument: (doc: Omit<MedicalDocument, 'id'>) => void;
+  removeDocument: (id: string) => void;
+  
+  sharedAccess: SharedAccess[];
+  addSharedAccess: (access: Omit<SharedAccess, 'id'>) => void;
+  removeSharedAccess: (id: string) => void;
+  toggleSharedAccess: (id: string) => void;
+
   maternityData: MaternityData;
   setPregnancy: (pregnancy: Pregnancy) => void;
   updatePregnancyWeek: () => void;
@@ -82,7 +101,6 @@ interface MedicalStore {
   updateChild: (id: string, child: Partial<Child>) => void;
   markVaccineDone: (id: string, date: string) => void;
   
-  // Helpers
   getCriticalAllergies: () => Allergy[];
   hasSevereAllergy: (medicationName: string) => boolean;
   isPregnant: () => boolean;
@@ -94,6 +112,10 @@ export const useMedicalStore = create<MedicalStore>()(
   persist(
     (set, get) => ({
       medicalProfile: initialMedicalProfile,
+      consultations: [],
+      labResults: [],
+      documents: [],
+      sharedAccess: [],
       maternityData: initialMaternityData,
 
       // Profil médical
@@ -206,6 +228,53 @@ export const useMedicalStore = create<MedicalStore>()(
       updateMedicalProfile: (profile) => 
         set((state) => ({
           medicalProfile: { ...state.medicalProfile, ...profile }
+        })),
+
+      addConsultation: (consultation) =>
+        set((state) => ({
+          consultations: [{ ...consultation, id: Date.now().toString() }, ...state.consultations]
+        })),
+
+      removeConsultation: (id) =>
+        set((state) => ({
+          consultations: state.consultations.filter(c => c.id !== id)
+        })),
+
+      addLabResult: (result) =>
+        set((state) => ({
+          labResults: [{ ...result, id: Date.now().toString() }, ...state.labResults]
+        })),
+
+      removeLabResult: (id) =>
+        set((state) => ({
+          labResults: state.labResults.filter(r => r.id !== id)
+        })),
+
+      addDocument: (doc) =>
+        set((state) => ({
+          documents: [{ ...doc, id: Date.now().toString() }, ...state.documents]
+        })),
+
+      removeDocument: (id) =>
+        set((state) => ({
+          documents: state.documents.filter(d => d.id !== id)
+        })),
+
+      addSharedAccess: (access) =>
+        set((state) => ({
+          sharedAccess: [{ ...access, id: Date.now().toString() }, ...state.sharedAccess]
+        })),
+
+      removeSharedAccess: (id) =>
+        set((state) => ({
+          sharedAccess: state.sharedAccess.filter(a => a.id !== id)
+        })),
+
+      toggleSharedAccess: (id) =>
+        set((state) => ({
+          sharedAccess: state.sharedAccess.map(a =>
+            a.id === id ? { ...a, isActive: !a.isActive } : a
+          )
         })),
 
       // Maternité

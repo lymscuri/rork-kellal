@@ -1,857 +1,670 @@
-import { useCallback, useMemo, useState } from "react";
-import { Modal, Platform, ScrollView, Share, StyleSheet, TouchableOpacity, View } from "react-native";
-import { Button, Card, Chip, Divider, IconButton, List, Surface, Text, TextInput } from "react-native-paper";
+import { useCallback, useMemo } from "react";
+import {
+  ScrollView,
+  Share,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MedicalColors } from "@/constants/colors";
 import { useMedicalStore } from "@/store/medicalStore";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "expo-router";
-import type { BloodGroup } from "@/types/medical";
-import { AlertTriangle, Droplet, HeartPulse, Pill, Trash2, User, X, Share2, Maximize2, AlertCircle, Phone, LogOut } from "lucide-react-native";
+import {
+  Activity,
+  Calendar,
+  ChevronRight,
+  ClipboardList,
+  Droplet,
+  FileText,
+  FlaskConical,
+  Heart,
+  LogOut,
+  Pill,
+  Plus,
+  Share2,
+  Shield,
+  Stethoscope,
+  UserCircle,
+  Users,
+} from "lucide-react-native";
 
-let QRCode: React.ComponentType<{ value: string; size: number; color: string; backgroundColor: string }> | null = null;
-try {
-  if (Platform.OS !== "web") {
-    QRCode = require("react-native-qrcode-svg").default;
-  }
-} catch {
-  QRCode = null;
-}
-
-function QRCodeDisplay({ value, size, color }: { value: string; size: number; color: string }) {
-  if (Platform.OS === "web" || !QRCode) {
-    return (
-      <View style={[qrFallbackStyles.container, { width: size, height: size }]}>
-        <View style={qrFallbackStyles.inner}>
-          <Text style={qrFallbackStyles.icon}>📱</Text>
-          <Text style={qrFallbackStyles.text}>QR Code</Text>
-          <Text style={qrFallbackStyles.subtext}>Disponible sur mobile</Text>
-        </View>
-      </View>
-    );
-  }
-  return <QRCode value={value} size={size} color={color} backgroundColor={MedicalColors.white} />;
-}
-
-const qrFallbackStyles = StyleSheet.create({
-  container: {
-    backgroundColor: MedicalColors.medicalLight,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: MedicalColors.medical,
-    borderStyle: "dashed",
-  },
-  inner: {
-    alignItems: "center",
-  },
-  icon: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  text: {
-    fontSize: 14,
-    fontWeight: "600" as const,
-    color: MedicalColors.medical,
-  },
-  subtext: {
-    fontSize: 10,
-    color: MedicalColors.textSecondary,
-    marginTop: 2,
-  },
-});
-
-const BLOOD_GROUPS: BloodGroup[] = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
-
-export default function MedicalRecordScreen() {
+export default function DossierDashboard() {
   const router = useRouter();
-  const { logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const {
     medicalProfile,
-    setBloodGroup,
-    setRhFactor,
-    addAllergy,
-    removeAllergy,
-    addChronicDisease,
-    removeChronicDisease,
-    addMedication,
-    removeMedication,
-    addEmergencyContact,
-    removeEmergencyContact,
-    getQRCodeData,
-    getCriticalAllergies,
+    consultations,
+    labResults,
+    documents,
+    sharedAccess,
   } = useMedicalStore();
-
-  const [showQRModal, setShowQRModal] = useState(false);
-  const [activeSection, setActiveSection] = useState<"info" | "history" | "treatments" | "contacts">("info");
-  
-  const [newAllergy, setNewAllergy] = useState("");
-  const [allergyType] = useState<"medicament" | "alimentaire" | "autre">("medicament");
-  const [newDisease, setNewDisease] = useState("");
-  const [newMedication, setNewMedication] = useState({ name: "", dosage: "", frequency: [] as string[] });
-  const [newContact, setNewContact] = useState({ fullName: "", relationship: "", phoneNumber: "" });
-
-  const qrData = useMemo(() => getQRCodeData(), [getQRCodeData]);
-  const criticalAllergies = useMemo(() => getCriticalAllergies(), [getCriticalAllergies]);
 
   const handleLogout = useCallback(() => {
     logout();
     router.replace("/auth/login");
   }, [logout, router]);
 
-  const handleShareQR = useCallback(async () => {
+  const _handleShare = useCallback(async () => {
     try {
-      await Share.share({
-        message: `Mon dossier médical d'urgence: ${qrData}`,
-        title: "Dossier médical SanteConnect",
-      });
-    } catch (error) {
-      console.error("Share error:", error);
+      const summary = `Dossier médical - ${user?.firstName ?? ""} ${user?.lastName ?? ""}\nGroupe sanguin: ${medicalProfile.bloodGroup ?? "Non renseigné"}\nAllergies: ${medicalProfile.allergies.length}\nTraitements: ${medicalProfile.medications.length}`;
+      await Share.share({ message: summary, title: "Mon dossier médical" });
+    } catch (e) {
+      console.error("Share error:", e);
     }
-  }, [qrData]);
+  }, [user, medicalProfile]);
 
-  const handleAddAllergy = useCallback(() => {
-    if (!newAllergy.trim()) return;
-    addAllergy({ name: newAllergy.trim(), type: allergyType, severity: "moderee" });
-    setNewAllergy("");
-  }, [newAllergy, allergyType, addAllergy]);
+  const recentActivity = useMemo(() => {
+    const items: Array<{ id: string; date: string; type: string; title: string; subtitle: string }> = [];
 
-  const handleAddDisease = useCallback(() => {
-    if (!newDisease.trim()) return;
-    addChronicDisease({ name: newDisease.trim() });
-    setNewDisease("");
-  }, [newDisease, addChronicDisease]);
-
-  const handleAddMedication = useCallback(() => {
-    if (!newMedication.name.trim()) return;
-    addMedication({
-      name: newMedication.name.trim(),
-      dosage: newMedication.dosage.trim() || "Non spécifié",
-      frequency: newMedication.frequency as ("matin" | "midi" | "soir" | "nuit")[],
+    consultations.slice(0, 3).forEach((c) => {
+      items.push({
+        id: `c-${c.id}`,
+        date: c.date,
+        type: "consultation",
+        title: c.diagnosis,
+        subtitle: `Dr. ${c.doctorName} - ${c.specialty}`,
+      });
     });
-    setNewMedication({ name: "", dosage: "", frequency: [] });
-  }, [newMedication, addMedication]);
 
-  const handleAddContact = useCallback(() => {
-    if (!newContact.fullName.trim() || !newContact.phoneNumber.trim()) return;
-    addEmergencyContact({
-      fullName: newContact.fullName.trim(),
-      relationship: newContact.relationship.trim() || "Non spécifié",
-      phoneNumber: newContact.phoneNumber.trim(),
+    labResults.slice(0, 3).forEach((r) => {
+      items.push({
+        id: `l-${r.id}`,
+        date: r.date,
+        type: "analyse",
+        title: r.testName,
+        subtitle: r.result,
+      });
     });
-    setNewContact({ fullName: "", relationship: "", phoneNumber: "" });
-  }, [newContact, addEmergencyContact]);
 
-  const toggleFrequency = useCallback((freq: string) => {
-    setNewMedication(prev => ({
-      ...prev,
-      frequency: prev.frequency.includes(freq)
-        ? prev.frequency.filter(f => f !== freq)
-        : [...prev.frequency, freq]
-    }));
+    return items
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+  }, [consultations, labResults]);
+
+  const stats = useMemo(() => ({
+    consultations: consultations.length,
+    labResults: labResults.length,
+    medications: medicalProfile.medications.length,
+    documents: documents.length,
+    sharedWith: sharedAccess.filter((a) => a.isActive).length,
+  }), [consultations, labResults, medicalProfile.medications, documents, sharedAccess]);
+
+  const formatDate = useCallback((dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    } catch {
+      return dateStr;
+    }
+  }, []);
+
+  const getActivityIcon = useCallback((type: string) => {
+    switch (type) {
+      case "consultation":
+        return <Stethoscope size={16} color={MedicalColors.medical} />;
+      case "analyse":
+        return <FlaskConical size={16} color="#E67E22" />;
+      default:
+        return <FileText size={16} color={MedicalColors.textSecondary} />;
+    }
   }, []);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <Surface style={styles.header}>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Mon Dossier Médical</Text>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <LogOut size={20} color={MedicalColors.urgency} />
-          </TouchableOpacity>
-        </View>
-        
-        {criticalAllergies.length > 0 && (
-          <Surface style={styles.criticalAlert}>
-            <AlertTriangle size={20} color={MedicalColors.urgency} />
-            <Text style={styles.criticalAlertText}>
-              Allergies critiques: {criticalAllergies.map(a => a.name).join(", ")}
-            </Text>
-          </Surface>
-        )}
-        
-        <TouchableOpacity style={styles.qrContainer} onPress={() => setShowQRModal(true)}>
-          <Surface style={styles.qrSurface}>
-            <QRCodeDisplay value={qrData} size={100} color={MedicalColors.medical} />
-            <Text style={styles.qrLabel}>QR Code d'urgence</Text>
-          </Surface>
-          <View style={styles.qrActions}>
-            <TouchableOpacity style={styles.qrAction} onPress={() => setShowQRModal(true)}>
-              <Maximize2 size={20} color={MedicalColors.medical} />
-              <Text style={styles.qrActionText}>Agrandir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.qrAction} onPress={handleShareQR}>
+    <View style={styles.root}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.avatar}>
+              <UserCircle size={28} color={MedicalColors.white} />
+            </View>
+            <View>
+              <Text style={styles.greeting}>Bonjour,</Text>
+              <Text style={styles.userName}>
+                {user?.firstName ?? "Patient"} {user?.lastName ?? ""}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => router.push("/(tabs)/dossier/share" as never)}
+            >
               <Share2 size={20} color={MedicalColors.medical} />
-              <Text style={styles.qrActionText}>Partager</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerBtnLogout} onPress={handleLogout}>
+              <LogOut size={20} color={MedicalColors.urgency} />
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Surface>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionNav}>
-        <TouchableOpacity
-          style={[styles.sectionTab, activeSection === "info" && styles.sectionTabActive]}
-          onPress={() => setActiveSection("info")}
-        >
-          <HeartPulse size={18} color={activeSection === "info" ? MedicalColors.medical : MedicalColors.textSecondary} />
-          <Text style={[styles.sectionTabText, activeSection === "info" && styles.sectionTabTextActive]}>Infos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.sectionTab, activeSection === "history" && styles.sectionTabActive]}
-          onPress={() => setActiveSection("history")}
-        >
-          <AlertCircle size={18} color={activeSection === "history" ? MedicalColors.medical : MedicalColors.textSecondary} />
-          <Text style={[styles.sectionTabText, activeSection === "history" && styles.sectionTabTextActive]}>Antécédents</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.sectionTab, activeSection === "treatments" && styles.sectionTabActive]}
-          onPress={() => setActiveSection("treatments")}
-        >
-          <Pill size={18} color={activeSection === "treatments" ? MedicalColors.medical : MedicalColors.textSecondary} />
-          <Text style={[styles.sectionTabText, activeSection === "treatments" && styles.sectionTabTextActive]}>Traitements</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.sectionTab, activeSection === "contacts" && styles.sectionTabActive]}
-          onPress={() => setActiveSection("contacts")}
-        >
-          <Phone size={18} color={activeSection === "contacts" ? MedicalColors.medical : MedicalColors.textSecondary} />
-          <Text style={[styles.sectionTabText, activeSection === "contacts" && styles.sectionTabTextActive]}>Contacts</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeSection === "info" && (
-          <>
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.cardTitle}>
-                  <Droplet size={18} color={MedicalColors.urgency} /> Groupe sanguin
-                </Text>
-                <View style={styles.bloodGroupContainer}>
-                  {BLOOD_GROUPS.map((group) => (
-                    <TouchableOpacity
-                      key={group}
-                      style={[
-                        styles.bloodGroupButton,
-                        medicalProfile.bloodGroup === group && styles.bloodGroupButtonActive,
-                      ]}
-                      onPress={() => setBloodGroup(group as BloodGroup)}
-                    >
-                      <Text
-                        style={[
-                          styles.bloodGroupText,
-                          medicalProfile.bloodGroup === group && styles.bloodGroupTextActive,
-                        ]}
-                      >
-                        {group}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                <Text style={styles.subsectionTitle}>Facteur Rhésus</Text>
-                <View style={styles.rhContainer}>
-                  <TouchableOpacity
-                    style={[styles.rhButton, medicalProfile.rhFactor === "Positif" && styles.rhButtonActive]}
-                    onPress={() => setRhFactor("Positif")}
-                  >
-                    <Text style={[styles.rhText, medicalProfile.rhFactor === "Positif" && styles.rhTextActive]}>Positif</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.rhButton, medicalProfile.rhFactor === "Négatif" && styles.rhButtonActive]}
-                    onPress={() => setRhFactor("Négatif")}
-                  >
-                    <Text style={[styles.rhText, medicalProfile.rhFactor === "Négatif" && styles.rhTextActive]}>Négatif</Text>
-                  </TouchableOpacity>
-                </View>
-              </Card.Content>
-            </Card>
-
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.cardTitle}>Allergies</Text>
-                
-                <View style={styles.inputRow}>
-                  <TextInput
-                    label="Nouvelle allergie"
-                    value={newAllergy}
-                    onChangeText={setNewAllergy}
-                    mode="outlined"
-                    style={[styles.input, { flex: 1 }]}
-                    outlineColor={MedicalColors.border}
-                    activeOutlineColor={MedicalColors.medical}
-                  />
-                  <Button
-                    mode="contained"
-                    onPress={handleAddAllergy}
-                    buttonColor={MedicalColors.medical}
-                    disabled={!newAllergy.trim()}
-                    style={styles.addButton}
-                  >
-                    Ajouter
-                  </Button>
-                </View>
-                
-                <View style={styles.chipContainer}>
-                  {medicalProfile.allergies.map((allergy) => (
-                    <Chip
-                      key={allergy.id}
-                      onClose={() => removeAllergy(allergy.id)}
-                      style={[
-                        styles.allergyChip,
-                        allergy.severity === "severe" && styles.severeAllergyChip,
-                      ]}
-                      textStyle={allergy.severity === "severe" ? styles.severeAllergyText : undefined}
-                    >
-                      {allergy.name} ({allergy.type})
-                    </Chip>
-                  ))}
-                </View>
-                
-                {medicalProfile.allergies.length === 0 && (
-                  <Text style={styles.emptyText}>Aucune allergie enregistrée</Text>
-                )}
-              </Card.Content>
-            </Card>
-          </>
-        )}
-
-        {activeSection === "history" && (
-          <>
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.cardTitle}>Maladies chroniques</Text>
-                
-                <View style={styles.inputRow}>
-                  <TextInput
-                    label="Nouvelle maladie"
-                    value={newDisease}
-                    onChangeText={setNewDisease}
-                    mode="outlined"
-                    style={[styles.input, { flex: 1 }]}
-                    outlineColor={MedicalColors.border}
-                    activeOutlineColor={MedicalColors.medical}
-                  />
-                  <Button
-                    mode="contained"
-                    onPress={handleAddDisease}
-                    buttonColor={MedicalColors.medical}
-                    disabled={!newDisease.trim()}
-                    style={styles.addButton}
-                  >
-                    Ajouter
-                  </Button>
-                </View>
-                
-                {medicalProfile.chronicDiseases.map((disease) => (
-                  <List.Item
-                    key={disease.id}
-                    title={disease.name}
-                    right={(props) => (
-                      <IconButton
-                        {...props}
-                        icon={() => <Trash2 size={20} color={MedicalColors.urgency} />}
-                        onPress={() => removeChronicDisease(disease.id)}
-                      />
-                    )}
-                    style={styles.listItem}
-                  />
-                ))}
-                
-                {medicalProfile.chronicDiseases.length === 0 && (
-                  <Text style={styles.emptyText}>Aucune maladie chronique enregistrée</Text>
-                )}
-              </Card.Content>
-            </Card>
-          </>
-        )}
-
-        {activeSection === "treatments" && (
-          <>
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.cardTitle}>Traitements en cours</Text>
-                
-                <TextInput
-                  label="Nom du médicament"
-                  value={newMedication.name}
-                  onChangeText={(text) => setNewMedication(prev => ({ ...prev, name: text }))}
-                  mode="outlined"
-                  style={styles.input}
-                  outlineColor={MedicalColors.border}
-                  activeOutlineColor={MedicalColors.medical}
-                />
-                
-                <TextInput
-                  label="Posologie"
-                  value={newMedication.dosage}
-                  onChangeText={(text) => setNewMedication(prev => ({ ...prev, dosage: text }))}
-                  mode="outlined"
-                  style={styles.input}
-                  outlineColor={MedicalColors.border}
-                  activeOutlineColor={MedicalColors.medical}
-                  placeholder="Ex: 1 comprimé de 500mg"
-                />
-                
-                <Text style={styles.frequencyLabel}>Fréquence:</Text>
-                <View style={styles.frequencyContainer}>
-                  {["matin", "midi", "soir", "nuit"].map((freq) => (
-                    <TouchableOpacity
-                      key={freq}
-                      style={[
-                        styles.frequencyButton,
-                        newMedication.frequency.includes(freq) && styles.frequencyButtonActive,
-                      ]}
-                      onPress={() => toggleFrequency(freq)}
-                    >
-                      <Text
-                        style={[
-                          styles.frequencyText,
-                          newMedication.frequency.includes(freq) && styles.frequencyTextActive,
-                        ]}
-                      >
-                        {freq.charAt(0).toUpperCase() + freq.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                <Button
-                  mode="contained"
-                  onPress={handleAddMedication}
-                  buttonColor={MedicalColors.medical}
-                  disabled={!newMedication.name.trim()}
-                  style={styles.button}
-                >
-                  Ajouter le médicament
-                </Button>
-                
-                <Divider style={styles.divider} />
-                
-                {medicalProfile.medications.map((med) => (
-                  <List.Item
-                    key={med.id}
-                    title={med.name}
-                    description={`${med.dosage} - ${med.frequency.join(", ")}`}
-                    right={(props) => (
-                      <IconButton
-                        {...props}
-                        icon={() => <Trash2 size={20} color={MedicalColors.urgency} />}
-                        onPress={() => removeMedication(med.id)}
-                      />
-                    )}
-                    style={styles.listItem}
-                  />
-                ))}
-                
-                {medicalProfile.medications.length === 0 && (
-                  <Text style={styles.emptyText}>Aucun traitement en cours</Text>
-                )}
-              </Card.Content>
-            </Card>
-          </>
-        )}
-
-        {activeSection === "contacts" && (
-          <>
-            <Card style={styles.card}>
-              <Card.Content>
-                <Text style={styles.cardTitle}>Contacts d'urgence</Text>
-                
-                <TextInput
-                  label="Nom complet"
-                  value={newContact.fullName}
-                  onChangeText={(text) => setNewContact(prev => ({ ...prev, fullName: text }))}
-                  mode="outlined"
-                  style={styles.input}
-                  outlineColor={MedicalColors.border}
-                  activeOutlineColor={MedicalColors.medical}
-                />
-                
-                <TextInput
-                  label="Lien (conjoint, parent, ami...)"
-                  value={newContact.relationship}
-                  onChangeText={(text) => setNewContact(prev => ({ ...prev, relationship: text }))}
-                  mode="outlined"
-                  style={styles.input}
-                  outlineColor={MedicalColors.border}
-                  activeOutlineColor={MedicalColors.medical}
-                />
-                
-                <TextInput
-                  label="Numéro de téléphone"
-                  value={newContact.phoneNumber}
-                  onChangeText={(text) => setNewContact(prev => ({ ...prev, phoneNumber: text }))}
-                  mode="outlined"
-                  style={styles.input}
-                  outlineColor={MedicalColors.border}
-                  activeOutlineColor={MedicalColors.medical}
-                  keyboardType="phone-pad"
-                />
-                
-                <Button
-                  mode="contained"
-                  onPress={handleAddContact}
-                  buttonColor={MedicalColors.medical}
-                  disabled={!newContact.fullName.trim() || !newContact.phoneNumber.trim()}
-                  style={styles.button}
-                >
-                  Ajouter le contact
-                </Button>
-                
-                <Divider style={styles.divider} />
-                
-                {medicalProfile.emergencyContacts.map((contact) => (
-                  <List.Item
-                    key={contact.id}
-                    title={contact.fullName}
-                    description={`${contact.relationship} - ${contact.phoneNumber}`}
-                    left={() => <View style={{ marginLeft: 8, justifyContent: "center" }}><User size={24} color={MedicalColors.medical} /></View>}
-                    right={(props) => (
-                      <IconButton
-                        {...props}
-                        icon={() => <Trash2 size={20} color={MedicalColors.urgency} />}
-                        onPress={() => removeEmergencyContact(contact.id)}
-                      />
-                    )}
-                    style={styles.listItem}
-                  />
-                ))}
-                
-                {medicalProfile.emergencyContacts.length === 0 && (
-                  <Text style={styles.emptyText}>Aucun contact d'urgence enregistré</Text>
-                )}
-              </Card.Content>
-            </Card>
-          </>
-        )}
-      </ScrollView>
-
-      <Modal visible={showQRModal} transparent animationType="fade" onRequestClose={() => setShowQRModal(false)}>
-        <View style={styles.modalOverlay}>
-          <Surface style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>QR Code d'urgence</Text>
-              <IconButton icon={() => <X size={24} color={MedicalColors.text} />} onPress={() => setShowQRModal(false)} />
-            </View>
-            
-            <View style={styles.modalQRContainer}>
-              <QRCodeDisplay value={qrData} size={250} color={MedicalColors.medical} />
-            </View>
-            
-            <Text style={styles.modalDescription}>
-              Ce QR code contient vos informations médicales essentielles pour les secours en cas d'urgence.
-            </Text>
-            
-            <Button
-              mode="contained"
-              onPress={handleShareQR}
-              buttonColor={MedicalColors.medical}
-              style={styles.modalButton}
-              icon={() => <Share2 size={18} color={MedicalColors.white} />}
-            >
-              Partager le QR Code
-            </Button>
-          </Surface>
         </View>
-      </Modal>
-    </SafeAreaView>
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {medicalProfile.bloodGroup && (
+            <View style={styles.bloodBadge}>
+              <Droplet size={16} color={MedicalColors.urgency} />
+              <Text style={styles.bloodText}>
+                {medicalProfile.bloodGroup} | Rh {medicalProfile.rhFactor ?? "?"}
+              </Text>
+              {medicalProfile.allergies.filter((a) => a.severity === "severe").length > 0 && (
+                <View style={styles.alertDot} />
+              )}
+            </View>
+          )}
+
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: "#EBF5FB" }]}
+              onPress={() => router.push("/(tabs)/dossier/add-record" as never)}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: MedicalColors.medical }]}>
+                <Plus size={20} color={MedicalColors.white} />
+              </View>
+              <Text style={styles.quickActionLabel}>Ajouter</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: "#FEF9E7" }]}
+              onPress={() => router.push("/(tabs)/dossier/consultations" as never)}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: "#E67E22" }]}>
+                <Stethoscope size={20} color={MedicalColors.white} />
+              </View>
+              <Text style={styles.quickActionLabel}>Consultations</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: "#F4ECF7" }]}
+              onPress={() => router.push("/(tabs)/dossier/lab-results" as never)}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: "#8E44AD" }]}>
+                <FlaskConical size={20} color={MedicalColors.white} />
+              </View>
+              <Text style={styles.quickActionLabel}>Analyses</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickAction, { backgroundColor: "#EAFAF1" }]}
+              onPress={() => router.push("/(tabs)/dossier/share" as never)}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: "#27AE60" }]}>
+                <Users size={20} color={MedicalColors.white} />
+              </View>
+              <Text style={styles.quickActionLabel}>Partager</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{stats.consultations}</Text>
+              <Text style={styles.statLabel}>Consultations</Text>
+            </View>
+            <View style={[styles.statCard, styles.statCardMiddle]}>
+              <Text style={styles.statNumber}>{stats.labResults}</Text>
+              <Text style={styles.statLabel}>Analyses</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{stats.medications}</Text>
+              <Text style={styles.statLabel}>Traitements</Text>
+            </View>
+          </View>
+
+          {medicalProfile.medications.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Pill size={18} color={MedicalColors.medical} />
+                <Text style={styles.sectionTitle}>Traitements en cours</Text>
+              </View>
+              {medicalProfile.medications.slice(0, 3).map((med) => (
+                <View key={med.id} style={styles.medCard}>
+                  <View style={styles.medDot} />
+                  <View style={styles.medInfo}>
+                    <Text style={styles.medName}>{med.name}</Text>
+                    <Text style={styles.medDosage}>
+                      {med.dosage} - {med.frequency.join(", ")}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {medicalProfile.allergies.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Shield size={18} color={MedicalColors.urgency} />
+                <Text style={styles.sectionTitle}>Allergies</Text>
+              </View>
+              <View style={styles.allergyRow}>
+                {medicalProfile.allergies.map((a) => (
+                  <View
+                    key={a.id}
+                    style={[
+                      styles.allergyTag,
+                      a.severity === "severe" && styles.allergyTagSevere,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.allergyTagText,
+                        a.severity === "severe" && styles.allergyTagTextSevere,
+                      ]}
+                    >
+                      {a.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Activity size={18} color={MedicalColors.medical} />
+              <Text style={styles.sectionTitle}>Activité récente</Text>
+            </View>
+            {recentActivity.length === 0 ? (
+              <View style={styles.emptyState}>
+                <ClipboardList size={40} color={MedicalColors.border} />
+                <Text style={styles.emptyTitle}>Aucune activité</Text>
+                <Text style={styles.emptySubtitle}>
+                  Ajoutez votre première consultation ou analyse
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyBtn}
+                  onPress={() => router.push("/(tabs)/dossier/add-record" as never)}
+                >
+                  <Plus size={16} color={MedicalColors.white} />
+                  <Text style={styles.emptyBtnText}>Commencer</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              recentActivity.map((item) => (
+                <View key={item.id} style={styles.activityItem}>
+                  <View style={styles.activityIconWrap}>
+                    {getActivityIcon(item.type)}
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.activitySubtitle} numberOfLines={1}>
+                      {item.subtitle}
+                    </Text>
+                  </View>
+                  <Text style={styles.activityDate}>{formatDate(item.date)}</Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.menuSection}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/(tabs)/dossier/profile-edit" as never)}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: "#EBF5FB" }]}>
+                <Heart size={18} color={MedicalColors.medical} />
+              </View>
+              <Text style={styles.menuText}>Infos médicales</Text>
+              <ChevronRight size={18} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/(tabs)/dossier/consultations" as never)}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: "#FEF9E7" }]}>
+                <Calendar size={18} color="#E67E22" />
+              </View>
+              <Text style={styles.menuText}>Historique consultations</Text>
+              <ChevronRight size={18} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/(tabs)/dossier/lab-results" as never)}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: "#F4ECF7" }]}>
+                <FlaskConical size={18} color="#8E44AD" />
+              </View>
+              <Text style={styles.menuText}>Résultats d'analyses</Text>
+              <ChevronRight size={18} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/(tabs)/dossier/share" as never)}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: "#EAFAF1" }]}>
+                <Share2 size={18} color="#27AE60" />
+              </View>
+              <Text style={styles.menuText}>
+                Partage praticiens
+                {stats.sharedWith > 0 && (
+                  <Text style={styles.menuBadge}> ({stats.sharedWith})</Text>
+                )}
+              </Text>
+              <ChevronRight size={18} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
+import { Text } from "react-native";
+
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#0A5EB8",
+  },
   container: {
     flex: 1,
-    backgroundColor: MedicalColors.background,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: MedicalColors.white,
-    borderBottomColor: MedicalColors.border,
-    borderBottomWidth: 1,
-  },
-  headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
+    backgroundColor: "#0A5EB8",
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: MedicalColors.medical,
-  },
-  logoutButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: MedicalColors.urgencyLight,
-  },
-  criticalAlert: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: MedicalColors.urgencyLight,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+    gap: 12,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  greeting: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
+  },
+  userName: {
+    fontSize: 18,
+    fontWeight: "700" as const,
+    color: MedicalColors.white,
+  },
+  headerActions: {
+    flexDirection: "row",
     gap: 8,
   },
-  criticalAlertText: {
-    color: MedicalColors.urgencyDark,
-    fontWeight: "600",
-    fontSize: 14,
-    flex: 1,
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  qrContainer: {
+  headerBtnLogout: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scroll: {
+    flex: 1,
+    backgroundColor: MedicalColors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  scrollContent: {
+    paddingTop: 20,
+    paddingHorizontal: 16,
+  },
+  bloodBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    alignSelf: "flex-start",
+    backgroundColor: MedicalColors.urgencyLight,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    marginBottom: 16,
   },
-  qrSurface: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: MedicalColors.white,
+  bloodText: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: MedicalColors.urgencyDark,
+  },
+  alertDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: MedicalColors.urgency,
+  },
+  quickActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 20,
+  },
+  quickAction: {
+    flex: 1,
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: MedicalColors.medical,
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
   },
-  qrLabel: {
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  quickActionLabel: {
+    fontSize: 11,
+    fontWeight: "600" as const,
+    color: MedicalColors.text,
+    textAlign: "center" as const,
+  },
+  statsRow: {
+    flexDirection: "row",
+    backgroundColor: MedicalColors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statCardMiddle: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderLeftColor: MedicalColors.border,
+    borderRightColor: MedicalColors.border,
+  },
+  statNumber: {
+    fontSize: 22,
+    fontWeight: "800" as const,
+    color: MedicalColors.medical,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: MedicalColors.textSecondary,
+    marginTop: 2,
+  },
+  section: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700" as const,
+    color: MedicalColors.text,
+  },
+  medCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: MedicalColors.background,
+  },
+  medDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: MedicalColors.medical,
+  },
+  medInfo: {
+    flex: 1,
+  },
+  medName: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    color: MedicalColors.text,
+  },
+  medDosage: {
     fontSize: 12,
     color: MedicalColors.textSecondary,
-    marginTop: 8,
+    marginTop: 2,
   },
-  qrActions: {
-    flex: 1,
-    gap: 12,
-  },
-  qrAction: {
+  allergyRow: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
-    paddingVertical: 8,
+  },
+  allergyTag: {
+    backgroundColor: "#FFF3CD",
     paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: MedicalColors.medicalLight,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
-  qrActionText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.medical,
+  allergyTagSevere: {
+    backgroundColor: MedicalColors.urgency,
   },
-  sectionNav: {
-    backgroundColor: MedicalColors.white,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomColor: MedicalColors.border,
-    borderBottomWidth: 1,
+  allergyTagText: {
+    fontSize: 13,
+    fontWeight: "500" as const,
+    color: "#856404",
   },
-  sectionTab: {
+  allergyTagTextSevere: {
+    color: MedicalColors.white,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "600" as const,
+    color: MedicalColors.text,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
+    textAlign: "center" as const,
+  },
+  emptyBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: MedicalColors.background,
-    marginRight: 8,
     gap: 6,
-  },
-  sectionTabActive: {
-    backgroundColor: MedicalColors.medicalLight,
-  },
-  sectionTabText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.textSecondary,
-  },
-  sectionTabTextActive: {
-    color: MedicalColors.medical,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  card: {
-    marginBottom: 16,
-    backgroundColor: MedicalColors.white,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: MedicalColors.text,
-    marginBottom: 16,
-  },
-  subsectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.textSecondary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  bloodGroupContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  bloodGroupButton: {
-    width: 50,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: MedicalColors.background,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: MedicalColors.border,
-  },
-  bloodGroupButtonActive: {
-    backgroundColor: MedicalColors.urgency,
-    borderColor: MedicalColors.urgency,
-  },
-  bloodGroupText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.text,
-  },
-  bloodGroupTextActive: {
-    color: MedicalColors.white,
-  },
-  rhContainer: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  rhButton: {
-    flex: 1,
+    backgroundColor: MedicalColors.medical,
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: MedicalColors.background,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: MedicalColors.border,
-  },
-  rhButtonActive: {
-    backgroundColor: MedicalColors.medical,
-    borderColor: MedicalColors.medical,
-  },
-  rhText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.text,
-  },
-  rhTextActive: {
-    color: MedicalColors.white,
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  input: {
-    backgroundColor: MedicalColors.background,
-    marginBottom: 12,
-  },
-  addButton: {
-    marginTop: -12,
-  },
-  button: {
-    marginTop: 8,
-  },
-  chipContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 8,
-  },
-  allergyChip: {
-    backgroundColor: MedicalColors.warningLight,
-  },
-  severeAllergyChip: {
-    backgroundColor: MedicalColors.urgency,
-  },
-  severeAllergyText: {
-    color: MedicalColors.white,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: MedicalColors.textSecondary,
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: 16,
-  },
-  listItem: {
-    paddingVertical: 4,
-  },
-  divider: {
-    marginVertical: 16,
-  },
-  frequencyLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: MedicalColors.text,
-    marginBottom: 8,
-  },
-  frequencyContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 16,
-  },
-  frequencyButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: MedicalColors.background,
-    borderWidth: 1,
-    borderColor: MedicalColors.border,
+    marginTop: 8,
   },
-  frequencyButtonActive: {
-    backgroundColor: MedicalColors.medical,
-    borderColor: MedicalColors.medical,
-  },
-  frequencyText: {
-    fontSize: 14,
-    color: MedicalColors.text,
-  },
-  frequencyTextActive: {
+  emptyBtnText: {
     color: MedicalColors.white,
+    fontWeight: "600" as const,
+    fontSize: 14,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+  activityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: MedicalColors.background,
+  },
+  activityIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: MedicalColors.background,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
   },
-  modalContent: {
-    width: "100%",
-    maxWidth: 400,
-    padding: 24,
-    borderRadius: 16,
-    backgroundColor: MedicalColors.white,
+  activityContent: {
+    flex: 1,
   },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
+  activityTitle: {
+    fontSize: 14,
+    fontWeight: "600" as const,
     color: MedicalColors.text,
   },
-  modalQRContainer: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  modalDescription: {
-    fontSize: 14,
+  activitySubtitle: {
+    fontSize: 12,
     color: MedicalColors.textSecondary,
-    textAlign: "center",
-    marginBottom: 24,
+    marginTop: 2,
   },
-  modalButton: {
-    borderRadius: 8,
+  activityDate: {
+    fontSize: 12,
+    color: MedicalColors.textSecondary,
+    fontWeight: "500" as const,
+  },
+  menuSection: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 16,
+    overflow: "hidden" as const,
+    marginBottom: 16,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: MedicalColors.background,
+  },
+  menuIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500" as const,
+    color: MedicalColors.text,
+  },
+  menuBadge: {
+    color: MedicalColors.medical,
+    fontWeight: "600" as const,
   },
 });
