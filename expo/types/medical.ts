@@ -102,12 +102,58 @@ export interface Vaccine {
   doneDate?: string;
 }
 
+export interface SmsReminder {
+  id: string;
+  type: 'vaccination' | 'consultation' | 'checkup' | 'custom';
+  targetPhone: string;
+  language: 'francais' | 'lingala' | 'swahili' | 'tshiluba' | 'kikongo';
+  method: 'sms' | 'voice' | 'both';
+  message: string;
+  scheduledDate: string;
+  status: 'pending' | 'sent' | 'failed';
+  relatedChildId?: string;
+}
+
+export interface CaregiverMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'parent' | 'medecin' | 'sage_femme' | 'agent_sante';
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+  childId?: string;
+}
+
+export interface MaternityReport {
+  id: string;
+  type: 'vaccination_coverage' | 'consultation_adherence' | 'delay_analysis' | 'growth_tracking';
+  title: string;
+  generatedDate: string;
+  period: string;
+  data: Record<string, number | string>;
+}
+
+export interface GrowthRecord {
+  id: string;
+  childId: string;
+  date: string;
+  weight?: number;
+  height?: number;
+  headCircumference?: number;
+  notes?: string;
+}
+
 export interface MaternityData {
   pregnancy?: Pregnancy;
   weeklyCheckups: WeeklyCheckup[];
   consultations: Consultation[];
   children: Child[];
   vaccines: Vaccine[];
+  reminders: SmsReminder[];
+  messages: CaregiverMessage[];
+  reports: MaternityReport[];
+  growthRecords: GrowthRecord[];
 }
 
 // Dossier médical avancé

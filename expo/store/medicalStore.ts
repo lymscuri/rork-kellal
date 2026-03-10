@@ -17,6 +17,10 @@ import type {
   LabResult,
   MedicalDocument,
   SharedAccess,
+  SmsReminder,
+  CaregiverMessage,
+  MaternityReport,
+  GrowthRecord,
 } from '@/types/medical';
 
 // État initial du profil médical
@@ -36,25 +40,45 @@ const initialMaternityData: MaternityData = {
   pregnancy: undefined,
   weeklyCheckups: [],
   consultations: [
-    { id: 'c1', week: 8, title: '1ère consultation', status: 'a_venir' },
-    { id: 'c2', week: 12, title: '2ème consultation', status: 'a_venir' },
-    { id: 'c3', week: 20, title: '3ème consultation', status: 'a_venir' },
-    { id: 'c4', week: 28, title: '4ème consultation', status: 'a_venir' },
-    { id: 'c5', week: 32, title: '5ème consultation', status: 'a_venir' },
-    { id: 'c6', week: 36, title: '6ème consultation', status: 'a_venir' },
-    { id: 'c7', week: 38, title: '7ème consultation', status: 'a_venir' },
-    { id: 'c8', week: 40, title: '8ème consultation', status: 'a_venir' },
+    { id: 'c1', week: 8, title: '1ère consultation prénatale', status: 'a_venir' },
+    { id: 'c2', week: 12, title: 'Échographie T1', status: 'a_venir' },
+    { id: 'c3', week: 20, title: 'Échographie T2 (morpho)', status: 'a_venir' },
+    { id: 'c4', week: 28, title: 'Consultation 4ème mois', status: 'a_venir' },
+    { id: 'c5', week: 32, title: 'Échographie T3', status: 'a_venir' },
+    { id: 'c6', week: 36, title: 'Consultation 8ème mois', status: 'a_venir' },
+    { id: 'c7', week: 38, title: 'Consultation pré-accouchement', status: 'a_venir' },
+    { id: 'c8', week: 40, title: 'Terme prévu', status: 'a_venir' },
   ],
   children: [],
   vaccines: [
     { id: 'v1', name: 'BCG', age: 'Naissance', status: 'a_faire' },
-    { id: 'v2', name: 'VPO0', age: 'Naissance', status: 'a_faire' },
-    { id: 'v3', name: 'Pentavalent 1', age: '6 semaines', status: 'a_faire' },
-    { id: 'v4', name: 'Pentavalent 2', age: '10 semaines', status: 'a_faire' },
-    { id: 'v5', name: 'Pentavalent 3', age: '14 semaines', status: 'a_faire' },
-    { id: 'v6', name: 'Rougeole', age: '9 mois', status: 'a_faire' },
-    { id: 'v7', name: 'Méningite', age: '9 mois', status: 'a_faire' },
+    { id: 'v2', name: 'VPO 0 (Polio oral)', age: 'Naissance', status: 'a_faire' },
+    { id: 'v3', name: 'Hépatite B (dose naissance)', age: 'Naissance', status: 'a_faire' },
+    { id: 'v4', name: 'Pentavalent 1 + VPO 1', age: '6 semaines', status: 'a_faire' },
+    { id: 'v5', name: 'Pneumo 1 + Rotavirus 1', age: '6 semaines', status: 'a_faire' },
+    { id: 'v6', name: 'Pentavalent 2 + VPO 2', age: '10 semaines', status: 'a_faire' },
+    { id: 'v7', name: 'Pneumo 2 + Rotavirus 2', age: '10 semaines', status: 'a_faire' },
+    { id: 'v8', name: 'Pentavalent 3 + VPO 3', age: '14 semaines', status: 'a_faire' },
+    { id: 'v9', name: 'Pneumo 3 + VPI', age: '14 semaines', status: 'a_faire' },
+    { id: 'v10', name: 'VAR 1 (Rougeole)', age: '9 mois', status: 'a_faire' },
+    { id: 'v11', name: 'Fièvre jaune', age: '9 mois', status: 'a_faire' },
+    { id: 'v12', name: 'Méningite A', age: '15 mois', status: 'a_faire' },
+    { id: 'v13', name: 'VAR 2 (Rougeole rappel)', age: '15 mois', status: 'a_faire' },
   ],
+  reminders: [],
+  messages: [
+    {
+      id: 'msg_welcome',
+      senderId: 'system',
+      senderName: 'Équipe SantéConnect',
+      senderRole: 'agent_sante',
+      content: 'Bienvenue dans l\'espace maternité! N\'hésitez pas à poser vos questions ici.',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+    },
+  ],
+  reports: [],
+  growthRecords: [],
 };
 
 interface MedicalStore {
@@ -94,12 +118,24 @@ interface MedicalStore {
 
   maternityData: MaternityData;
   setPregnancy: (pregnancy: Pregnancy) => void;
+  clearPregnancy: () => void;
   updatePregnancyWeek: () => void;
   addWeeklyCheckup: (checkup: Omit<WeeklyCheckup, 'week'>) => void;
   markConsultationDone: (id: string, date: string) => void;
   addChild: (child: Omit<Child, 'id'>) => void;
   updateChild: (id: string, child: Partial<Child>) => void;
+  removeChild: (id: string) => void;
   markVaccineDone: (id: string, date: string) => void;
+  addReminder: (reminder: Omit<SmsReminder, 'id'>) => void;
+  removeReminder: (id: string) => void;
+  updateReminderStatus: (id: string, status: SmsReminder['status']) => void;
+  addCaregiverMessage: (message: Omit<CaregiverMessage, 'id'>) => void;
+  markMessageRead: (id: string) => void;
+  addReport: (report: Omit<MaternityReport, 'id'>) => void;
+  addGrowthRecord: (record: Omit<GrowthRecord, 'id'>) => void;
+  getVaccinationDelays: () => { vaccineId: string; name: string; expectedAge: string; delayDays: number }[];
+  getVaccinationCoverage: () => number;
+  getConsultationAdherence: () => number;
   
   getCriticalAllergies: () => Allergy[];
   hasSevereAllergy: (medicationName: string) => boolean;
@@ -345,6 +381,24 @@ export const useMedicalStore = create<MedicalStore>()(
           }
         })),
 
+      clearPregnancy: () =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            pregnancy: undefined,
+            weeklyCheckups: [],
+            consultations: initialMaternityData.consultations,
+          }
+        })),
+
+      removeChild: (id) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            children: state.maternityData.children.filter(c => c.id !== id)
+          }
+        })),
+
       markVaccineDone: (id, date) => 
         set((state) => ({
           maternityData: {
@@ -354,6 +408,93 @@ export const useMedicalStore = create<MedicalStore>()(
             )
           }
         })),
+
+      addReminder: (reminder) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            reminders: [...state.maternityData.reminders, { ...reminder, id: Date.now().toString() }]
+          }
+        })),
+
+      removeReminder: (id) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            reminders: state.maternityData.reminders.filter(r => r.id !== id)
+          }
+        })),
+
+      updateReminderStatus: (id, status) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            reminders: state.maternityData.reminders.map(r =>
+              r.id === id ? { ...r, status } : r
+            )
+          }
+        })),
+
+      addCaregiverMessage: (message) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            messages: [...state.maternityData.messages, { ...message, id: Date.now().toString() }]
+          }
+        })),
+
+      markMessageRead: (id) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            messages: state.maternityData.messages.map(m =>
+              m.id === id ? { ...m, isRead: true } : m
+            )
+          }
+        })),
+
+      addReport: (report) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            reports: [{ ...report, id: Date.now().toString() }, ...state.maternityData.reports]
+          }
+        })),
+
+      addGrowthRecord: (record) =>
+        set((state) => ({
+          maternityData: {
+            ...state.maternityData,
+            growthRecords: [...state.maternityData.growthRecords, { ...record, id: Date.now().toString() }]
+          }
+        })),
+
+      getVaccinationDelays: () => {
+        const { vaccines } = get().maternityData;
+        return vaccines
+          .filter(v => v.status === 'en_retard' || (v.status === 'a_faire' && v.dueDate))
+          .map(v => {
+            const dueDate = v.dueDate ? new Date(v.dueDate) : new Date();
+            const today = new Date();
+            const delayDays = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+            return { vaccineId: v.id, name: v.name, expectedAge: v.age, delayDays };
+          })
+          .filter(d => d.delayDays > 0);
+      },
+
+      getVaccinationCoverage: () => {
+        const { vaccines } = get().maternityData;
+        if (vaccines.length === 0) return 0;
+        const done = vaccines.filter(v => v.status === 'fait').length;
+        return Math.round((done / vaccines.length) * 100);
+      },
+
+      getConsultationAdherence: () => {
+        const { consultations } = get().maternityData;
+        if (consultations.length === 0) return 0;
+        const done = consultations.filter(c => c.status === 'effectuee').length;
+        return Math.round((done / consultations.length) * 100);
+      },
 
       // Helpers
       getCriticalAllergies: () => {

@@ -22,6 +22,36 @@ export default function MaterniteLayout() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="vaccinations"
+        options={{
+          title: "Vaccinations",
+        }}
+      />
+      <Stack.Screen
+        name="reminders"
+        options={{
+          title: "Rappels SMS/Voix",
+        }}
+      />
+      <Stack.Screen
+        name="reports"
+        options={{
+          title: "Rapports",
+        }}
+      />
+      <Stack.Screen
+        name="communication"
+        options={{
+          title: "Messages",
+        }}
+      />
+      <Stack.Screen
+        name="child-details"
+        options={{
+          title: "Détails enfant",
+        }}
+      />
     </Stack>
   );
 }
