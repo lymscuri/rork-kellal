@@ -62,6 +62,7 @@ export default function SignupScreen() {
       return;
     }
     
+    console.log('[Signup] Attempting signup...');
     const success = await signup({
       email: email.trim(),
       password,
@@ -70,8 +71,11 @@ export default function SignupScreen() {
       phone: phone.trim() || undefined,
     });
     
+    console.log('[Signup] Result:', success);
     if (success) {
-      router.replace('/');
+      setTimeout(() => {
+        router.replace('/');
+      }, 100);
     }
   }, [firstName, lastName, email, phone, password, confirmPassword, signup, clearError, router]);
 

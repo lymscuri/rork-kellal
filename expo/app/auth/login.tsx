@@ -30,9 +30,13 @@ export default function LoginScreen() {
       return;
     }
     
+    console.log('[Login] Attempting login...');
     const success = await login(email.trim(), password);
+    console.log('[Login] Result:', success);
     if (success) {
-      router.replace('/');
+      setTimeout(() => {
+        router.replace('/');
+      }, 100);
     }
   }, [email, password, login, clearError, router]);
 

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { PaperProvider } from "react-native-paper";
 import { View, ActivityIndicator } from "react-native";
@@ -14,37 +14,30 @@ void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-// Composant de protection des routes
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-  const [isReady, setIsReady] = useState(false);
+  const { isAuthenticated, isHydrated } = useAuthStore();
 
   useEffect(() => {
-    // Petit délai pour s'assurer que le store est hydraté
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!isReady) return;
+    if (!isHydrated) {
+      console.log('[AuthGuard] Waiting for hydration...');
+      return;
+    }
 
     const inAuthGroup = segments[0] === "auth";
-    const _inTabsGroup = segments[0] === "(tabs)";
+    console.log('[AuthGuard] isAuthenticated:', isAuthenticated, 'inAuthGroup:', inAuthGroup, 'segments:', segments);
 
     if (!isAuthenticated && !inAuthGroup) {
-      // Rediriger vers login si non authentifié
+      console.log('[AuthGuard] Redirecting to login');
       router.replace("/auth/login");
     } else if (isAuthenticated && inAuthGroup) {
-      // Rediriger vers l'app si déjà authentifié
+      console.log('[AuthGuard] Redirecting to app');
       router.replace("/");
     }
-  }, [isAuthenticated, segments, isReady, router]);
+  }, [isAuthenticated, segments, isHydrated, router]);
 
-  if (!isReady) {
+  if (!isHydrated) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: MedicalColors.background }}>
         <ActivityIndicator size="large" color={MedicalColors.medical} />

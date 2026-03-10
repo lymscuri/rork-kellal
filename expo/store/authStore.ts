@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+
 export interface User {
   id: string;
   email: string;
@@ -14,14 +15,15 @@ interface AuthStore {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isHydrated: boolean;
   error: string | null;
   
-  // Actions
   login: (email: string, password: string) => Promise<boolean>;
   signup: (userData: SignupData) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
   updateProfile: (userData: Partial<User>) => void;
+  setHydrated: (hydrated: boolean) => void;
 }
 
 export interface SignupData {
@@ -40,19 +42,24 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       isAuthenticated: false,
       isLoading: false,
+      isHydrated: false,
       error: null,
+
+      setHydrated: (hydrated: boolean) => {
+        set({ isHydrated: hydrated });
+      },
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          // Simulation d'API - en production, remplacer par l'appel API réel
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log('[Auth] Attempting login for:', email);
           
-          // Vérifier les credentials stockés localement
           const storedUsers = await AsyncStorage.getItem('santeconnect-users');
+          console.log('[Auth] Stored users raw:', storedUsers);
           const users: Array<SignupData & { id: string }> = storedUsers ? JSON.parse(storedUsers) : [];
+          console.log('[Auth] Found', users.length, 'users in storage');
           
-          const foundUser = users.find(u => u.email === email && u.password === password);
+          const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
           
           if (foundUser) {
             const user: User = {
@@ -62,14 +69,16 @@ export const useAuthStore = create<AuthStore>()(
               lastName: foundUser.lastName,
               phone: foundUser.phone,
             };
+            console.log('[Auth] Login successful for:', user.email);
             set({ user, isAuthenticated: true, isLoading: false, error: null });
             return true;
           } else {
+            console.log('[Auth] Login failed - no matching user');
             set({ isLoading: false, error: 'Email ou mot de passe incorrect' });
             return false;
           }
         } catch (error) {
-          console.error('Login error:', error);
+          console.error('[Auth] Login error:', error);
           set({ isLoading: false, error: 'Erreur de connexion. Veuillez réessayer.' });
           return false;
         }
@@ -78,26 +87,30 @@ export const useAuthStore = create<AuthStore>()(
       signup: async (userData: SignupData) => {
         set({ isLoading: true, error: null });
         try {
-          // Simulation d'API - en production, remplacer par l'appel API réel
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log('[Auth] Attempting signup for:', userData.email);
           
-          // Vérifier si l'email existe déjà
-          const storedUsers = await AsyncStorage.getItem('santeconnect-users');
-          const users: Array<SignupData & { id: string }> = storedUsers ? JSON.parse(storedUsers) : [];
+          let users: Array<SignupData & { id: string }> = [];
+          try {
+            const storedUsers = await AsyncStorage.getItem('santeconnect-users');
+            users = storedUsers ? JSON.parse(storedUsers) : [];
+          } catch {
+            console.log('[Auth] No existing users, starting fresh');
+            users = [];
+          }
           
-          if (users.some(u => u.email === userData.email)) {
+          if (users.some(u => u.email.toLowerCase() === userData.email.toLowerCase())) {
             set({ isLoading: false, error: 'Cet email est déjà utilisé' });
             return false;
           }
           
-          // Créer le nouvel utilisateur
           const newUser = {
             ...userData,
-            id: Date.now().toString(),
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
           };
           
           users.push(newUser);
           await AsyncStorage.setItem('santeconnect-users', JSON.stringify(users));
+          console.log('[Auth] User saved to storage, total users:', users.length);
           
           const user: User = {
             id: newUser.id,
@@ -107,10 +120,11 @@ export const useAuthStore = create<AuthStore>()(
             phone: newUser.phone,
           };
           
+          console.log('[Auth] Signup successful for:', user.email);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
           return true;
         } catch (error) {
-          console.error('Signup error:', error);
+          console.error('[Auth] Signup error:', error);
           set({ isLoading: false, error: 'Erreur lors de la création du compte. Veuillez réessayer.' });
           return false;
         }
@@ -138,6 +152,10 @@ export const useAuthStore = create<AuthStore>()(
         user: state.user, 
         isAuthenticated: state.isAuthenticated 
       }),
+      onRehydrateStorage: () => (state) => {
+        console.log('[Auth] Hydration complete, isAuthenticated:', state?.isAuthenticated);
+        state?.setHydrated(true);
+      },
     }
   )
 );
