@@ -9,7 +9,7 @@ import {
   User, History, Stethoscope, FlaskConical, Syringe,
   Plus, Shield
 } from 'lucide-react-native';
-import type { BloodGroup, AllergySeverity } from '@/types/medical';
+import type { BloodGroup, AllergySeverity, Surgery, Hospitalization } from '@/types/medical';
 
 const TABS = ['Identité', 'Infos critiques', 'Antécédents', 'Consultations', 'Examens', 'Vaccins'];
 const BLOOD_GROUPS: BloodGroup[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -29,8 +29,43 @@ export default function PatientRecordScreen() {
   }, [patientId, store]);
 
   const [allergyName, setAllergyName] = useState('');
+
+  const [pastIllnesses, setPastIllnesses] = useState(patient?.personalHistory.pastIllnesses || '');
+  const [surgeryName, setSurgeryName] = useState('');
+  const [surgeryDate, setSurgeryDate] = useState('');
+  const [surgeryHospital, setSurgeryHospital] = useState('');
+  const [hospReason, setHospReason] = useState('');
+  const [hospDate, setHospDate] = useState('');
+  const [hospDuration, setHospDuration] = useState('');
+  const [hospHospital, setHospHospital] = useState('');
+  const [transfusionDate, setTransfusionDate] = useState(patient?.personalHistory.bloodTransfusionDate || '');
+  const [tobaccoQty, setTobaccoQty] = useState(patient?.lifeHabits.tobaccoQuantity || '');
+  const [specialDiet, setSpecialDiet] = useState(patient?.lifeHabits.specialDiet || '');
   const [allergySeverity, setAllergySeverity] = useState<AllergySeverity>('legere');
   const [allergyType, setAllergyType] = useState<'medicament' | 'alimentaire'>('medicament');
+
+  const handleAddSurgery = useCallback(() => {
+    if (!surgeryName.trim() || !surgeryDate.trim() || !patientId) return;
+    const current = patient?.personalHistory;
+    if (!current) return;
+    const newSurgery: Surgery = { id: Date.now().toString(), name: surgeryName.trim(), date: surgeryDate.trim(), hospital: surgeryHospital.trim() || undefined };
+    store.updatePersonalHistory(patientId, { surgeries: [...current.surgeries, newSurgery] });
+    setSurgeryName('');
+    setSurgeryDate('');
+    setSurgeryHospital('');
+  }, [surgeryName, surgeryDate, surgeryHospital, patientId, patient, store]);
+
+  const handleAddHospitalization = useCallback(() => {
+    if (!hospReason.trim() || !hospDate.trim() || !patientId) return;
+    const current = patient?.personalHistory;
+    if (!current) return;
+    const newHosp: Hospitalization = { id: Date.now().toString(), reason: hospReason.trim(), date: hospDate.trim(), duration: hospDuration.trim() || undefined, hospital: hospHospital.trim() || undefined };
+    store.updatePersonalHistory(patientId, { hospitalizations: [...current.hospitalizations, newHosp] });
+    setHospReason('');
+    setHospDate('');
+    setHospDuration('');
+    setHospHospital('');
+  }, [hospReason, hospDate, hospDuration, hospHospital, patientId, patient, store]);
 
   const handleAddAllergy = useCallback(() => {
     if (!allergyName.trim() || !patientId) return;
@@ -208,43 +243,228 @@ export default function PatientRecordScreen() {
     <View style={styles.tabContent}>
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents personnels</Text>
-        <InfoRow label="Maladies passées" value={patient.personalHistory.pastIllnesses || 'Aucune'} />
-        <InfoRow label="Transfusion sanguine" value={patient.personalHistory.bloodTransfusion ? `Oui${patient.personalHistory.bloodTransfusionDate ? ` (${patient.personalHistory.bloodTransfusionDate})` : ''}` : 'Non'} />
-        {patient.personalHistory.surgeries.length > 0 && (
-          <>
-            <Text style={styles.subLabel}>Chirurgies</Text>
-            {patient.personalHistory.surgeries.map(s => (
-              <Text key={s.id} style={styles.listItem}>• {s.name} — {s.date}</Text>
-            ))}
-          </>
+
+        <Text style={styles.subLabel}>Maladies passées</Text>
+        {isReadOnly ? (
+          <Text style={styles.readValue}>{patient.personalHistory.pastIllnesses || 'Aucune'}</Text>
+        ) : (
+          <View style={styles.editRow}>
+            <TextInput
+              label="Maladies passées"
+              value={pastIllnesses}
+              onChangeText={setPastIllnesses}
+              mode="outlined"
+              dense
+              style={styles.inputSmall}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+              onBlur={() => {
+                if (patientId) store.updatePersonalHistory(patientId, { pastIllnesses: pastIllnesses.trim() || undefined });
+              }}
+            />
+          </View>
         )}
-        {patient.personalHistory.hospitalizations.length > 0 && (
-          <>
-            <Text style={styles.subLabel}>Hospitalisations</Text>
-            {patient.personalHistory.hospitalizations.map(h => (
-              <Text key={h.id} style={styles.listItem}>• {h.reason} — {h.hospital || ''} ({h.date})</Text>
-            ))}
-          </>
+
+        <Text style={[styles.subLabel, { marginTop: 12 }]}>Transfusion sanguine</Text>
+        {isReadOnly ? (
+          <Text style={styles.readValue}>{patient.personalHistory.bloodTransfusion ? `Oui${patient.personalHistory.bloodTransfusionDate ? ` (${patient.personalHistory.bloodTransfusionDate})` : ''}` : 'Non'}</Text>
+        ) : (
+          <View>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={patient.personalHistory.bloodTransfusion}
+                onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: true })}
+                style={[styles.chip, patient.personalHistory.bloodTransfusion && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.personalHistory.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
+              >Oui</Chip>
+              <Chip
+                selected={!patient.personalHistory.bloodTransfusion}
+                onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: false, bloodTransfusionDate: undefined })}
+                style={[styles.chip, !patient.personalHistory.bloodTransfusion && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.personalHistory.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
+              >Non</Chip>
+            </View>
+            {patient.personalHistory.bloodTransfusion && (
+              <TextInput
+                label="Date de transfusion"
+                value={transfusionDate}
+                onChangeText={setTransfusionDate}
+                placeholder="ex: 2023-06"
+                mode="outlined"
+                dense
+                style={[styles.inputSmall, { marginTop: 8 }]}
+                outlineColor={MedicalColors.border}
+                activeOutlineColor={MedicalColors.medical}
+                onBlur={() => {
+                  if (patientId) store.updatePersonalHistory(patientId, { bloodTransfusionDate: transfusionDate.trim() || undefined });
+                }}
+              />
+            )}
+          </View>
+        )}
+
+        <Text style={[styles.subLabel, { marginTop: 14 }]}>Chirurgies</Text>
+        {patient.personalHistory.surgeries.map(s => (
+          <View key={s.id} style={styles.historyItem}>
+            <Text style={styles.historyItemTitle}>{s.name}</Text>
+            <Text style={styles.historyItemSub}>{s.date}{s.hospital ? ` — ${s.hospital}` : ''}</Text>
+          </View>
+        ))}
+        {patient.personalHistory.surgeries.length === 0 && <Text style={styles.readValue}>Aucune</Text>}
+        {!isReadOnly && (
+          <View style={styles.addHistoryForm}>
+            <TextInput label="Nom chirurgie" value={surgeryName} onChangeText={setSurgeryName} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+            <View style={styles.rowInputs}>
+              <TextInput label="Date" value={surgeryDate} onChangeText={setSurgeryDate} placeholder="ex: 2022-03" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+              <TextInput label="Hôpital" value={surgeryHospital} onChangeText={setSurgeryHospital} mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+            </View>
+            <Button mode="contained" onPress={handleAddSurgery} compact buttonColor={MedicalColors.medical} style={styles.addBtnSmall} labelStyle={styles.addBtnLabel}>
+              Ajouter chirurgie
+            </Button>
+          </View>
+        )}
+
+        <Text style={[styles.subLabel, { marginTop: 14 }]}>Hospitalisations</Text>
+        {patient.personalHistory.hospitalizations.map(h => (
+          <View key={h.id} style={styles.historyItem}>
+            <Text style={styles.historyItemTitle}>{h.reason}</Text>
+            <Text style={styles.historyItemSub}>{h.date}{h.hospital ? ` — ${h.hospital}` : ''}{h.duration ? ` (${h.duration})` : ''}</Text>
+          </View>
+        ))}
+        {patient.personalHistory.hospitalizations.length === 0 && <Text style={styles.readValue}>Aucune</Text>}
+        {!isReadOnly && (
+          <View style={styles.addHistoryForm}>
+            <TextInput label="Motif" value={hospReason} onChangeText={setHospReason} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+            <View style={styles.rowInputs}>
+              <TextInput label="Date" value={hospDate} onChangeText={setHospDate} placeholder="ex: 2021-08" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+              <TextInput label="Durée" value={hospDuration} onChangeText={setHospDuration} placeholder="ex: 5 jours" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+            </View>
+            <TextInput label="Hôpital" value={hospHospital} onChangeText={setHospHospital} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
+            <Button mode="contained" onPress={handleAddHospitalization} compact buttonColor={MedicalColors.medical} style={styles.addBtnSmall} labelStyle={styles.addBtnLabel}>
+              Ajouter hospitalisation
+            </Button>
+          </View>
         )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents familiaux</Text>
-        <View style={styles.chipRow}>
-          {patient.familyHistory.diabetes && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Diabète</Chip>}
-          {patient.familyHistory.hypertension && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Hypertension</Chip>}
-          {patient.familyHistory.cancer && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Cancer</Chip>}
-          {patient.familyHistory.sickleCell && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Drépanocytose</Chip>}
-          {patient.familyHistory.hereditary && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Maladies héréditaires</Chip>}
-          {!patient.familyHistory.diabetes && !patient.familyHistory.hypertension && !patient.familyHistory.cancer && !patient.familyHistory.sickleCell && !patient.familyHistory.hereditary && <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>}
-        </View>
+        {isReadOnly ? (
+          <View style={styles.chipRow}>
+            {patient.familyHistory.diabetes && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Diabète</Chip>}
+            {patient.familyHistory.hypertension && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Hypertension</Chip>}
+            {patient.familyHistory.cancer && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Cancer</Chip>}
+            {patient.familyHistory.sickleCell && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Drépanocytose</Chip>}
+            {patient.familyHistory.hereditary && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Maladies héréditaires</Chip>}
+            {!patient.familyHistory.diabetes && !patient.familyHistory.hypertension && !patient.familyHistory.cancer && !patient.familyHistory.sickleCell && !patient.familyHistory.hereditary && <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>}
+          </View>
+        ) : (
+          <View style={styles.chipRow}>
+            {([['diabetes', 'Diabète'], ['hypertension', 'Hypertension'], ['cancer', 'Cancer'], ['sickleCell', 'Drépanocytose'], ['hereditary', 'Maladies héréditaires']] as const).map(([key, label]) => (
+              <Chip
+                key={key}
+                selected={patient.familyHistory[key]}
+                onPress={() => store.updateFamilyHistory(patientId!, { [key]: !patient.familyHistory[key] })}
+                style={[styles.chip, patient.familyHistory[key] && styles.chipSelected]}
+                textStyle={{ fontSize: 11, color: patient.familyHistory[key] ? MedicalColors.white : MedicalColors.text }}
+              >
+                {label}
+              </Chip>
+            ))}
+          </View>
+        )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Habitudes de vie</Text>
-        <InfoRow label="Tabac" value={patient.lifeHabits.tobacco ? `Oui${patient.lifeHabits.tobaccoQuantity ? ` (${patient.lifeHabits.tobaccoQuantity})` : ''}` : 'Non'} />
-        <InfoRow label="Alcool" value={patient.lifeHabits.alcohol ? 'Oui' : 'Non'} />
-        <InfoRow label="Activité physique" value={patient.lifeHabits.physicalActivity === 'sedentaire' ? 'Sédentaire' : patient.lifeHabits.physicalActivity === 'moderee' ? 'Modérée' : 'Active'} />
+        {isReadOnly ? (
+          <>
+            <InfoRow label="Tabac" value={patient.lifeHabits.tobacco ? `Oui${patient.lifeHabits.tobaccoQuantity ? ` (${patient.lifeHabits.tobaccoQuantity})` : ''}` : 'Non'} />
+            <InfoRow label="Alcool" value={patient.lifeHabits.alcohol ? 'Oui' : 'Non'} />
+            <InfoRow label="Activité physique" value={patient.lifeHabits.physicalActivity === 'sedentaire' ? 'Sédentaire' : patient.lifeHabits.physicalActivity === 'moderee' ? 'Modérée' : 'Active'} />
+            {patient.lifeHabits.specialDiet && <InfoRow label="Régime spécial" value={patient.lifeHabits.specialDiet} />}
+          </>
+        ) : (
+          <>
+            <Text style={styles.subLabel}>Tabac</Text>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={patient.lifeHabits.tobacco}
+                onPress={() => store.updateLifeHabits(patientId!, { tobacco: true })}
+                style={[styles.chip, patient.lifeHabits.tobacco && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.lifeHabits.tobacco ? MedicalColors.white : MedicalColors.text }}
+              >Oui</Chip>
+              <Chip
+                selected={!patient.lifeHabits.tobacco}
+                onPress={() => store.updateLifeHabits(patientId!, { tobacco: false, tobaccoQuantity: undefined })}
+                style={[styles.chip, !patient.lifeHabits.tobacco && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.lifeHabits.tobacco ? MedicalColors.white : MedicalColors.text }}
+              >Non</Chip>
+            </View>
+            {patient.lifeHabits.tobacco && (
+              <TextInput
+                label="Quantité"
+                value={tobaccoQty}
+                onChangeText={setTobaccoQty}
+                placeholder="ex: 10 cigarettes/jour"
+                mode="outlined"
+                dense
+                style={[styles.inputSmall, { marginTop: 6 }]}
+                outlineColor={MedicalColors.border}
+                activeOutlineColor={MedicalColors.medical}
+                onBlur={() => {
+                  if (patientId) store.updateLifeHabits(patientId, { tobaccoQuantity: tobaccoQty.trim() || undefined });
+                }}
+              />
+            )}
+
+            <Text style={[styles.subLabel, { marginTop: 12 }]}>Alcool</Text>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={patient.lifeHabits.alcohol}
+                onPress={() => store.updateLifeHabits(patientId!, { alcohol: true })}
+                style={[styles.chip, patient.lifeHabits.alcohol && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.lifeHabits.alcohol ? MedicalColors.white : MedicalColors.text }}
+              >Oui</Chip>
+              <Chip
+                selected={!patient.lifeHabits.alcohol}
+                onPress={() => store.updateLifeHabits(patientId!, { alcohol: false })}
+                style={[styles.chip, !patient.lifeHabits.alcohol && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.lifeHabits.alcohol ? MedicalColors.white : MedicalColors.text }}
+              >Non</Chip>
+            </View>
+
+            <Text style={[styles.subLabel, { marginTop: 12 }]}>Activité physique</Text>
+            <View style={styles.chipRow}>
+              {(['sedentaire', 'moderee', 'active'] as const).map(level => (
+                <Chip
+                  key={level}
+                  selected={patient.lifeHabits.physicalActivity === level}
+                  onPress={() => store.updateLifeHabits(patientId!, { physicalActivity: level })}
+                  style={[styles.chip, patient.lifeHabits.physicalActivity === level && styles.chipSelected]}
+                  textStyle={{ fontSize: 12, color: patient.lifeHabits.physicalActivity === level ? MedicalColors.white : MedicalColors.text }}
+                >
+                  {level === 'sedentaire' ? 'Sédentaire' : level === 'moderee' ? 'Modérée' : 'Active'}
+                </Chip>
+              ))}
+            </View>
+
+            <TextInput
+              label="Régime spécial"
+              value={specialDiet}
+              onChangeText={setSpecialDiet}
+              placeholder="ex: sans gluten, végétarien..."
+              mode="outlined"
+              dense
+              style={[styles.inputSmall, { marginTop: 12 }]}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+              onBlur={() => {
+                if (patientId) store.updateLifeHabits(patientId, { specialDiet: specialDiet.trim() || undefined });
+              }}
+            />
+          </>
+        )}
       </View>
     </View>
   );
@@ -440,6 +660,15 @@ const styles = StyleSheet.create({
   addAllergyForm: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: MedicalColors.border },
   inputSmall: { marginBottom: 8, backgroundColor: MedicalColors.white },
   addBtn: { borderRadius: 8, marginBottom: 16 },
+  addBtnSmall: { borderRadius: 8, marginTop: 10 },
+  addBtnLabel: { fontSize: 12 },
+  editRow: { marginBottom: 4 },
+  rowInputs: { flexDirection: 'row', gap: 8 },
+  halfInput: { flex: 1 },
+  addHistoryForm: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: MedicalColors.border },
+  historyItem: { backgroundColor: MedicalColors.background, borderRadius: 8, padding: 10, marginBottom: 6 },
+  historyItemTitle: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
+  historyItemSub: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   treatmentCard: { backgroundColor: MedicalColors.background, borderRadius: 8, padding: 10, marginBottom: 6 },
   treatmentName: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   treatmentDetail: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
