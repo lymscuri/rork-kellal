@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { AlertCircle, MapPin, MessageCircle, Phone, Siren } from "lucide-react-native";
+import { AlertCircle, MapPin, Phone, Bot, Hospital } from "lucide-react-native";
 import React, { useCallback } from "react";
 import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Card, Chip, Surface, Text } from "react-native-paper";
@@ -58,74 +58,127 @@ export default function EmergencyHomeScreen() {
       )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Bouton Urgence principal */}
+        {/* Bouton Assistant IA principal */}
         <View style={styles.emergencyButtonContainer}>
           <TouchableOpacity 
             style={styles.emergencyButton}
-            onPress={() => handleEmergencyCall("15")}
+            onPress={handleChatPress}
             activeOpacity={0.8}
           >
-            <Siren color={MedicalColors.white} size={48} />
-            <Text style={styles.emergencyButtonText}>URGENCE</Text>
-            <Text style={styles.emergencyButtonSubtext}>Appeler le 15</Text>
+            <Bot color={MedicalColors.white} size={48} />
+            <Text style={styles.emergencyButtonText}>ASSISTANT IA</Text>
+            <Text style={styles.emergencyButtonSubtext}>Premiers secours</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Boutons d'appel rapide */}
-        <View style={styles.quickCallsContainer}>
+        {/* Hôpitaux de Guinée */}
+        <Text style={styles.sectionTitle}>Hôpitaux de Guinée</Text>
+        <View style={styles.hospitalsContainer}>
           <TouchableOpacity 
-            style={[styles.callButton, styles.samuButton]}
-            onPress={() => handleEmergencyCall("15")}
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224628684242")}
           >
-            <Phone color={MedicalColors.white} size={24} />
-            <Text style={styles.callButtonText}>SAMU 15</Text>
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>CHU Donka</Text>
+              <Text style={styles.hospitalLocation}>Conakry</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
           </TouchableOpacity>
-          
+
           <TouchableOpacity 
-            style={[styles.callButton, styles.policeButton]}
-            onPress={() => handleEmergencyCall("17")}
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224628261010")}
           >
-            <Phone color={MedicalColors.white} size={24} />
-            <Text style={styles.callButtonText}>Police 17</Text>
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>Hôpital Ignace Deen</Text>
+              <Text style={styles.hospitalLocation}>Conakry</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
           </TouchableOpacity>
-          
+
           <TouchableOpacity 
-            style={[styles.callButton, styles.pompiersButton]}
-            onPress={() => handleEmergencyCall("18")}
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224622353535")}
           >
-            <Phone color={MedicalColors.white} size={24} />
-            <Text style={styles.callButtonText}>Pompiers 18</Text>
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>Hôpital Sino-Guinéen</Text>
+              <Text style={styles.hospitalLocation}>Kipé, Conakry</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
           </TouchableOpacity>
-          
+
           <TouchableOpacity 
-            style={[styles.callButton, styles.europeanButton]}
-            onPress={() => handleEmergencyCall("112")}
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224664202020")}
           >
-            <Phone color={MedicalColors.white} size={24} />
-            <Text style={styles.callButtonText}>Urgence 112</Text>
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>Clinique Pasteur</Text>
+              <Text style={styles.hospitalLocation}>Conakry</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224625353535")}
+          >
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>Hôpital Régional de Kankan</Text>
+              <Text style={styles.hospitalLocation}>Kankan</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.hospitalCard}
+            onPress={() => handleEmergencyCall("+224628505050")}
+          >
+            <View style={styles.hospitalIconContainer}>
+              <Hospital color={MedicalColors.urgency} size={22} />
+            </View>
+            <View style={styles.hospitalInfo}>
+              <Text style={styles.hospitalName}>Hôpital Régional de N'Zérékoré</Text>
+              <Text style={styles.hospitalLocation}>N'Zérékoré</Text>
+            </View>
+            <View style={styles.phoneIconContainer}>
+              <Phone color={MedicalColors.white} size={16} />
+            </View>
           </TouchableOpacity>
         </View>
 
-        {/* Accès rapides */}
-        <Text style={styles.sectionTitle}>Accès rapides</Text>
-        
-        <View style={styles.quickAccessContainer}>
-          <TouchableOpacity style={styles.quickAccessCard} onPress={handleChatPress}>
-            <Surface style={styles.quickAccessSurface}>
-              <MessageCircle color={MedicalColors.urgency} size={32} />
-              <Text style={styles.quickAccessTitle}>Assistant IA</Text>
-              <Text style={styles.quickAccessDesc}>Conseils de premiers secours</Text>
-            </Surface>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.quickAccessCard} onPress={handleMapPress}>
-            <Surface style={styles.quickAccessSurface}>
-              <MapPin color={MedicalColors.medical} size={32} />
-              <Text style={styles.quickAccessTitle}>Carte</Text>
-              <Text style={styles.quickAccessDesc}>Hôpitaux et pharmacies</Text>
-            </Surface>
-          </TouchableOpacity>
-        </View>
+        {/* Accès rapide carte */}
+        <TouchableOpacity style={styles.mapAccessCard} onPress={handleMapPress}>
+          <MapPin color={MedicalColors.medical} size={24} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.mapAccessTitle}>Carte des secours</Text>
+            <Text style={styles.mapAccessDesc}>Trouver hôpitaux et pharmacies proches</Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Conseils de premiers secours */}
         <Card style={styles.tipsCard}>
@@ -226,40 +279,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.9,
   },
-  quickCallsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 12,
+  hospitalsContainer: {
     paddingHorizontal: 16,
+    gap: 10,
     marginBottom: 24,
   },
-  callButton: {
+  hospitalCard: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-    minWidth: 140,
+    backgroundColor: MedicalColors.white,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+  },
+  hospitalIconContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: MedicalColors.urgencyLight,
     justifyContent: "center",
+    alignItems: "center",
   },
-  callButtonText: {
-    color: MedicalColors.white,
-    fontWeight: "600",
-    fontSize: 14,
+  hospitalInfo: {
+    flex: 1,
   },
-  samuButton: {
+  hospitalName: {
+    fontSize: 15,
+    fontWeight: "600" as const,
+    color: MedicalColors.text,
+  },
+  hospitalLocation: {
+    fontSize: 12,
+    color: MedicalColors.textSecondary,
+    marginTop: 2,
+  },
+  phoneIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: MedicalColors.urgency,
-  },
-  policeButton: {
-    backgroundColor: MedicalColors.dark,
-  },
-  pompiersButton: {
-    backgroundColor: "#FF6600",
-  },
-  europeanButton: {
-    backgroundColor: MedicalColors.medical,
+    justifyContent: "center",
+    alignItems: "center",
   },
   sectionTitle: {
     fontSize: 18,
@@ -268,32 +333,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
   },
-  quickAccessContainer: {
+  mapAccessCard: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 12,
-    marginBottom: 24,
-  },
-  quickAccessCard: {
-    flex: 1,
-  },
-  quickAccessSurface: {
-    padding: 16,
-    borderRadius: 12,
     alignItems: "center",
     backgroundColor: MedicalColors.white,
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
   },
-  quickAccessTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+  mapAccessTitle: {
+    fontSize: 15,
+    fontWeight: "600" as const,
     color: MedicalColors.text,
-    marginTop: 8,
   },
-  quickAccessDesc: {
+  mapAccessDesc: {
     fontSize: 12,
     color: MedicalColors.textSecondary,
-    textAlign: "center",
-    marginTop: 4,
+    marginTop: 2,
   },
   tipsCard: {
     marginHorizontal: 16,
