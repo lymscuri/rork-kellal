@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Baby, Calendar, Heart, Plus, ChevronRight,
-  Users, BarChart3, MessageSquare, LogOut
+  Users, BarChart3, MessageSquare, LogOut, CalendarDays
 } from 'lucide-react-native';
 import type { MaternityPatient } from '@/types/medical';
 
@@ -111,6 +111,40 @@ function PatientView() {
                 </View>
                 <ChevronRight size={20} color={MedicalColors.textSecondary} />
               </TouchableOpacity>
+
+              {(() => {
+                const upcoming = myData?.prenatalConsultations
+                  ?.filter(c => c.status !== 'effectuee' && c.scheduledDate)
+                  .sort((a, b) => new Date(a.scheduledDate!).getTime() - new Date(b.scheduledDate!).getTime())
+                  .slice(0, 2) || [];
+                if (upcoming.length === 0) return null;
+                return (
+                  <View style={styles.rdvSection}>
+                    <View style={styles.rdvSectionHeader}>
+                      <CalendarDays size={18} color={MedicalColors.maternity} />
+                      <Text style={styles.rdvSectionTitle}>Prochains RDV</Text>
+                    </View>
+                    {upcoming.map(c => (
+                      <View key={c.id} style={styles.rdvItem}>
+                        <View style={styles.rdvDateBadge}>
+                          <Text style={styles.rdvDateDay}>
+                            {new Date(c.scheduledDate!).getDate()}
+                          </Text>
+                          <Text style={styles.rdvDateMonth}>
+                            {new Date(c.scheduledDate!).toLocaleDateString('fr-FR', { month: 'short' })}
+                          </Text>
+                        </View>
+                        <View style={styles.rdvItemInfo}>
+                          <Text style={styles.rdvItemTitle}>S{c.weekTarget} — {c.description}</Text>
+                          <Text style={styles.rdvItemDate}>
+                            {new Date(c.scheduledDate!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
             </>
           )}
 
@@ -372,6 +406,38 @@ const styles = StyleSheet.create({
   menuInfo: { flex: 1, marginLeft: 14 },
   menuTitle: { fontSize: 15, fontWeight: '600' as const, color: MedicalColors.text },
   menuSubtitle: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
+  rdvSection: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  rdvSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  rdvSectionTitle: { fontSize: 15, fontWeight: '700' as const, color: MedicalColors.maternity },
+  rdvItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: MedicalColors.maternityLight,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  rdvDateBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: MedicalColors.maternity,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rdvDateDay: { fontSize: 18, fontWeight: '700' as const, color: MedicalColors.white },
+  rdvDateMonth: { fontSize: 10, color: 'rgba(255,255,255,0.85)', fontWeight: '600' as const, textTransform: 'uppercase' as const },
+  rdvItemInfo: { flex: 1 },
+  rdvItemTitle: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.text, lineHeight: 18 },
+  rdvItemDate: { fontSize: 12, color: MedicalColors.maternity, marginTop: 2, textTransform: 'capitalize' as const },
   emptyCard: {
     backgroundColor: MedicalColors.white,
     borderRadius: 16,

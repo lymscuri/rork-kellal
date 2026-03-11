@@ -93,6 +93,7 @@ interface MedicalStore {
   linkMaternityToUser: (maternityId: string, userId: string) => void;
   addWeeklyCheckup: (patientId: string, checkup: Omit<WeeklyCheckup, 'id' | 'pregnancyId'>) => void;
   markPrenatalConsultationDone: (patientId: string, consultationId: string, date: string, notes?: string) => void;
+  schedulePrenatalConsultation: (patientId: string, consultationId: string, scheduledDate: string) => void;
   addPrenatalExam: (patientId: string, exam: Omit<PrenatalExam, 'id' | 'pregnancyId'>) => void;
   addChild: (patientId: string, child: Omit<ChildProfile, 'id' | 'parentId'>) => string;
   addChildGrowth: (childId: string, record: Omit<ChildGrowthRecord, 'id' | 'childId'>) => void;
@@ -494,6 +495,24 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+      },
+
+      schedulePrenatalConsultation: (patientId, consultationId, scheduledDate) => {
+        set((state) => ({
+          maternityPatients: state.maternityPatients.map(p =>
+            p.id === patientId
+              ? {
+                  ...p,
+                  prenatalConsultations: p.prenatalConsultations.map(c =>
+                    c.id === consultationId
+                      ? { ...c, scheduledDate }
+                      : c
+                  ),
+                }
+              : p
+          ),
+        }));
+        console.log('[MedicalStore] Scheduled consultation', consultationId, 'for', scheduledDate);
       },
 
       markPrenatalConsultationDone: (patientId, consultationId, date, notes) => {

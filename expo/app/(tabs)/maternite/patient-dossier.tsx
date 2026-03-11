@@ -1,19 +1,88 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
-import { Heart, Stethoscope, CheckCircle } from 'lucide-react-native';
+import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays } from 'lucide-react-native';
 
 const LAB_OPTIONS = ['NFS', 'Groupe sanguin', 'Sérologie VIH', 'TPHA', 'Goutte épaisse', 'Glycémie', 'ECBU'];
+
+function DatePickerInline({ value, onChange, label }: { value: string; onChange: (d: string) => void; label: string }) {
+  const [day, setDay] = useState(() => value ? new Date(value).getDate().toString() : '');
+  const [month, setMonth] = useState(() => value ? (new Date(value).getMonth() + 1).toString() : '');
+  const [year, setYear] = useState(() => value ? new Date(value).getFullYear().toString() : new Date().getFullYear().toString());
+
+  const handleUpdate = useCallback((d: string, m: string, y: string) => {
+    const dayNum = parseInt(d);
+    const monthNum = parseInt(m);
+    const yearNum = parseInt(y);
+    if (dayNum >= 1 && dayNum <= 31 && monthNum >= 1 && monthNum <= 12 && yearNum >= 2024) {
+      const date = new Date(yearNum, monthNum - 1, dayNum);
+      onChange(date.toISOString());
+    }
+  }, [onChange]);
+
+  return (
+    <View style={dateStyles.container}>
+      <Text style={dateStyles.label}>{label}</Text>
+      <View style={dateStyles.row}>
+        <TextInput
+          label="Jour"
+          value={day}
+          onChangeText={(v) => { setDay(v); handleUpdate(v, month, year); }}
+          mode="outlined"
+          dense
+          style={dateStyles.dayInput}
+          keyboardType="number-pad"
+          maxLength={2}
+          outlineColor={MedicalColors.border}
+          activeOutlineColor={MedicalColors.maternity}
+        />
+        <TextInput
+          label="Mois"
+          value={month}
+          onChangeText={(v) => { setMonth(v); handleUpdate(day, v, year); }}
+          mode="outlined"
+          dense
+          style={dateStyles.monthInput}
+          keyboardType="number-pad"
+          maxLength={2}
+          outlineColor={MedicalColors.border}
+          activeOutlineColor={MedicalColors.maternity}
+        />
+        <TextInput
+          label="Année"
+          value={year}
+          onChangeText={(v) => { setYear(v); handleUpdate(day, month, v); }}
+          mode="outlined"
+          dense
+          style={dateStyles.yearInput}
+          keyboardType="number-pad"
+          maxLength={4}
+          outlineColor={MedicalColors.border}
+          activeOutlineColor={MedicalColors.maternity}
+        />
+      </View>
+    </View>
+  );
+}
+
+const dateStyles = StyleSheet.create({
+  container: { marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.text, marginBottom: 6 },
+  row: { flexDirection: 'row', gap: 8 },
+  dayInput: { flex: 1, backgroundColor: MedicalColors.white },
+  monthInput: { flex: 1, backgroundColor: MedicalColors.white },
+  yearInput: { flex: 1.3, backgroundColor: MedicalColors.white },
+});
 
 export default function PatientDossierScreen() {
   const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
   const { user: _user } = useAuthStore();
-  const { maternityPatients, addPrenatalExam, markPrenatalConsultationDone } = useMedicalStore();
+  const { maternityPatients, addPrenatalExam, markPrenatalConsultationDone, schedulePrenatalConsultation } = useMedicalStore();
 
   const patient = useMemo(() => {
     return maternityPatients.find(p => p.id === patientId) || null;
@@ -28,10 +97,17 @@ export default function PatientDossierScreen() {
   const [selectedLabs, setSelectedLabs] = useState<string[]>([]);
   const [ultrasound, setUltrasound] = useState('');
   const [observations, setObservations] = useState('');
+  const [showScheduler, setShowScheduler] = useState(false);
 
   const toggleLab = useCallback((lab: string) => {
     setSelectedLabs(prev => prev.includes(lab) ? prev.filter(l => l !== lab) : [...prev, lab]);
   }, []);
+
+  const handleScheduleDate = useCallback((consultationId: string, date: string) => {
+    if (!patientId) return;
+    schedulePrenatalConsultation(patientId, consultationId, date);
+    console.log('[PatientDossier] Scheduled consultation', consultationId, 'to', date);
+  }, [patientId, schedulePrenatalConsultation]);
 
   const handleSaveExam = useCallback(() => {
     if (!patient || !patientId) return;
@@ -77,6 +153,7 @@ export default function PatientDossierScreen() {
 
   const pregnancy = patient.pregnancy;
   const consultationsDone = patient.prenatalConsultations.filter(c => c.status === 'effectuee').length;
+  const upcomingConsultations = patient.prenatalConsultations.filter(c => c.status !== 'effectuee');
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
@@ -85,11 +162,66 @@ export default function PatientDossierScreen() {
         <View style={styles.patientAvatar}>
           <Heart size={24} color={MedicalColors.maternity} />
         </View>
-        <View>
+        <View style={styles.patientHeaderInfo}>
           <Text style={styles.patientName}>{pregnancy.firstName}, {pregnancy.age} ans</Text>
           <Text style={styles.patientWeek}>Semaine {pregnancy.currentWeek} • G{pregnancy.gravidity} P{pregnancy.parity}</Text>
           <Text style={styles.patientConsults}>{consultationsDone} / {patient.prenatalConsultations.length} consultations effectuées</Text>
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.schedulerToggle}
+          onPress={() => setShowScheduler(!showScheduler)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.schedulerToggleLeft}>
+            <CalendarDays size={20} color={MedicalColors.maternity} />
+            <Text style={styles.schedulerToggleText}>Planifier les RDV</Text>
+          </View>
+          <View style={[styles.schedulerBadge, { backgroundColor: upcomingConsultations.filter(c => !c.scheduledDate).length > 0 ? MedicalColors.warning : MedicalColors.life }]}>
+            <Text style={styles.schedulerBadgeText}>
+              {upcomingConsultations.filter(c => c.scheduledDate).length}/{upcomingConsultations.length}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {showScheduler && (
+          <View style={styles.schedulerContent}>
+            <Text style={styles.schedulerHint}>
+              Définissez la date de chaque RDV. La patiente verra ces dates dans son calendrier.
+            </Text>
+            {upcomingConsultations.map((c) => (
+              <View key={c.id} style={styles.rdvCard}>
+                <View style={styles.rdvCardHeader}>
+                  <View style={styles.rdvWeekBadge}>
+                    <Text style={styles.rdvWeekText}>S{c.weekTarget}</Text>
+                  </View>
+                  <Text style={styles.rdvDescription} numberOfLines={2}>{c.description}</Text>
+                </View>
+                {c.scheduledDate ? (
+                  <View style={styles.rdvScheduledRow}>
+                    <Calendar size={14} color={MedicalColors.life} />
+                    <Text style={styles.rdvScheduledDate}>
+                      RDV : {new Date(c.scheduledDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </Text>
+                  </View>
+                ) : null}
+                <DatePickerInline
+                  value={c.scheduledDate || ''}
+                  onChange={(date) => handleScheduleDate(c.id, date)}
+                  label={c.scheduledDate ? "Modifier la date" : "Définir la date du RDV"}
+                />
+                {c.scheduledDate && (
+                  <View style={styles.rdvConfirmed}>
+                    <CheckCircle size={14} color={MedicalColors.life} />
+                    <Text style={styles.rdvConfirmedText}>Date planifiée</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {patient.prenatalExams.length > 0 && (
@@ -192,6 +324,7 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 16, color: MedicalColors.textSecondary },
   patientHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: MedicalColors.white, borderRadius: 16, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: MedicalColors.border },
+  patientHeaderInfo: { flex: 1 },
   patientAvatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: MedicalColors.maternityLight, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   patientName: { fontSize: 18, fontWeight: '700' as const, color: MedicalColors.text },
   patientWeek: { fontSize: 13, color: MedicalColors.maternity, fontWeight: '600' as const, marginTop: 2 },
@@ -199,6 +332,22 @@ const styles = StyleSheet.create({
   section: { backgroundColor: MedicalColors.white, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: MedicalColors.border },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   sectionTitle: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.maternity },
+  schedulerToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  schedulerToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  schedulerToggleText: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.maternity },
+  schedulerBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  schedulerBadgeText: { fontSize: 12, fontWeight: '700' as const, color: MedicalColors.white },
+  schedulerContent: { marginTop: 14 },
+  schedulerHint: { fontSize: 12, color: MedicalColors.textSecondary, marginBottom: 14, lineHeight: 18, backgroundColor: MedicalColors.maternityLight, padding: 12, borderRadius: 10 },
+  rdvCard: { backgroundColor: MedicalColors.background, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: MedicalColors.border },
+  rdvCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  rdvWeekBadge: { backgroundColor: MedicalColors.maternity, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  rdvWeekText: { fontSize: 13, fontWeight: '700' as const, color: MedicalColors.white },
+  rdvDescription: { flex: 1, fontSize: 13, color: MedicalColors.text, lineHeight: 18 },
+  rdvScheduledRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, backgroundColor: MedicalColors.lifeLight, padding: 8, borderRadius: 8 },
+  rdvScheduledDate: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.life },
+  rdvConfirmed: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  rdvConfirmedText: { fontSize: 11, color: MedicalColors.life, fontWeight: '600' as const },
   examCard: { backgroundColor: MedicalColors.background, borderRadius: 10, padding: 12, marginBottom: 8 },
   examHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   examDate: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.text },

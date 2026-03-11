@@ -4,7 +4,7 @@ import { Text, Button } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
-import { Calendar, CheckCircle, Clock, AlertTriangle } from 'lucide-react-native';
+import { Calendar, CheckCircle, Clock, AlertTriangle, CalendarDays } from 'lucide-react-native';
 
 export default function PrenatalCalendarScreen() {
   const { user } = useAuthStore();
@@ -40,6 +40,13 @@ export default function PrenatalCalendarScreen() {
     return MedicalColors.warningLight;
   };
 
+  const nextScheduled = useMemo(() => {
+    const upcoming = consultations
+      .filter(c => c.status !== 'effectuee' && c.scheduledDate)
+      .sort((a, b) => new Date(a.scheduledDate!).getTime() - new Date(b.scheduledDate!).getTime());
+    return upcoming.length > 0 ? upcoming[0] : null;
+  }, [consultations]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -47,6 +54,21 @@ export default function PrenatalCalendarScreen() {
         <Text style={styles.headerTitle}>Consultations prénatales OMS</Text>
         <Text style={styles.headerSubtitle}>8 consultations recommandées pendant la grossesse</Text>
       </View>
+
+      {nextScheduled && (
+        <View style={styles.nextRdvBanner}>
+          <View style={styles.nextRdvIcon}>
+            <CalendarDays size={22} color={MedicalColors.white} />
+          </View>
+          <View style={styles.nextRdvInfo}>
+            <Text style={styles.nextRdvLabel}>Prochain RDV</Text>
+            <Text style={styles.nextRdvDate}>
+              {new Date(nextScheduled.scheduledDate!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </Text>
+            <Text style={styles.nextRdvDesc} numberOfLines={1}>S{nextScheduled.weekTarget} — {nextScheduled.description}</Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.progressRow}>
         <Text style={styles.progressLabel}>
@@ -70,6 +92,15 @@ export default function PrenatalCalendarScreen() {
           </View>
 
           <Text style={styles.cardDescription}>{c.description}</Text>
+
+          {c.scheduledDate && c.status !== 'effectuee' && (
+            <View style={styles.scheduledDateRow}>
+              <CalendarDays size={15} color={MedicalColors.maternity} />
+              <Text style={styles.scheduledDateText}>
+                RDV prévu : {new Date(c.scheduledDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </Text>
+            </View>
+          )}
 
           {c.actualDate && (
             <Text style={styles.cardDate}>Réalisée le {new Date(c.actualDate).toLocaleDateString('fr-FR')}</Text>
@@ -106,6 +137,27 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 20 },
   headerTitle: { fontSize: 18, fontWeight: '700' as const, color: MedicalColors.text, marginTop: 8 },
   headerSubtitle: { fontSize: 13, color: MedicalColors.textSecondary, marginTop: 4 },
+  nextRdvBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: MedicalColors.maternity,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    gap: 14,
+  },
+  nextRdvIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nextRdvInfo: { flex: 1 },
+  nextRdvLabel: { fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  nextRdvDate: { fontSize: 15, fontWeight: '700' as const, color: MedicalColors.white, marginTop: 2, textTransform: 'capitalize' as const },
+  nextRdvDesc: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
   progressRow: { marginBottom: 16 },
   progressLabel: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.text, marginBottom: 6 },
   progressBar: { height: 8, backgroundColor: MedicalColors.border, borderRadius: 4, overflow: 'hidden' },
@@ -124,6 +176,16 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: '600' as const, color: MedicalColors.text },
   weekBadge: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.maternity },
   cardDescription: { fontSize: 14, color: MedicalColors.text, lineHeight: 20 },
+  scheduledDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    backgroundColor: MedicalColors.maternityLight,
+    padding: 10,
+    borderRadius: 10,
+  },
+  scheduledDateText: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.maternity, flex: 1, textTransform: 'capitalize' as const },
   cardDate: { fontSize: 12, color: MedicalColors.life, marginTop: 6, fontWeight: '600' as const },
   cardNotes: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   markBtn: { marginTop: 10, alignSelf: 'flex-start', borderRadius: 8 },

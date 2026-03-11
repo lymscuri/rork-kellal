@@ -1,10 +1,10 @@
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
-import { Send, Phone, ChevronLeft } from 'lucide-react-native';
+import { Send, ChevronLeft } from 'lucide-react-native';
 
 interface ChatMessage {
   id: string;
@@ -34,7 +34,7 @@ export default function EmergencyChatScreen() {
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
       role: 'assistant',
-      content: "Bonjour ! Je suis votre assistant de premiers secours. Décrivez-moi la situation d'urgence et je vous guiderai étape par étape. N'oubliez pas d'appeler le 15 en cas de gravité.",
+      content: "Bonjour ! Je suis votre assistant de premiers secours. Décrivez-moi la situation d'urgence et je vous guiderai étape par étape.",
       timestamp: new Date().toISOString(),
     };
     setMessages([welcomeMessage]);
@@ -73,7 +73,7 @@ export default function EmergencyChatScreen() {
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response || "Je n'ai pas pu traiter votre demande. En cas d'urgence, appelez immédiatement le 15.",
+        content: response || "Je n'ai pas pu traiter votre demande. Rendez-vous aux urgences les plus proches si nécessaire.",
         timestamp: new Date().toISOString(),
       };
       
@@ -83,7 +83,7 @@ export default function EmergencyChatScreen() {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Je rencontre des difficultés techniques. En cas d'urgence, appelez immédiatement le 15. Les secours pourront vous aider.",
+        content: "Je rencontre des difficultés techniques. Rendez-vous aux urgences les plus proches si nécessaire.",
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -92,12 +92,7 @@ export default function EmergencyChatScreen() {
     }
   }, [inputText, isSending, messages, getSystemContext]);
 
-  const handleCallEmergency = useCallback(async () => {
-    const url = 'tel:15';
-    if (await Linking.canOpenURL(url)) {
-      await Linking.openURL(url);
-    }
-  }, []);
+
 
   const scrollToEnd = useCallback(() => {
     setTimeout(() => {
@@ -156,11 +151,6 @@ export default function EmergencyChatScreen() {
             <Text style={styles.loadingText}>{"L'assistant réfléchit..."}</Text>
           </View>
         )}
-
-        <TouchableOpacity style={styles.emergencyCallButton} onPress={handleCallEmergency}>
-          <Phone size={20} color={MedicalColors.white} />
-          <Text style={styles.emergencyCallText}>Appeler le 15</Text>
-        </TouchableOpacity>
 
         <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
@@ -290,22 +280,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: MedicalColors.textSecondary,
   },
-  emergencyCallButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: MedicalColors.urgency,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-  },
-  emergencyCallText: {
-    color: MedicalColors.white,
-    fontWeight: 'bold' as const,
-    fontSize: 16,
-  },
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

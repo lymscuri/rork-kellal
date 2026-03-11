@@ -233,6 +233,7 @@ export interface PrenatalConsultation {
   weekTarget: number;
   description: string;
   status: 'a_venir' | 'effectuee' | 'en_retard';
+  scheduledDate?: string;
   actualDate?: string;
   notes?: string;
 }
