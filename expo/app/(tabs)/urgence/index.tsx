@@ -5,11 +5,12 @@ import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from "
 import { Card, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MedicalColors } from "@/constants/colors";
-import { useMedicalStore } from "@/store/medicalStore";
+
 
 export default function EmergencyHomeScreen() {
-  const { medicalProfile, getCriticalAllergies, isPregnant } = useMedicalStore();
-  const criticalAllergies = getCriticalAllergies();
+  const criticalAllergies: { name: string }[] = [];
+  const medicalProfile = { bloodGroup: '' };
+  const isPregnant = false;
 
   const handleEmergencyCall = useCallback(async (number: string) => {
     const url = `tel:${number}`;
@@ -32,14 +33,14 @@ export default function EmergencyHomeScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Bandeau informations médicales */}
-      {(medicalProfile.bloodGroup || criticalAllergies.length > 0 || isPregnant()) && (
+      {(medicalProfile.bloodGroup || criticalAllergies.length > 0 || isPregnant) && (
         <View style={styles.medicalBanner}>
           {medicalProfile.bloodGroup && (
             <Chip style={styles.chip} textStyle={styles.chipText}>
               Groupe: {medicalProfile.bloodGroup}
             </Chip>
           )}
-          {isPregnant() && (
+          {isPregnant && (
             <Chip style={[styles.chip, styles.pregnancyChip]} textStyle={styles.chipText}>
               Grossesse en cours
             </Chip>
