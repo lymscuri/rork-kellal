@@ -1,8 +1,7 @@
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Surface, Text, TextInput } from 'react-native-paper';
+import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
 import { Send, Phone, ChevronLeft } from 'lucide-react-native';
@@ -110,11 +109,11 @@ export default function EmergencyChatScreen() {
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => (
     <View style={[styles.messageContainer, item.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
-      <Surface style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+      <View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
         <Text style={[styles.messageText, item.role === 'user' ? styles.userText : styles.assistantText]}>
           {item.content}
         </Text>
-      </Surface>
+      </View>
       <Text style={styles.timestamp}>
         {new Date(item.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
       </Text>
@@ -123,7 +122,7 @@ export default function EmergencyChatScreen() {
 
   return (
     <View style={styles.container}>
-      <Surface style={[styles.contextHeader, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.contextHeader, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <ChevronLeft size={24} color={MedicalColors.text} />
@@ -134,7 +133,7 @@ export default function EmergencyChatScreen() {
           </View>
           <View style={styles.placeholder} />
         </View>
-      </Surface>
+      </View>
 
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -169,14 +168,12 @@ export default function EmergencyChatScreen() {
           <TextInput
             style={styles.input}
             placeholder="Décrivez la situation d'urgence..."
+            placeholderTextColor={MedicalColors.textSecondary}
             value={inputText}
             onChangeText={setInputText}
             multiline
             maxLength={500}
-            mode="outlined"
-            outlineColor={MedicalColors.border}
-            activeOutlineColor={MedicalColors.urgency}
-            disabled={isSending}
+            editable={!isSending}
             onFocus={scrollToEnd}
             onSubmitEditing={handleSendMessage}
           />
@@ -207,6 +204,11 @@ const styles = StyleSheet.create({
     backgroundColor: MedicalColors.white,
     borderBottomColor: MedicalColors.border,
     borderBottomWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   headerRow: {
     flexDirection: 'row',
@@ -250,6 +252,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
     elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
   userBubble: {
     backgroundColor: MedicalColors.urgency,
@@ -316,7 +322,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: MedicalColors.background,
     maxHeight: 100,
+    minHeight: 44,
     fontSize: 15,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+    color: MedicalColors.text,
+    textAlignVertical: 'center',
   },
   sendButton: {
     width: 44,
