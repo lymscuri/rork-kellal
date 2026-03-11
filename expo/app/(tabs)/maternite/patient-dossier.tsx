@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
-import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays } from 'lucide-react-native';
+import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays, Activity, AlertTriangle, Smile, Moon, Frown } from 'lucide-react-native';
 
 const LAB_OPTIONS = ['NFS', 'Groupe sanguin', 'Sérologie VIH', 'TPHA', 'Goutte épaisse', 'Glycémie', 'ECBU'];
 
@@ -224,6 +224,79 @@ export default function PatientDossierScreen() {
         )}
       </View>
 
+      {patient.weeklyCheckups.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Activity size={18} color={MedicalColors.maternity} />
+            <Text style={styles.sectionTitle}>Suivis hebdomadaires ({patient.weeklyCheckups.length})</Text>
+          </View>
+          {[...patient.weeklyCheckups].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((checkup) => {
+            const hasAlert = (checkup.systolicBP && checkup.systolicBP >= 140) ||
+              (checkup.diastolicBP && checkup.diastolicBP >= 90) ||
+              checkup.fetalMovements === 'absents' ||
+              checkup.symptoms?.includes('Saignements');
+            return (
+              <View key={checkup.id} style={[styles.checkupCard, hasAlert ? styles.checkupCardAlert : null]}>
+                <View style={styles.checkupHeader}>
+                  <View style={[styles.checkupWeekBadge, hasAlert ? styles.checkupWeekBadgeAlert : null]}>
+                    <Text style={styles.checkupWeekText}>S{checkup.week}</Text>
+                  </View>
+                  <Text style={styles.checkupDate}>{new Date(checkup.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
+                  {hasAlert && <AlertTriangle size={16} color={MedicalColors.urgency} />}
+                </View>
+                <View style={styles.checkupMetrics}>
+                  {checkup.weight != null && (
+                    <View style={styles.checkupMetric}>
+                      <Text style={styles.checkupMetricLabel}>Poids</Text>
+                      <Text style={styles.checkupMetricValue}>{checkup.weight} kg</Text>
+                    </View>
+                  )}
+                  {checkup.systolicBP != null && (
+                    <View style={styles.checkupMetric}>
+                      <Text style={styles.checkupMetricLabel}>Tension</Text>
+                      <Text style={[styles.checkupMetricValue, (checkup.systolicBP >= 140 || (checkup.diastolicBP && checkup.diastolicBP >= 90)) ? styles.checkupMetricDanger : null]}>
+                        {checkup.systolicBP}/{checkup.diastolicBP}
+                      </Text>
+                    </View>
+                  )}
+                  {checkup.fetalMovements && (
+                    <View style={styles.checkupMetric}>
+                      <Text style={styles.checkupMetricLabel}>Mvts foetaux</Text>
+                      <Text style={[styles.checkupMetricValue, checkup.fetalMovements === 'absents' ? styles.checkupMetricDanger : checkup.fetalMovements === 'reduits' ? styles.checkupMetricWarn : null]}>
+                        {checkup.fetalMovements.charAt(0).toUpperCase() + checkup.fetalMovements.slice(1)}
+                      </Text>
+                    </View>
+                  )}
+                  {checkup.mood && (
+                    <View style={styles.checkupMetric}>
+                      <Text style={styles.checkupMetricLabel}>Humeur</Text>
+                      <View style={styles.checkupMoodRow}>
+                        {checkup.mood === 'bien' && <Smile size={14} color={MedicalColors.life} />}
+                        {checkup.mood === 'fatigue' && <Moon size={14} color={MedicalColors.warning} />}
+                        {checkup.mood === 'anxieux' && <Frown size={14} color={MedicalColors.urgency} />}
+                        <Text style={styles.checkupMetricValue}>{checkup.mood === 'bien' ? 'Bien' : checkup.mood === 'fatigue' ? 'Fatiguée' : 'Anxieuse'}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+                {checkup.symptoms && checkup.symptoms.length > 0 && (
+                  <View style={styles.checkupSymptoms}>
+                    <Text style={styles.checkupSymptomsLabel}>Symptômes :</Text>
+                    <View style={styles.checkupSymptomsList}>
+                      {checkup.symptoms.map((s, i) => (
+                        <View key={i} style={[styles.checkupSymptomTag, s === 'Saignements' || s === 'Vision floue' ? styles.checkupSymptomTagDanger : null]}>
+                          <Text style={[styles.checkupSymptomText, s === 'Saignements' || s === 'Vision floue' ? styles.checkupSymptomTextDanger : null]}>{s}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {patient.prenatalExams.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Consultations précédentes</Text>
@@ -367,4 +440,25 @@ const styles = StyleSheet.create({
   prescriptionItem: { fontSize: 12, color: MedicalColors.text, lineHeight: 20 },
   saveBtn: { borderRadius: 10, marginTop: 8 },
   saveBtnContent: { paddingVertical: 10 },
+  checkupCard: { backgroundColor: MedicalColors.background, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: MedicalColors.border },
+  checkupCardAlert: { borderColor: MedicalColors.urgency, backgroundColor: '#FFF8F8' },
+  checkupHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginBottom: 10 },
+  checkupWeekBadge: { backgroundColor: MedicalColors.maternity, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  checkupWeekBadgeAlert: { backgroundColor: MedicalColors.urgency },
+  checkupWeekText: { fontSize: 13, fontWeight: '700' as const, color: MedicalColors.white },
+  checkupDate: { flex: 1, fontSize: 13, color: MedicalColors.textSecondary },
+  checkupMetrics: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8, marginBottom: 6 },
+  checkupMetric: { backgroundColor: MedicalColors.white, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, minWidth: 80 },
+  checkupMetricLabel: { fontSize: 10, color: MedicalColors.textSecondary, marginBottom: 2 },
+  checkupMetricValue: { fontSize: 14, fontWeight: '700' as const, color: MedicalColors.text },
+  checkupMetricDanger: { color: MedicalColors.urgency },
+  checkupMetricWarn: { color: MedicalColors.warning },
+  checkupMoodRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
+  checkupSymptoms: { marginTop: 6 },
+  checkupSymptomsLabel: { fontSize: 11, fontWeight: '600' as const, color: MedicalColors.textSecondary, marginBottom: 6 },
+  checkupSymptomsList: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 4 },
+  checkupSymptomTag: { backgroundColor: '#FFF3E0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  checkupSymptomTagDanger: { backgroundColor: '#FFEBEE' },
+  checkupSymptomText: { fontSize: 11, color: MedicalColors.text },
+  checkupSymptomTextDanger: { color: MedicalColors.urgency, fontWeight: '600' as const },
 });

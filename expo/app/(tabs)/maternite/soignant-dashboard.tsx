@@ -252,14 +252,44 @@ export default function SoignantDashboardScreen() {
                     </View>
                   )}
 
-                  {p.weeklyCheckups.length > 0 && (
-                    <View style={styles.lastCheckupRow}>
-                      <Text style={styles.lastCheckupLabel}>Dernier suivi:</Text>
-                      <Text style={styles.lastCheckupDate}>
-                        {new Date(p.weeklyCheckups[p.weeklyCheckups.length - 1].date).toLocaleDateString('fr-FR')}
-                      </Text>
-                    </View>
-                  )}
+                  {p.weeklyCheckups.length > 0 && (() => {
+                    const last = p.weeklyCheckups[p.weeklyCheckups.length - 1];
+                    const hasAlert = (last.systolicBP && last.systolicBP >= 140) ||
+                      (last.diastolicBP && last.diastolicBP >= 90) ||
+                      last.fetalMovements === 'absents' ||
+                      last.symptoms?.includes('Saignements');
+                    return (
+                      <View style={[styles.lastCheckupBox, hasAlert ? styles.lastCheckupBoxAlert : null]}>
+                        <View style={styles.lastCheckupRow}>
+                          <Text style={styles.lastCheckupLabel}>Dernier suivi S{last.week}:</Text>
+                          <Text style={styles.lastCheckupDate}>
+                            {new Date(last.date).toLocaleDateString('fr-FR')}
+                          </Text>
+                          {hasAlert && <AlertTriangle size={14} color={MedicalColors.urgency} />}
+                        </View>
+                        <View style={styles.lastCheckupDetails}>
+                          {last.weight != null && <Text style={styles.lastCheckupDetail}>Poids: {last.weight}kg</Text>}
+                          {last.systolicBP != null && (
+                            <Text style={[styles.lastCheckupDetail, (last.systolicBP >= 140 || (last.diastolicBP && last.diastolicBP >= 90)) ? styles.lastCheckupDetailAlert : null]}>
+                              TA: {last.systolicBP}/{last.diastolicBP}
+                            </Text>
+                          )}
+                          {last.fetalMovements && (
+                            <Text style={[styles.lastCheckupDetail, last.fetalMovements === 'absents' ? styles.lastCheckupDetailAlert : null]}>
+                              Mvts: {last.fetalMovements}
+                            </Text>
+                          )}
+                          {last.mood && <Text style={styles.lastCheckupDetail}>Humeur: {last.mood}</Text>}
+                        </View>
+                        {last.symptoms && last.symptoms.length > 0 && (
+                          <Text style={styles.lastCheckupSymptoms} numberOfLines={1}>
+                            Symptômes: {last.symptoms.join(', ')}
+                          </Text>
+                        )}
+                        <Text style={styles.lastCheckupCount}>{p.weeklyCheckups.length} suivi(s) total</Text>
+                      </View>
+                    );
+                  })()}
                 </TouchableOpacity>
               );
             })
@@ -352,9 +382,16 @@ const styles = StyleSheet.create({
   overdueList: { gap: 4, marginBottom: 6 },
   overdueItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, backgroundColor: '#FFF3E0', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10 },
   overdueItemText: { flex: 1, fontSize: 11, color: MedicalColors.text },
-  lastCheckupRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 4 },
+  lastCheckupBox: { backgroundColor: MedicalColors.background, borderRadius: 10, padding: 10, marginTop: 8 },
+  lastCheckupBoxAlert: { backgroundColor: '#FFF8F8', borderWidth: 1, borderColor: MedicalColors.urgency },
+  lastCheckupRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
   lastCheckupLabel: { fontSize: 11, color: MedicalColors.textSecondary },
   lastCheckupDate: { fontSize: 11, fontWeight: '600' as const, color: MedicalColors.maternity },
+  lastCheckupDetails: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, marginTop: 6 },
+  lastCheckupDetail: { fontSize: 11, fontWeight: '600' as const, color: MedicalColors.text, backgroundColor: MedicalColors.white, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  lastCheckupDetailAlert: { color: MedicalColors.urgency, backgroundColor: '#FFEBEE' },
+  lastCheckupSymptoms: { fontSize: 10, color: MedicalColors.warning, marginTop: 4, fontStyle: 'italic' as const },
+  lastCheckupCount: { fontSize: 10, color: MedicalColors.textSecondary, marginTop: 4 },
   emptySection: { alignItems: 'center' as const, paddingVertical: 60 },
   emptyText: { fontSize: 15, color: MedicalColors.textSecondary, marginTop: 12 },
 });
