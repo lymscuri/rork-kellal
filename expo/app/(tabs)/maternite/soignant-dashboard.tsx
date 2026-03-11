@@ -1,14 +1,36 @@
-import React, { useMemo } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
-import { BarChart3, Users, Calendar, Syringe, AlertTriangle } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import {
+  BarChart3, Users, Calendar, Syringe, AlertTriangle,
+  CheckCircle, Clock, ChevronRight, Heart
+} from 'lucide-react-native';
+import type { MaternityPatient } from '@/types/medical';
+
+function getPatientConsultProgress(p: MaternityPatient) {
+  const total = p.prenatalConsultations.length;
+  const done = p.prenatalConsultations.filter(c => c.status === 'effectuee').length;
+  const overdue = p.prenatalConsultations.filter(
+    c => c.status !== 'effectuee' && c.weekTarget <= p.pregnancy.currentWeek
+  ).length;
+  const upcoming = p.prenatalConsultations.filter(
+    c => c.status !== 'effectuee' && c.weekTarget > p.pregnancy.currentWeek
+  ).length;
+  const isUpToDate = overdue === 0;
+  return { total, done, overdue, upcoming, isUpToDate };
+}
+
+type DashTab = 'resume' | 'patientes';
 
 export default function SoignantDashboardScreen() {
   const { user } = useAuthStore();
   const { maternityPatients } = useMedicalStore();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<DashTab>('resume');
 
   const doctorPatients = useMemo(() => {
     if (!user) return maternityPatients;
@@ -22,83 +44,227 @@ export default function SoignantDashboardScreen() {
 
     let consultsDone = 0;
     let consultsTotal = 0;
+    let consultsOverdue = 0;
     let vaccinesDone = 0;
+    let patientsUpToDate = 0;
+    let patientsOverdue = 0;
 
     doctorPatients.forEach(p => {
-      p.prenatalConsultations.forEach(c => {
-        consultsTotal++;
-        if (c.status === 'effectuee') consultsDone++;
-      });
+      const progress = getPatientConsultProgress(p);
+      consultsDone += progress.done;
+      consultsTotal += progress.total;
+      consultsOverdue += progress.overdue;
+      if (progress.isUpToDate) patientsUpToDate++;
+      else patientsOverdue++;
+
       p.childVaccines.forEach(v => {
         if (v.status === 'fait') vaccinesDone++;
       });
     });
 
-    return { total, pregnancyActive, alerts, consultsDone, consultsTotal, vaccinesDone };
+    return { total, pregnancyActive, alerts, consultsDone, consultsTotal, consultsOverdue, vaccinesDone, patientsUpToDate, patientsOverdue };
   }, [doctorPatients]);
 
-  const alertPatients = useMemo(() => {
-    return doctorPatients.filter(p => p.alertLevel === 'rouge' || p.alertLevel === 'jaune');
+  const sortedPatients = useMemo(() => {
+    return [...doctorPatients].sort((a, b) => {
+      const pa = getPatientConsultProgress(a);
+      const pb = getPatientConsultProgress(b);
+      if (pa.overdue !== pb.overdue) return pb.overdue - pa.overdue;
+      if (a.alertLevel === 'rouge' && b.alertLevel !== 'rouge') return -1;
+      if (b.alertLevel === 'rouge' && a.alertLevel !== 'rouge') return 1;
+      return 0;
+    });
   }, [doctorPatients]);
+
+  const consultPct = stats.consultsTotal > 0 ? (stats.consultsDone / stats.consultsTotal) * 100 : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerCard}>
         <BarChart3 size={24} color={MedicalColors.white} />
         <Text style={styles.headerTitle}>Tableau de bord maternité</Text>
-        <Text style={styles.headerDate}>{new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</Text>
+        <Text style={styles.headerDate}>{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</Text>
       </View>
 
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, { backgroundColor: MedicalColors.maternityLight }]}>
-          <Users size={20} color={MedicalColors.maternity} />
-          <Text style={styles.statValue}>{stats.total}</Text>
-          <Text style={styles.statLabel}>Femmes suivies</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: MedicalColors.lifeLight }]}>
-          <Calendar size={20} color={MedicalColors.life} />
-          <Text style={styles.statValue}>{stats.consultsDone}/{stats.consultsTotal}</Text>
-          <Text style={styles.statLabel}>Consultations</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: '#E3F2FD' }]}>
-          <Syringe size={20} color={MedicalColors.medical} />
-          <Text style={styles.statValue}>{stats.vaccinesDone}</Text>
-          <Text style={styles.statLabel}>Vaccins ce mois</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: MedicalColors.urgencyLight }]}>
-          <AlertTriangle size={20} color={MedicalColors.urgency} />
-          <Text style={styles.statValue}>{stats.alerts}</Text>
-          <Text style={styles.statLabel}>Alertes actives</Text>
-        </View>
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'resume' && styles.tabActive]}
+          onPress={() => setActiveTab('resume')}
+        >
+          <BarChart3 size={16} color={activeTab === 'resume' ? MedicalColors.white : MedicalColors.maternity} />
+          <Text style={[styles.tabText, activeTab === 'resume' && styles.tabTextActive]}>Résumé</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'patientes' && styles.tabActive]}
+          onPress={() => setActiveTab('patientes')}
+        >
+          <Users size={16} color={activeTab === 'patientes' ? MedicalColors.white : MedicalColors.maternity} />
+          <Text style={[styles.tabText, activeTab === 'patientes' && styles.tabTextActive]}>Par patiente</Text>
+        </TouchableOpacity>
       </View>
 
-      {stats.consultsTotal > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Consultations effectuées vs prévues</Text>
-          <View style={styles.barContainer}>
-            <View style={styles.barBg}>
-              <View style={[styles.barFill, { width: `${(stats.consultsDone / stats.consultsTotal) * 100}%` }]} />
+      {activeTab === 'resume' ? (
+        <>
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { backgroundColor: MedicalColors.maternityLight }]}>
+              <Users size={20} color={MedicalColors.maternity} />
+              <Text style={styles.statValue}>{stats.total}</Text>
+              <Text style={styles.statLabel}>Femmes suivies</Text>
             </View>
-            <Text style={styles.barLabel}>{((stats.consultsDone / stats.consultsTotal) * 100).toFixed(0)}%</Text>
+            <View style={[styles.statCard, { backgroundColor: MedicalColors.lifeLight }]}>
+              <CheckCircle size={20} color={MedicalColors.life} />
+              <Text style={styles.statValue}>{stats.patientsUpToDate}</Text>
+              <Text style={styles.statLabel}>À jour</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: '#FFF3E0' }]}>
+              <Clock size={20} color={MedicalColors.warning} />
+              <Text style={styles.statValue}>{stats.patientsOverdue}</Text>
+              <Text style={styles.statLabel}>En retard</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: MedicalColors.urgencyLight }]}>
+              <AlertTriangle size={20} color={MedicalColors.urgency} />
+              <Text style={styles.statValue}>{stats.alerts}</Text>
+              <Text style={styles.statLabel}>Alertes</Text>
+            </View>
           </View>
-        </View>
-      )}
 
-      {alertPatients.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Alertes actives</Text>
-          {alertPatients.map(p => (
-            <View key={p.id} style={styles.alertCard}>
-              <View style={[styles.alertDot, { backgroundColor: p.alertLevel === 'rouge' ? MedicalColors.urgency : MedicalColors.warning }]} />
-              <View style={styles.alertInfo}>
-                <Text style={styles.alertName}>{p.pregnancy.firstName}</Text>
-                <Text style={styles.alertDetail}>
-                  Semaine {p.pregnancy.currentWeek} — {p.alertLevel === 'rouge' ? 'Alerte grave' : 'Consultation en retard'}
-                </Text>
+          {stats.consultsTotal > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Consultations globales</Text>
+              <View style={styles.consultSummaryRow}>
+                <View style={styles.consultSummaryItem}>
+                  <Text style={[styles.consultSummaryValue, { color: MedicalColors.life }]}>{stats.consultsDone}</Text>
+                  <Text style={styles.consultSummaryLabel}>Effectuées</Text>
+                </View>
+                <View style={styles.consultSummaryDivider} />
+                <View style={styles.consultSummaryItem}>
+                  <Text style={[styles.consultSummaryValue, { color: MedicalColors.urgency }]}>{stats.consultsOverdue}</Text>
+                  <Text style={styles.consultSummaryLabel}>En retard</Text>
+                </View>
+                <View style={styles.consultSummaryDivider} />
+                <View style={styles.consultSummaryItem}>
+                  <Text style={[styles.consultSummaryValue, { color: MedicalColors.maternity }]}>{stats.consultsTotal}</Text>
+                  <Text style={styles.consultSummaryLabel}>Total</Text>
+                </View>
+              </View>
+              <View style={styles.barContainer}>
+                <View style={styles.barBg}>
+                  <View style={[styles.barFill, { width: `${consultPct}%` }]} />
+                </View>
+                <Text style={styles.barLabel}>{consultPct.toFixed(0)}%</Text>
               </View>
             </View>
-          ))}
-        </View>
+          )}
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Vaccinations & Suivi</Text>
+            <View style={styles.vaccineRow}>
+              <Syringe size={18} color={MedicalColors.medical} />
+              <Text style={styles.vaccineText}>{stats.vaccinesDone} vaccins administrés</Text>
+            </View>
+            <View style={styles.vaccineRow}>
+              <Heart size={18} color={MedicalColors.maternity} />
+              <Text style={styles.vaccineText}>{stats.pregnancyActive} grossesses actives</Text>
+            </View>
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: MedicalColors.life }]} />
+              <Text style={styles.legendText}>À jour</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: MedicalColors.warning }]} />
+              <Text style={styles.legendText}>En retard</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: MedicalColors.urgency }]} />
+              <Text style={styles.legendText}>Alerte</Text>
+            </View>
+          </View>
+
+          {sortedPatients.length === 0 ? (
+            <View style={styles.emptySection}>
+              <Users size={40} color={MedicalColors.border} />
+              <Text style={styles.emptyText}>Aucune patiente suivie</Text>
+            </View>
+          ) : (
+            sortedPatients.map(p => {
+              const progress = getPatientConsultProgress(p);
+              const pct = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+              const statusColor = p.alertLevel === 'rouge'
+                ? MedicalColors.urgency
+                : progress.isUpToDate
+                  ? MedicalColors.life
+                  : MedicalColors.warning;
+
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.patientDetailCard}
+                  onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier', params: { patientId: p.id } })}
+                >
+                  <View style={styles.patientDetailHeader}>
+                    <View style={[styles.statusIndicator, { backgroundColor: statusColor }]} />
+                    <View style={styles.patientDetailInfo}>
+                      <Text style={styles.patientDetailName}>{p.pregnancy.firstName}, {p.pregnancy.age} ans</Text>
+                      <Text style={styles.patientDetailWeek}>Semaine {p.pregnancy.currentWeek} • G{p.pregnancy.gravidity} P{p.pregnancy.parity}</Text>
+                    </View>
+                    <ChevronRight size={18} color={MedicalColors.textSecondary} />
+                  </View>
+
+                  <View style={styles.consultGrid}>
+                    <View style={styles.consultGridItem}>
+                      <CheckCircle size={14} color={MedicalColors.life} />
+                      <Text style={styles.consultGridValue}>{progress.done}</Text>
+                      <Text style={styles.consultGridLabel}>Faites</Text>
+                    </View>
+                    <View style={styles.consultGridItem}>
+                      <Clock size={14} color={MedicalColors.warning} />
+                      <Text style={styles.consultGridValue}>{progress.overdue}</Text>
+                      <Text style={styles.consultGridLabel}>Retard</Text>
+                    </View>
+                    <View style={styles.consultGridItem}>
+                      <Calendar size={14} color={MedicalColors.maternity} />
+                      <Text style={styles.consultGridValue}>{progress.upcoming}</Text>
+                      <Text style={styles.consultGridLabel}>À venir</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.patientProgressBar}>
+                    <View style={[styles.patientProgressFill, { width: `${pct}%`, backgroundColor: statusColor }]} />
+                  </View>
+
+                  {progress.overdue > 0 && (
+                    <View style={styles.overdueList}>
+                      {p.prenatalConsultations
+                        .filter(c => c.status !== 'effectuee' && c.weekTarget <= p.pregnancy.currentWeek)
+                        .slice(0, 3)
+                        .map(c => (
+                          <View key={c.id} style={styles.overdueItem}>
+                            <AlertTriangle size={12} color={MedicalColors.urgency} />
+                            <Text style={styles.overdueItemText} numberOfLines={1}>S{c.weekTarget} — {c.description}</Text>
+                          </View>
+                        ))
+                      }
+                    </View>
+                  )}
+
+                  {p.weeklyCheckups.length > 0 && (
+                    <View style={styles.lastCheckupRow}>
+                      <Text style={styles.lastCheckupLabel}>Dernier suivi:</Text>
+                      <Text style={styles.lastCheckupDate}>
+                        {new Date(p.weeklyCheckups[p.weeklyCheckups.length - 1].date).toLocaleDateString('fr-FR')}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </>
       )}
 
       {doctorPatients.length === 0 && (
@@ -116,22 +282,79 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 40 },
   headerCard: { backgroundColor: MedicalColors.maternity, borderRadius: 16, padding: 20, marginBottom: 16 },
   headerTitle: { fontSize: 20, fontWeight: '700' as const, color: MedicalColors.white, marginTop: 8 },
-  headerDate: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4, textTransform: 'capitalize' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  statCard: { width: '48%', borderRadius: 14, padding: 16, marginBottom: 10 },
+  headerDate: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4, textTransform: 'capitalize' as const },
+  tabRow: { flexDirection: 'row' as const, gap: 10, marginBottom: 16 },
+  tab: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: MedicalColors.white,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  tabActive: { backgroundColor: MedicalColors.maternity, borderColor: MedicalColors.maternity },
+  tabText: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.maternity },
+  tabTextActive: { color: MedicalColors.white },
+  statsGrid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, justifyContent: 'space-between' as const },
+  statCard: { width: '48%' as const, borderRadius: 14, padding: 16, marginBottom: 10 },
   statValue: { fontSize: 24, fontWeight: '700' as const, color: MedicalColors.text, marginTop: 8 },
   statLabel: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   section: { backgroundColor: MedicalColors.white, borderRadius: 14, padding: 16, marginTop: 8, marginBottom: 12, borderWidth: 1, borderColor: MedicalColors.border },
   sectionTitle: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.text, marginBottom: 14 },
-  barContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  barBg: { flex: 1, height: 12, backgroundColor: MedicalColors.background, borderRadius: 6, overflow: 'hidden' },
+  consultSummaryRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-around' as const, marginBottom: 14 },
+  consultSummaryItem: { alignItems: 'center' as const },
+  consultSummaryValue: { fontSize: 26, fontWeight: '700' as const },
+  consultSummaryLabel: { fontSize: 11, color: MedicalColors.textSecondary, marginTop: 2 },
+  consultSummaryDivider: { width: 1, height: 36, backgroundColor: MedicalColors.border },
+  barContainer: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 },
+  barBg: { flex: 1, height: 12, backgroundColor: MedicalColors.background, borderRadius: 6, overflow: 'hidden' as const },
   barFill: { height: 12, backgroundColor: MedicalColors.maternity, borderRadius: 6 },
   barLabel: { fontSize: 14, fontWeight: '700' as const, color: MedicalColors.maternity },
-  alertCard: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: MedicalColors.background },
-  alertDot: { width: 10, height: 10, borderRadius: 5 },
-  alertInfo: { flex: 1, marginLeft: 12 },
-  alertName: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
-  alertDetail: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
-  emptySection: { alignItems: 'center', paddingVertical: 60 },
+  vaccineRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingVertical: 8 },
+  vaccineText: { fontSize: 14, color: MedicalColors.text },
+  legendRow: { flexDirection: 'row' as const, justifyContent: 'center' as const, gap: 18, marginBottom: 14 },
+  legendItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: 12, color: MedicalColors.textSecondary },
+  patientDetailCard: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  patientDetailHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 12 },
+  statusIndicator: { width: 10, height: 10, borderRadius: 5 },
+  patientDetailInfo: { flex: 1, marginLeft: 12 },
+  patientDetailName: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.text },
+  patientDetailWeek: { fontSize: 12, color: MedicalColors.maternity, fontWeight: '600' as const, marginTop: 2 },
+  consultGrid: { flexDirection: 'row' as const, gap: 8, marginBottom: 10 },
+  consultGridItem: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 5,
+    backgroundColor: MedicalColors.background,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+  },
+  consultGridValue: { fontSize: 16, fontWeight: '700' as const, color: MedicalColors.text },
+  consultGridLabel: { fontSize: 10, color: MedicalColors.textSecondary },
+  patientProgressBar: { height: 6, backgroundColor: MedicalColors.background, borderRadius: 3, overflow: 'hidden' as const, marginBottom: 8 },
+  patientProgressFill: { height: 6, borderRadius: 3 },
+  overdueList: { gap: 4, marginBottom: 6 },
+  overdueItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, backgroundColor: '#FFF3E0', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10 },
+  overdueItemText: { flex: 1, fontSize: 11, color: MedicalColors.text },
+  lastCheckupRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 4 },
+  lastCheckupLabel: { fontSize: 11, color: MedicalColors.textSecondary },
+  lastCheckupDate: { fontSize: 11, fontWeight: '600' as const, color: MedicalColors.maternity },
+  emptySection: { alignItems: 'center' as const, paddingVertical: 60 },
   emptyText: { fontSize: 15, color: MedicalColors.textSecondary, marginTop: 12 },
 });

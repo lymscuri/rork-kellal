@@ -142,36 +142,48 @@ function PatientView() {
   );
 }
 
+type FilterTab = 'toutes' | 'a_jour' | 'en_retard' | 'alertes';
+
+function getPatientConsultProgress(p: MaternityPatient) {
+  const total = p.prenatalConsultations.length;
+  const done = p.prenatalConsultations.filter(c => c.status === 'effectuee').length;
+  const overdue = p.prenatalConsultations.filter(
+    c => c.status !== 'effectuee' && c.weekTarget <= p.pregnancy.currentWeek
+  ).length;
+  const isUpToDate = overdue === 0;
+  return { total, done, overdue, isUpToDate };
+}
+
 function SoignantView() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const { maternityPatients } = useMedicalStore();
-  const [search] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('toutes');
 
   const doctorPatients = useMemo(() => {
     if (!user) return maternityPatients;
     return maternityPatients.filter(p => !p.soignantId || p.soignantId === user.id);
   }, [maternityPatients, user]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return doctorPatients;
-    const q = search.toLowerCase();
-    return doctorPatients.filter(p =>
-      p.pregnancy.firstName.toLowerCase().includes(q)
-    );
-  }, [doctorPatients, search]);
-
-  const alertCounts = useMemo(() => {
-    let rouge = 0;
-    let jaune = 0;
-    let vert = 0;
+  const filterCounts = useMemo(() => {
+    let aJour = 0;
+    let enRetard = 0;
+    let alertes = 0;
     doctorPatients.forEach(p => {
-      if (p.alertLevel === 'rouge') rouge++;
-      else if (p.alertLevel === 'jaune') jaune++;
-      else vert++;
+      const progress = getPatientConsultProgress(p);
+      if (p.alertLevel === 'rouge' || p.alertLevel === 'jaune') alertes++;
+      if (progress.isUpToDate) aJour++;
+      else enRetard++;
     });
-    return { rouge, jaune, vert };
+    return { toutes: doctorPatients.length, aJour, enRetard, alertes };
   }, [doctorPatients]);
+
+  const filtered = useMemo(() => {
+    if (activeFilter === 'toutes') return doctorPatients;
+    if (activeFilter === 'alertes') return doctorPatients.filter(p => p.alertLevel === 'rouge' || p.alertLevel === 'jaune');
+    if (activeFilter === 'a_jour') return doctorPatients.filter(p => getPatientConsultProgress(p).isUpToDate);
+    return doctorPatients.filter(p => !getPatientConsultProgress(p).isUpToDate);
+  }, [doctorPatients, activeFilter]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
@@ -186,19 +198,47 @@ function SoignantView() {
     return MedicalColors.life;
   };
 
-  const renderPatient = useCallback(({ item }: { item: MaternityPatient }) => (
-    <TouchableOpacity
-      style={styles.patientCard}
-      onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier', params: { patientId: item.id } })}
-    >
-      <View style={[styles.alertDot, { backgroundColor: getAlertColor(item.alertLevel) }]} />
-      <View style={styles.patientInfo}>
-        <Text style={styles.patientName}>{item.pregnancy.firstName}</Text>
-        <Text style={styles.patientWeek}>Semaine {item.pregnancy.currentWeek} • G{item.pregnancy.gravidity} P{item.pregnancy.parity}</Text>
-      </View>
-      <ChevronRight size={18} color={MedicalColors.textSecondary} />
-    </TouchableOpacity>
-  ), [router]);
+  const renderPatient = useCallback(({ item }: { item: MaternityPatient }) => {
+    const progress = getPatientConsultProgress(item);
+    const pct = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+    return (
+      <TouchableOpacity
+        style={styles.patientCard}
+        onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier', params: { patientId: item.id } })}
+      >
+        <View style={[styles.alertDot, { backgroundColor: getAlertColor(item.alertLevel) }]} />
+        <View style={styles.patientInfo}>
+          <Text style={styles.patientName}>{item.pregnancy.firstName}</Text>
+          <Text style={styles.patientWeek}>Semaine {item.pregnancy.currentWeek} • G{item.pregnancy.gravidity} P{item.pregnancy.parity}</Text>
+          <View style={styles.consultProgressRow}>
+            <View style={styles.consultProgressBar}>
+              <View style={[
+                styles.consultProgressFill,
+                { width: `${pct}%`, backgroundColor: progress.isUpToDate ? MedicalColors.life : MedicalColors.warning }
+              ]} />
+            </View>
+            <Text style={[
+              styles.consultProgressText,
+              { color: progress.isUpToDate ? MedicalColors.life : MedicalColors.urgency }
+            ]}>
+              {progress.done}/{progress.total}
+            </Text>
+          </View>
+          {progress.overdue > 0 && (
+            <Text style={styles.overdueText}>{progress.overdue} consultation(s) en retard</Text>
+          )}
+        </View>
+        <ChevronRight size={18} color={MedicalColors.textSecondary} />
+      </TouchableOpacity>
+    );
+  }, [router]);
+
+  const FILTER_TABS: { key: FilterTab; label: string; count: number; color: string }[] = [
+    { key: 'toutes', label: 'Toutes', count: filterCounts.toutes, color: MedicalColors.maternity },
+    { key: 'a_jour', label: 'À jour', count: filterCounts.aJour, color: MedicalColors.life },
+    { key: 'en_retard', label: 'En retard', count: filterCounts.enRetard, color: MedicalColors.warning },
+    { key: 'alertes', label: 'Alertes', count: filterCounts.alertes, color: MedicalColors.urgency },
+  ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -215,16 +255,16 @@ function SoignantView() {
 
         <View style={styles.alertRow}>
           <View style={[styles.alertBadge, { backgroundColor: 'rgba(220,53,69,0.2)' }]}>
-            <Text style={[styles.alertValue, { color: MedicalColors.urgency }]}>{alertCounts.rouge}</Text>
-            <Text style={styles.alertLabel}>🔴 Alertes</Text>
+            <Text style={[styles.alertValue, { color: MedicalColors.urgency }]}>{filterCounts.alertes}</Text>
+            <Text style={styles.alertLabel}>Alertes</Text>
           </View>
           <View style={[styles.alertBadge, { backgroundColor: 'rgba(255,193,7,0.2)' }]}>
-            <Text style={[styles.alertValue, { color: '#F57F17' }]}>{alertCounts.jaune}</Text>
-            <Text style={styles.alertLabel}>🟡 Retard</Text>
+            <Text style={[styles.alertValue, { color: '#F57F17' }]}>{filterCounts.enRetard}</Text>
+            <Text style={styles.alertLabel}>En retard</Text>
           </View>
           <View style={[styles.alertBadge, { backgroundColor: 'rgba(76,175,80,0.2)' }]}>
-            <Text style={[styles.alertValue, { color: MedicalColors.life }]}>{alertCounts.vert}</Text>
-            <Text style={styles.alertLabel}>🟢 Normal</Text>
+            <Text style={[styles.alertValue, { color: MedicalColors.life }]}>{filterCounts.aJour}</Text>
+            <Text style={styles.alertLabel}>À jour</Text>
           </View>
         </View>
       </View>
@@ -244,11 +284,27 @@ function SoignantView() {
         </TouchableOpacity>
       </View>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+        {FILTER_TABS.map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.filterTab, activeFilter === tab.key && { backgroundColor: tab.color }]}
+            onPress={() => setActiveFilter(tab.key)}
+          >
+            <Text style={[styles.filterTabText, activeFilter === tab.key && styles.filterTabTextActive]}>
+              {tab.label} ({tab.count})
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       {filtered.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Users size={48} color={MedicalColors.border} />
-          <Text style={styles.emptyTitle}>{search ? 'Aucune patiente trouvée' : 'Aucune patiente'}</Text>
-          <Text style={styles.emptySubtext}>Ajoutez votre première patiente</Text>
+          <Text style={styles.emptyTitle}>
+            {activeFilter === 'toutes' ? 'Aucune patiente' : `Aucune patiente ${activeFilter === 'a_jour' ? 'à jour' : activeFilter === 'en_retard' ? 'en retard' : 'en alerte'}`}
+          </Text>
+          {activeFilter === 'toutes' && <Text style={styles.emptySubtext}>Ajoutez votre première patiente</Text>}
         </View>
       ) : (
         <FlatList
@@ -342,7 +398,17 @@ const styles = StyleSheet.create({
   alertBadge: { flex: 1, borderRadius: 12, padding: 10, alignItems: 'center' },
   alertValue: { fontSize: 22, fontWeight: '700' as const },
   alertLabel: { fontSize: 11, color: 'rgba(255,255,255,0.9)', marginTop: 2 },
-  actionsRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 14, marginBottom: 8 },
+  actionsRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 14, marginBottom: 4 },
+  filterScroll: { maxHeight: 44, marginBottom: 4 },
+  filterContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
+  filterTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: MedicalColors.white, borderWidth: 1, borderColor: MedicalColors.border },
+  filterTabText: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.textSecondary },
+  filterTabTextActive: { color: MedicalColors.white },
+  consultProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  consultProgressBar: { flex: 1, height: 5, backgroundColor: MedicalColors.background, borderRadius: 3, overflow: 'hidden' as const },
+  consultProgressFill: { height: 5, borderRadius: 3 },
+  consultProgressText: { fontSize: 11, fontWeight: '700' as const },
+  overdueText: { fontSize: 11, color: MedicalColors.urgency, marginTop: 2 },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
   actionBtnText: { color: MedicalColors.white, fontSize: 13, fontWeight: '600' as const },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
