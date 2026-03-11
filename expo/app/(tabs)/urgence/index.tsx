@@ -74,101 +74,34 @@ export default function EmergencyHomeScreen() {
         {/* Hôpitaux de Guinée */}
         <Text style={styles.sectionTitle}>Hôpitaux de Guinée</Text>
         <View style={styles.hospitalsContainer}>
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224628684242")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>CHU Donka</Text>
-              <Text style={styles.hospitalLocation}>Conakry</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224628261010")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>Hôpital Ignace Deen</Text>
-              <Text style={styles.hospitalLocation}>Conakry</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224622353535")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>Hôpital Sino-Guinéen</Text>
-              <Text style={styles.hospitalLocation}>Kipé, Conakry</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224664202020")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>Clinique Pasteur</Text>
-              <Text style={styles.hospitalLocation}>Conakry</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224625353535")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>Hôpital Régional de Kankan</Text>
-              <Text style={styles.hospitalLocation}>Kankan</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.hospitalCard}
-            onPress={() => handleEmergencyCall("+224628505050")}
-          >
-            <View style={styles.hospitalIconContainer}>
-              <Hospital color={MedicalColors.urgency} size={22} />
-            </View>
-            <View style={styles.hospitalInfo}>
-              <Text style={styles.hospitalName}>Hôpital Régional de N'Zérékoré</Text>
-              <Text style={styles.hospitalLocation}>N'Zérékoré</Text>
-            </View>
-            <View style={styles.phoneIconContainer}>
-              <Phone color={MedicalColors.white} size={16} />
-            </View>
-          </TouchableOpacity>
+          {[
+            { name: "CHU Donka", location: "Conakry", number: "115" },
+            { name: "Hôpital Ignace Deen", location: "Conakry", number: "115" },
+            { name: "Hôpital Sino-Guinéen", location: "Kipé, Conakry", number: "1234" },
+            { name: "SAMU Guinée", location: "Urgences nationales", number: "442" },
+            { name: "Croix-Rouge Guinée", location: "Secours national", number: "3013" },
+            { name: "Protection Civile", location: "Pompiers / Secours", number: "18" },
+          ].map((hospital, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.hospitalCard}
+              onPress={() => handleEmergencyCall(hospital.number)}
+            >
+              <View style={styles.hospitalIconContainer}>
+                <Hospital color={MedicalColors.urgency} size={22} />
+              </View>
+              <View style={styles.hospitalInfo}>
+                <Text style={styles.hospitalName} numberOfLines={1}>{hospital.name}</Text>
+                <Text style={styles.hospitalLocation}>{hospital.location}</Text>
+              </View>
+              <View style={styles.phoneRight}>
+                <Text style={styles.phoneNumber}>{hospital.number}</Text>
+                <View style={styles.phoneIconContainer}>
+                  <Phone color={MedicalColors.white} size={14} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Accès rapide carte */}
@@ -318,10 +251,20 @@ const styles = StyleSheet.create({
     color: MedicalColors.textSecondary,
     marginTop: 2,
   },
+  phoneRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  phoneNumber: {
+    fontSize: 14,
+    fontWeight: "700" as const,
+    color: MedicalColors.urgency,
+  },
   phoneIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: MedicalColors.urgency,
     justifyContent: "center",
     alignItems: "center",
