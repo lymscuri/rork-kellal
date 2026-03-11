@@ -23,7 +23,7 @@ export default function EmergencyChatScreen() {
   const [isSending, setIsSending] = useState(false);
 
   const getSystemContext = useCallback(() => {
-    let context = "Tu es un assistant médical de premiers secours pour l'application SanteConnect. ";
+    let context = "Tu es un assistant médical de premiers secours pour l'application Keneya. ";
     context += "Tu dois donner des conseils de premiers secours clairs et précis en français. ";
     context += "Tu dois toujours recommander de contacter les secours médicaux pour les situations graves. ";
     context += "Réponds de manière concise et structurée. Ne donne pas de diagnostic médical définitif. ";

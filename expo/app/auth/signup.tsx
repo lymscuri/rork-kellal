@@ -98,7 +98,7 @@ export default function SignupScreen() {
               <UserPlus size={36} color={MedicalColors.medical} />
             </View>
             <Text style={styles.title}>Créer un compte</Text>
-            <Text style={styles.subtitle}>Rejoignez SanteConnect</Text>
+            <Text style={styles.subtitle}>Rejoignez Keneya</Text>
           </View>
 
           <Surface style={styles.formContainer} elevation={2}>

@@ -30,7 +30,7 @@ export default function MyQRCodeScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Mon dossier SanteConnect: ${user?.dossierNumber || 'N/A'}\n\nPrésentez ce numéro à votre médecin pour accéder à votre dossier.`,
+        message: `Mon dossier Keneya: ${user?.dossierNumber || 'N/A'}\n\nPrésentez ce numéro à votre médecin pour accéder à votre dossier.`,
       });
     } catch (e) {
       console.log('[QR] Share error:', e);

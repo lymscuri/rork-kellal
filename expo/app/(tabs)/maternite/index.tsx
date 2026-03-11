@@ -30,7 +30,7 @@ function PatientView() {
         <View style={styles.headerPatiente}>
           <View style={styles.headerContent}>
             <Baby size={28} color={MedicalColors.white} />
-            <Text style={styles.headerTitle}>SunuMaternité</Text>
+            <Text style={styles.headerTitle}>Maternité</Text>
             {pregnancy && (
               <Text style={styles.headerWeek}>Semaine {pregnancy.currentWeek} / 40</Text>
             )}

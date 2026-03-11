@@ -1,4 +1,4 @@
-// Couleurs médicales SanteConnect
+// Couleurs médicales Keneya
 export const MedicalColors = {
   // Couleurs principales
   urgency: '#DC3545',      // Rouge urgence
