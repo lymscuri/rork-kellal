@@ -13,8 +13,8 @@ export default function PrescriptionsScreen() {
   const [fullscreenPresc, setFullscreenPresc] = useState<{ consultation: ConsultationRecord; prescriptions: PrescriptionItem[] } | null>(null);
 
   const prescriptions = useMemo(() => {
-    if (!user?.dossierNumber) return [];
-    return getMyPrescriptions(user.dossierNumber);
+    if (!user) return [];
+    return getMyPrescriptions(user.id);
   }, [user, getMyPrescriptions]);
 
   const renderItem = ({ item }: { item: { consultation: ConsultationRecord; prescriptions: PrescriptionItem[] } }) => (

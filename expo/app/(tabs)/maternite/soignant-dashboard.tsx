@@ -3,21 +3,28 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
+import { useAuthStore } from '@/store/authStore';
 import { BarChart3, Users, Calendar, Syringe, AlertTriangle } from 'lucide-react-native';
 
 export default function SoignantDashboardScreen() {
+  const { user } = useAuthStore();
   const { maternityPatients } = useMedicalStore();
 
+  const doctorPatients = useMemo(() => {
+    if (!user) return maternityPatients;
+    return maternityPatients.filter(p => !p.soignantId || p.soignantId === user.id);
+  }, [maternityPatients, user]);
+
   const stats = useMemo(() => {
-    const total = maternityPatients.length;
-    const pregnancyActive = maternityPatients.filter(p => p.pregnancy.isActive).length;
-    const alerts = maternityPatients.filter(p => p.alertLevel === 'rouge').length;
+    const total = doctorPatients.length;
+    const pregnancyActive = doctorPatients.filter(p => p.pregnancy.isActive).length;
+    const alerts = doctorPatients.filter(p => p.alertLevel === 'rouge').length;
 
     let consultsDone = 0;
     let consultsTotal = 0;
     let vaccinesDone = 0;
 
-    maternityPatients.forEach(p => {
+    doctorPatients.forEach(p => {
       p.prenatalConsultations.forEach(c => {
         consultsTotal++;
         if (c.status === 'effectuee') consultsDone++;
@@ -28,11 +35,11 @@ export default function SoignantDashboardScreen() {
     });
 
     return { total, pregnancyActive, alerts, consultsDone, consultsTotal, vaccinesDone };
-  }, [maternityPatients]);
+  }, [doctorPatients]);
 
   const alertPatients = useMemo(() => {
-    return maternityPatients.filter(p => p.alertLevel === 'rouge' || p.alertLevel === 'jaune');
-  }, [maternityPatients]);
+    return doctorPatients.filter(p => p.alertLevel === 'rouge' || p.alertLevel === 'jaune');
+  }, [doctorPatients]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -94,7 +101,7 @@ export default function SoignantDashboardScreen() {
         </View>
       )}
 
-      {maternityPatients.length === 0 && (
+      {doctorPatients.length === 0 && (
         <View style={styles.emptySection}>
           <Users size={40} color={MedicalColors.border} />
           <Text style={styles.emptyText}>Aucune patiente suivie</Text>

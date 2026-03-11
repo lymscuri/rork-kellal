@@ -1,16 +1,17 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Text, TextInput, Button } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
-import { UserPlus } from 'lucide-react-native';
+import { UserPlus, CheckCircle, Search } from 'lucide-react-native';
 import type { PatientIdentity } from '@/types/medical';
+import type { User } from '@/store/authStore';
 
 export default function AddPatientScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, findPatientByEmail } = useAuthStore();
   const { addPatient } = useMedicalStore();
 
   const [firstName, setFirstName] = useState('');
@@ -24,6 +25,34 @@ export default function AddPatientScreen() {
   const [contactName, setContactName] = useState('');
   const [contactRelation, setContactRelation] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [patientEmail, setPatientEmail] = useState('');
+  const [linkedUser, setLinkedUser] = useState<User | null>(null);
+  const [searchingUser, setSearchingUser] = useState(false);
+
+  const handleSearchUser = useCallback(async () => {
+    if (!patientEmail.trim()) {
+      Alert.alert('Info', 'Entrez l\'email du compte patient pour le lier');
+      return;
+    }
+    setSearchingUser(true);
+    try {
+      const found = await findPatientByEmail(patientEmail.trim());
+      if (found) {
+        setLinkedUser(found);
+        if (!firstName.trim()) setFirstName(found.firstName);
+        if (!lastName.trim()) setLastName(found.lastName);
+        if (!phone.trim() && found.phone) setPhone(found.phone);
+        Alert.alert('Patient trouvé', `Compte lié à ${found.firstName} ${found.lastName}`);
+      } else {
+        setLinkedUser(null);
+        Alert.alert('Non trouvé', 'Aucun compte patient trouvé avec cet email. Le dossier sera créé sans liaison.');
+      }
+    } catch (e) {
+      console.error('[AddPatient] Search user error:', e);
+    } finally {
+      setSearchingUser(false);
+    }
+  }, [patientEmail, findPatientByEmail, firstName, lastName, phone]);
 
   const handleSave = useCallback(() => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -49,12 +78,12 @@ export default function AddPatientScreen() {
       }] : [],
     };
 
-    const patientId = addPatient(user.id, identity);
-    console.log('[AddPatient] Created patient:', patientId);
-    Alert.alert('Succès', 'Patient ajouté avec succès', [
+    const patientId = addPatient(user.id, identity, linkedUser?.id);
+    console.log('[AddPatient] Created patient:', patientId, 'linked to user:', linkedUser?.id);
+    Alert.alert('Succès', linkedUser ? `Patient ajouté et lié au compte de ${linkedUser.firstName} ${linkedUser.lastName}` : 'Patient ajouté avec succès', [
       { text: 'OK', onPress: () => router.back() },
     ]);
-  }, [firstName, lastName, birthDate, sex, phone, address, commune, prefecture, contactName, contactRelation, contactPhone, user, addPatient, router]);
+  }, [firstName, lastName, birthDate, sex, phone, address, commune, prefecture, contactName, contactRelation, contactPhone, user, addPatient, router, linkedUser]);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
@@ -64,6 +93,37 @@ export default function AddPatientScreen() {
           <UserPlus size={28} color={MedicalColors.medical} />
         </View>
         <Text style={styles.headerTitle}>Nouveau Patient</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Lier à un compte patient</Text>
+        <Text style={styles.linkDescription}>Si le patient a déjà un compte Keneya, entrez son email pour lier le dossier à son compte. Il pourra voir son dossier depuis son app.</Text>
+        <View style={styles.linkRow}>
+          <TextInput
+            label="Email du patient"
+            value={patientEmail}
+            onChangeText={(text) => { setPatientEmail(text); setLinkedUser(null); }}
+            mode="outlined"
+            style={styles.linkInput}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            outlineColor={MedicalColors.border}
+            activeOutlineColor={MedicalColors.medical}
+          />
+          <TouchableOpacity style={styles.linkBtn} onPress={handleSearchUser} disabled={searchingUser}>
+            {searchingUser ? (
+              <ActivityIndicator size="small" color={MedicalColors.white} />
+            ) : (
+              <Search size={20} color={MedicalColors.white} />
+            )}
+          </TouchableOpacity>
+        </View>
+        {linkedUser && (
+          <View style={styles.linkedBadge}>
+            <CheckCircle size={16} color={MedicalColors.life} />
+            <Text style={styles.linkedText}>Lié à : {linkedUser.firstName} {linkedUser.lastName} ({linkedUser.email})</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -124,4 +184,10 @@ const styles = StyleSheet.create({
   sexBtn: { flex: 1, borderColor: MedicalColors.border },
   saveBtn: { borderRadius: 10, marginTop: 8 },
   saveBtnContent: { paddingVertical: 8 },
+  linkDescription: { fontSize: 12, color: MedicalColors.textSecondary, marginBottom: 12, lineHeight: 17 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  linkInput: { flex: 1, backgroundColor: MedicalColors.white },
+  linkBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: MedicalColors.medical, justifyContent: 'center', alignItems: 'center' },
+  linkedBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: MedicalColors.lifeLight, borderRadius: 8, padding: 10, marginTop: 10 },
+  linkedText: { fontSize: 12, color: MedicalColors.life, fontWeight: '600' as const, flex: 1 },
 });

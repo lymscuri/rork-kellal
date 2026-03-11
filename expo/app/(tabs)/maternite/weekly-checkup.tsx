@@ -4,6 +4,7 @@ import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
+import { useAuthStore } from '@/store/authStore';
 import { Heart, AlertTriangle } from 'lucide-react-native';
 
 const SYMPTOMS = [
@@ -14,9 +15,13 @@ const SYMPTOMS = [
 
 export default function WeeklyCheckupScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const { maternityPatients, addWeeklyCheckup } = useMedicalStore();
 
-  const myData = useMemo(() => maternityPatients[0] || null, [maternityPatients]);
+  const myData = useMemo(() => {
+    if (!user) return null;
+    return maternityPatients.find(p => p.userId === user.id) || null;
+  }, [maternityPatients, user]);
   const currentWeek = myData?.pregnancy?.currentWeek || 0;
 
   const [weight, setWeight] = useState('');

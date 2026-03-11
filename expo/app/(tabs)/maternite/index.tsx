@@ -18,7 +18,8 @@ function PatientView() {
   const { maternityPatients } = useMedicalStore();
 
   const myData = useMemo(() => {
-    return maternityPatients.find(p => p.id === user?.id) || (maternityPatients.length > 0 ? maternityPatients[0] : null);
+    if (!user) return null;
+    return maternityPatients.find(p => p.userId === user.id) || null;
   }, [maternityPatients, user]);
 
   const pregnancy = myData?.pregnancy;
@@ -127,25 +128,30 @@ function SoignantView() {
   const { maternityPatients } = useMedicalStore();
   const [search] = useState('');
 
+  const doctorPatients = useMemo(() => {
+    if (!user) return maternityPatients;
+    return maternityPatients.filter(p => !p.soignantId || p.soignantId === user.id);
+  }, [maternityPatients, user]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return maternityPatients;
+    if (!search.trim()) return doctorPatients;
     const q = search.toLowerCase();
-    return maternityPatients.filter(p =>
+    return doctorPatients.filter(p =>
       p.pregnancy.firstName.toLowerCase().includes(q)
     );
-  }, [maternityPatients, search]);
+  }, [doctorPatients, search]);
 
   const alertCounts = useMemo(() => {
     let rouge = 0;
     let jaune = 0;
     let vert = 0;
-    maternityPatients.forEach(p => {
+    doctorPatients.forEach(p => {
       if (p.alertLevel === 'rouge') rouge++;
       else if (p.alertLevel === 'jaune') jaune++;
       else vert++;
     });
     return { rouge, jaune, vert };
-  }, [maternityPatients]);
+  }, [doctorPatients]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [

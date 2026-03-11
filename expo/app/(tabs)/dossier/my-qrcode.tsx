@@ -12,19 +12,27 @@ export default function MyQRCodeScreen() {
   const { getQRCodeData, getMyRecord } = useMedicalStore();
 
   const qrData = useMemo(() => {
-    if (!user?.dossierNumber) {
+    if (!user) {
+      return JSON.stringify({ error: 'Non connecté' });
+    }
+    const data = getQRCodeData(user.id);
+    try {
+      const parsed = JSON.parse(data);
+      parsed.userId = user.id;
+      return JSON.stringify(parsed);
+    } catch {
       return JSON.stringify({
-        dossierNumber: user?.dossierNumber || 'N/A',
-        firstName: user?.firstName || '',
-        lastName: user?.lastName || '',
+        userId: user.id,
+        dossierNumber: user.dossierNumber || 'N/A',
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
       });
     }
-    return getQRCodeData(user.dossierNumber);
   }, [user, getQRCodeData]);
 
   const record = useMemo(() => {
-    if (!user?.dossierNumber) return null;
-    return getMyRecord(user.dossierNumber);
+    if (!user) return null;
+    return getMyRecord(user.id);
   }, [user, getMyRecord]);
 
   const handleShare = async () => {

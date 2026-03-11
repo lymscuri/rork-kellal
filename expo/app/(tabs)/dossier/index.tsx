@@ -180,13 +180,13 @@ function PatientDashboard() {
   const { getMyRecord, getMyPrescriptions } = useMedicalStore();
 
   const record = useMemo(() => {
-    if (!user?.dossierNumber) return null;
-    return getMyRecord(user.dossierNumber);
+    if (!user) return null;
+    return getMyRecord(user.id);
   }, [user, getMyRecord]);
 
   const prescriptions = useMemo(() => {
-    if (!user?.dossierNumber) return [];
-    return getMyPrescriptions(user.dossierNumber);
+    if (!user) return [];
+    return getMyPrescriptions(user.id);
   }, [user, getMyPrescriptions]);
 
   const handleLogout = useCallback(() => {

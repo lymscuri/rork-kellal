@@ -3,12 +3,17 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-nat
 import { Text } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
+import { useAuthStore } from '@/store/authStore';
 import { Baby, Syringe, TrendingUp, AlertTriangle, CheckCircle, Clock } from 'lucide-react-native';
 import type { PEVVaccine } from '@/types/medical';
 
 export default function ChildTrackingScreen() {
+  const { user } = useAuthStore();
   const { maternityPatients, markChildVaccineDone } = useMedicalStore();
-  const myData = useMemo(() => maternityPatients[0] || null, [maternityPatients]);
+  const myData = useMemo(() => {
+    if (!user) return null;
+    return maternityPatients.find(p => p.userId === user.id) || null;
+  }, [maternityPatients, user]);
   const [selectedChild, setSelectedChild] = useState<string | null>(null);
 
   const children = useMemo(() => myData?.children || [], [myData]);

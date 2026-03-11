@@ -3,12 +3,17 @@ import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
+import { useAuthStore } from '@/store/authStore';
 import { Calendar, CheckCircle, Clock, AlertTriangle } from 'lucide-react-native';
 
 export default function PrenatalCalendarScreen() {
+  const { user } = useAuthStore();
   const { maternityPatients, markPrenatalConsultationDone } = useMedicalStore();
 
-  const myData = useMemo(() => maternityPatients[0] || null, [maternityPatients]);
+  const myData = useMemo(() => {
+    if (!user) return null;
+    return maternityPatients.find(p => p.userId === user.id) || null;
+  }, [maternityPatients, user]);
   const consultations = useMemo(() => myData?.prenatalConsultations || [], [myData]);
   const currentWeek = myData?.pregnancy?.currentWeek || 0;
 

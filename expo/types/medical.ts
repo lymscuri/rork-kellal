@@ -175,6 +175,7 @@ export interface VaccineRecord {
 
 export interface PatientRecord {
   id: string;
+  userId?: string;
   identity: PatientIdentity;
   criticalInfo: CriticalInfo;
   personalHistory: PersonalHistory;
@@ -183,6 +184,7 @@ export interface PatientRecord {
   consultations: ConsultationRecord[];
   labResults: LabResult[];
   vaccines: VaccineRecord[];
+  doctorIds: string[];
   doctorId: string;
   createdAt: string;
   updatedAt: string;
@@ -286,6 +288,7 @@ export interface PEVVaccine {
 
 export interface MaternityPatient {
   id: string;
+  userId?: string;
   pregnancy: Pregnancy;
   weeklyCheckups: WeeklyCheckup[];
   prenatalConsultations: PrenatalConsultation[];
@@ -294,6 +297,7 @@ export interface MaternityPatient {
   childGrowth: ChildGrowthRecord[];
   childVaccines: PEVVaccine[];
   alertLevel: 'vert' | 'jaune' | 'rouge';
+  soignantId?: string;
 }
 
 export interface SmsReminder {

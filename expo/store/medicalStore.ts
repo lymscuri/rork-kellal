@@ -60,10 +60,11 @@ interface MedicalStore {
   maternityPatients: MaternityPatient[];
   smsReminders: SmsReminder[];
 
-  addPatient: (doctorId: string, identity: Partial<PatientIdentity>) => string;
+  addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string) => string;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
   getPatientByDossierNumber: (dossierNumber: string) => PatientRecord | undefined;
+  getPatientByUserId: (userId: string) => PatientRecord | undefined;
   updatePatientIdentity: (patientId: string, identity: Partial<PatientIdentity>) => void;
   updateCriticalInfo: (patientId: string, info: Partial<CriticalInfo>) => void;
   updatePersonalHistory: (patientId: string, history: Partial<PersonalHistory>) => void;
@@ -74,14 +75,17 @@ interface MedicalStore {
   addVaccine: (patientId: string, vaccine: Omit<VaccineRecord, 'id' | 'patientId'>) => void;
   getDoctorStats: (doctorId: string) => DoctorStats;
   linkPatientToDoctor: (patientDossierNumber: string, doctorId: string) => boolean;
+  linkPatientToUser: (patientId: string, userId: string) => void;
 
   getMyRecord: (userId: string) => PatientRecord | undefined;
   getMyPrescriptions: (userId: string) => { consultation: ConsultationRecord; prescriptions: PrescriptionItem[] }[];
   getQRCodeData: (userId: string) => string;
 
-  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>) => string;
+  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string) => string;
   getMaternityPatientsByDoctor: (doctorId: string) => MaternityPatient[];
   getMyMaternityData: (patientId: string) => MaternityPatient | undefined;
+  getMyMaternityDataByUserId: (userId: string) => MaternityPatient | undefined;
+  linkMaternityToUser: (maternityId: string, userId: string) => void;
   addWeeklyCheckup: (patientId: string, checkup: Omit<WeeklyCheckup, 'id' | 'pregnancyId'>) => void;
   markPrenatalConsultationDone: (patientId: string, consultationId: string, date: string, notes?: string) => void;
   addPrenatalExam: (patientId: string, exam: Omit<PrenatalExam, 'id' | 'pregnancyId'>) => void;
@@ -101,11 +105,12 @@ export const useMedicalStore = create<MedicalStore>()(
       maternityPatients: [],
       smsReminders: [],
 
-      addPatient: (doctorId, identity) => {
+      addPatient: (doctorId, identity, userId) => {
         const id = genId();
-        const dossierNumber = identity.dossierNumber || `SNC-${new Date().getFullYear()}-${Math.floor(Math.random() * 99999).toString().padStart(5, '0')}`;
+        const dossierNumber = identity.dossierNumber || `KNY-${new Date().getFullYear()}-${Math.floor(Math.random() * 99999).toString().padStart(5, '0')}`;
         const newPatient: PatientRecord = {
           id,
+          userId,
           identity: {
             firstName: identity.firstName || '',
             lastName: identity.lastName || '',
@@ -145,17 +150,18 @@ export const useMedicalStore = create<MedicalStore>()(
           consultations: [],
           labResults: [],
           vaccines: [],
+          doctorIds: [doctorId],
           doctorId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         set((state) => ({ patients: [...state.patients, newPatient] }));
-        console.log('[MedicalStore] Patient added:', id, dossierNumber);
+        console.log('[MedicalStore] Patient added:', id, dossierNumber, 'linked to userId:', userId);
         return id;
       },
 
       getPatientsByDoctor: (doctorId) => {
-        return get().patients.filter(p => p.doctorId === doctorId);
+        return get().patients.filter(p => p.doctorId === doctorId || (p.doctorIds && p.doctorIds.includes(doctorId)));
       },
 
       getPatientById: (patientId) => {
@@ -164,6 +170,10 @@ export const useMedicalStore = create<MedicalStore>()(
 
       getPatientByDossierNumber: (dossierNumber) => {
         return get().patients.find(p => p.identity.dossierNumber === dossierNumber);
+      },
+
+      getPatientByUserId: (userId) => {
+        return get().patients.find(p => p.userId === userId);
       },
 
       updatePatientIdentity: (patientId, identity) => {
@@ -262,7 +272,7 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       getDoctorStats: (doctorId) => {
-        const patients = get().patients.filter(p => p.doctorId === doctorId);
+        const patients = get().patients.filter(p => p.doctorId === doctorId || (p.doctorIds && p.doctorIds.includes(doctorId)));
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         let monthConsultations = 0;
@@ -286,25 +296,40 @@ export const useMedicalStore = create<MedicalStore>()(
       linkPatientToDoctor: (patientDossierNumber, doctorId) => {
         const patient = get().patients.find(p => p.identity.dossierNumber === patientDossierNumber);
         if (patient) {
-          if (patient.doctorId === doctorId) return true;
+          const existingDoctorIds = patient.doctorIds || [patient.doctorId];
+          if (existingDoctorIds.includes(doctorId)) return true;
           set((state) => ({
             patients: state.patients.map(p =>
               p.identity.dossierNumber === patientDossierNumber
-                ? { ...p, doctorId }
+                ? { ...p, doctorId, doctorIds: [...existingDoctorIds, doctorId] }
                 : p
             ),
           }));
+          console.log('[MedicalStore] Linked patient', patientDossierNumber, 'to doctor', doctorId);
           return true;
         }
         return false;
       },
 
+      linkPatientToUser: (patientId, userId) => {
+        set((state) => ({
+          patients: state.patients.map(p =>
+            p.id === patientId
+              ? { ...p, userId, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        }));
+        console.log('[MedicalStore] Linked patient record', patientId, 'to user', userId);
+      },
+
       getMyRecord: (userId) => {
-        return get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
+        return get().patients.find(p => p.userId === userId) ||
+          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
       },
 
       getMyPrescriptions: (userId) => {
-        const patient = get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
+        const patient = get().patients.find(p => p.userId === userId) ||
+          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
         if (!patient) return [];
         return patient.consultations
           .filter(c => c.prescriptions.length > 0)
@@ -312,7 +337,8 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       getQRCodeData: (userId) => {
-        const patient = get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
+        const patient = get().patients.find(p => p.userId === userId) ||
+          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
         if (!patient) return JSON.stringify({ error: 'Patient non trouvé' });
         return JSON.stringify({
           dossierNumber: patient.identity.dossierNumber,
@@ -334,7 +360,7 @@ export const useMedicalStore = create<MedicalStore>()(
         });
       },
 
-      addMaternityPatient: (soignantId, pregnancy) => {
+      addMaternityPatient: (soignantId, pregnancy, userId) => {
         const id = genId();
         const pregnancyId = genId();
         const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
@@ -345,6 +371,7 @@ export const useMedicalStore = create<MedicalStore>()(
 
         const newPatient: MaternityPatient = {
           id,
+          userId,
           pregnancy: { ...pregnancy, id: pregnancyId, patientId: id },
           weeklyCheckups: [],
           prenatalConsultations: consultations,
@@ -353,18 +380,32 @@ export const useMedicalStore = create<MedicalStore>()(
           childGrowth: [],
           childVaccines: [],
           alertLevel: 'vert',
+          soignantId: soignantId || undefined,
         };
         set((state) => ({ maternityPatients: [...state.maternityPatients, newPatient] }));
-        console.log('[MedicalStore] Maternity patient added:', id);
+        console.log('[MedicalStore] Maternity patient added:', id, 'linked to userId:', userId, 'soignantId:', soignantId);
         return id;
       },
 
-      getMaternityPatientsByDoctor: () => {
-        return get().maternityPatients;
+      getMaternityPatientsByDoctor: (doctorId) => {
+        return get().maternityPatients.filter(p => !p.soignantId || p.soignantId === doctorId);
       },
 
       getMyMaternityData: (patientId) => {
         return get().maternityPatients.find(p => p.id === patientId);
+      },
+
+      getMyMaternityDataByUserId: (userId) => {
+        return get().maternityPatients.find(p => p.userId === userId);
+      },
+
+      linkMaternityToUser: (maternityId, userId) => {
+        set((state) => ({
+          maternityPatients: state.maternityPatients.map(p =>
+            p.id === maternityId ? { ...p, userId } : p
+          ),
+        }));
+        console.log('[MedicalStore] Linked maternity', maternityId, 'to user', userId);
       },
 
       addWeeklyCheckup: (patientId, checkup) => {

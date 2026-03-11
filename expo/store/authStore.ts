@@ -27,6 +27,8 @@ interface AuthStore {
   updateProfile: (userData: Partial<User>) => void;
   setHydrated: (hydrated: boolean) => void;
   hydrate: () => Promise<void>;
+  findPatientByEmail: (email: string) => Promise<User | null>;
+  findPatientByPhone: (phone: string) => Promise<User | null>;
 }
 
 export interface SignupData {
@@ -212,6 +214,54 @@ export const useAuthStore = create<AuthStore>()(
         const updatedUser = { ...user, ...userData };
         set({ user: updatedUser });
         void saveAuthState(updatedUser, true);
+      }
+    },
+
+    findPatientByEmail: async (email: string) => {
+      try {
+        const users = await getStoredUsers();
+        const found = users.find(
+          u => u.email.toLowerCase() === email.toLowerCase() && u.role === 'patient'
+        );
+        if (found) {
+          return {
+            id: found.id,
+            email: found.email,
+            firstName: found.firstName,
+            lastName: found.lastName,
+            phone: found.phone,
+            role: found.role,
+            dossierNumber: found.dossierNumber,
+          };
+        }
+        return null;
+      } catch (e) {
+        console.error('[Auth] findPatientByEmail error:', e);
+        return null;
+      }
+    },
+
+    findPatientByPhone: async (phone: string) => {
+      try {
+        const users = await getStoredUsers();
+        const found = users.find(
+          u => u.phone === phone && u.role === 'patient'
+        );
+        if (found) {
+          return {
+            id: found.id,
+            email: found.email,
+            firstName: found.firstName,
+            lastName: found.lastName,
+            phone: found.phone,
+            role: found.role,
+            dossierNumber: found.dossierNumber,
+          };
+        }
+        return null;
+      } catch (e) {
+        console.error('[Auth] findPatientByPhone error:', e);
+        return null;
       }
     },
   })
