@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
@@ -334,7 +334,7 @@ export default function PatientRecordScreen() {
   const tabIcons = [User, Shield, History, Stethoscope, FlaskConical, Syringe];
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
         {TABS.map((tab, i) => {
           const Icon = tabIcons[i];
@@ -351,7 +351,7 @@ export default function PatientRecordScreen() {
         })}
       </ScrollView>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {activeTab === 0 && renderIdentity()}
         {activeTab === 1 && renderCriticalInfo()}
         {activeTab === 2 && renderHistory()}
@@ -359,7 +359,7 @@ export default function PatientRecordScreen() {
         {activeTab === 4 && renderExams()}
         {activeTab === 5 && renderVaccines()}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

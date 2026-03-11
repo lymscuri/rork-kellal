@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
@@ -74,6 +74,7 @@ export default function WeeklyCheckupScreen() {
   }, [myData]);
 
   return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.weekBadge}>
         <Heart size={20} color={MedicalColors.maternity} />
@@ -171,10 +172,12 @@ export default function WeeklyCheckupScreen() {
         Enregistrer le suivi
       </Button>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: { flex: 1, backgroundColor: MedicalColors.background },
   content: { padding: 16, paddingBottom: 40 },
   weekBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', backgroundColor: MedicalColors.maternityLight, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginBottom: 16 },
