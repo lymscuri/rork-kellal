@@ -289,6 +289,17 @@ export default function PatientRecordScreen() {
 
   const renderExams = () => (
     <View style={styles.tabContent}>
+      {!isReadOnly && (
+        <Button
+          mode="contained"
+          onPress={() => router.push({ pathname: '/(tabs)/dossier/new-lab-result', params: { patientId: patient.id } })}
+          buttonColor={MedicalColors.medical}
+          icon={() => <Plus size={18} color={MedicalColors.white} />}
+          style={styles.addBtn}
+        >
+          Nouveau résultat d'examen
+        </Button>
+      )}
       {patient.labResults.length === 0 ? (
         <View style={styles.emptySection}>
           <FlaskConical size={32} color={MedicalColors.border} />
@@ -309,6 +320,17 @@ export default function PatientRecordScreen() {
 
   const renderVaccines = () => (
     <View style={styles.tabContent}>
+      {!isReadOnly && (
+        <Button
+          mode="contained"
+          onPress={() => router.push({ pathname: '/(tabs)/dossier/new-vaccine', params: { patientId: patient.id } })}
+          buttonColor={MedicalColors.medical}
+          icon={() => <Plus size={18} color={MedicalColors.white} />}
+          style={styles.addBtn}
+        >
+          Nouveau vaccin
+        </Button>
+      )}
       {patient.vaccines.length === 0 ? (
         <View style={styles.emptySection}>
           <Syringe size={32} color={MedicalColors.border} />

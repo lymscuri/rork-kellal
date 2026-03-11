@@ -19,6 +19,8 @@ export default function DossierLayout() {
       <Stack.Screen name="prescriptions" options={{ title: "Mes Ordonnances" }} />
       <Stack.Screen name="scanner" options={{ title: "Scanner QR", presentation: "modal" }} />
       <Stack.Screen name="doctor-reports" options={{ title: "Rapports" }} />
+      <Stack.Screen name="new-lab-result" options={{ title: "Nouveau Résultat" }} />
+      <Stack.Screen name="new-vaccine" options={{ title: "Nouveau Vaccin" }} />
     </Stack>
   );
 }
