@@ -12,7 +12,7 @@ const LAB_OPTIONS = ['NFS', 'Groupe sanguin', 'Sérologie VIH', 'TPHA', 'Goutte 
 export default function PatientDossierScreen() {
   const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
-  const _user = useAuthStore();
+  const { user: _user } = useAuthStore();
   const { maternityPatients, addPrenatalExam, markPrenatalConsultationDone } = useMedicalStore();
 
   const patient = useMemo(() => {

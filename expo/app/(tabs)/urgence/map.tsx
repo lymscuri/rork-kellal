@@ -1,10 +1,11 @@
 import * as Location from "expo-location";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Linking, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { ActivityIndicator, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MapView, { Marker, Region } from "react-native-maps";
 import { MedicalColors } from "@/constants/colors";
-import { Building2, Clock, Cross, MapPin, Navigation, Phone, RefreshCw, Stethoscope } from "lucide-react-native";
+import { Building2, Clock, Cross, List, Map as MapIcon, MapPin, Navigation, Phone, RefreshCw, Stethoscope } from "lucide-react-native";
 
 interface OSMPlace {
   id: string;
@@ -20,8 +21,8 @@ interface OSMPlace {
   openingHours?: string;
 }
 
-const DEFAULT_LAT = 6.1319;
-const DEFAULT_LON = 1.2228;
+const DEFAULT_LAT = 9.5370;
+const DEFAULT_LON = -13.6785;
 const SEARCH_RADIUS = 5000;
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -54,7 +55,6 @@ out center body;
 
 function parseOSMResults(data: any, userLat: number, userLon: number): OSMPlace[] {
   if (!data?.elements) return [];
-
   const places: OSMPlace[] = [];
 
   for (const el of data.elements) {
@@ -79,7 +79,7 @@ function parseOSMResults(data: any, userLat: number, userLon: number): OSMPlace[
     if (tags["addr:city"]) addressParts.push(tags["addr:city"]);
     const address = addressParts.length > 0 ? addressParts.join(", ") : tags["addr:full"] || undefined;
 
-    const phone = tags.phone || tags["contact:phone"] || undefined;
+    const phoneVal = tags.phone || tags["contact:phone"] || undefined;
     const openingHours = tags.opening_hours || undefined;
     const is24h = openingHours === "24/7" || tags.emergency === "yes";
     const hasMaternity = !!tags.healthcare && (tags.healthcare.includes("maternity") || tags.healthcare.includes("birthing"));
@@ -93,7 +93,7 @@ function parseOSMResults(data: any, userLat: number, userLon: number): OSMPlace[
       latitude: lat,
       longitude: lon,
       address,
-      phone,
+      phone: phoneVal,
       is24h,
       hasMaternity,
       distance,
@@ -129,6 +129,14 @@ function getTypeIcon(type: OSMPlace["type"]) {
   }
 }
 
+function getMarkerColor(type: OSMPlace["type"]): string {
+  switch (type) {
+    case "hospital": return "#DC3545";
+    case "pharmacy": return "#4CAF50";
+    case "clinic": return "#0D6EFD";
+  }
+}
+
 export default function MapScreen() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,9 +144,10 @@ export default function MapScreen() {
   const [places, setPlaces] = useState<OSMPlace[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<"all" | "hospital" | "pharmacy" | "clinic">("all");
-  const [filters, setFilters] = useState({
-    emergency24h: false,
-  });
+  const [viewMode, setViewMode] = useState<"map" | "list">("map");
+  const [selectedPlace, setSelectedPlace] = useState<OSMPlace | null>(null);
+  const [filters, setFilters] = useState({ emergency24h: false });
+  const mapRef = useRef<MapView>(null);
 
   const requestLocation = useCallback(async () => {
     try {
@@ -259,6 +268,21 @@ export default function MapScreen() {
     void Linking.openURL(url);
   }, []);
 
+  const handleMarkerPress = useCallback((place: OSMPlace) => {
+    setSelectedPlace(place);
+  }, []);
+
+  const handleFocusPlace = useCallback((place: OSMPlace) => {
+    setSelectedPlace(place);
+    setViewMode("map");
+    mapRef.current?.animateToRegion({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    }, 500);
+  }, []);
+
   const typeCounts = useMemo(() => {
     const counts = { all: places.length, hospital: 0, pharmacy: 0, clinic: 0 };
     for (const p of places) {
@@ -266,6 +290,13 @@ export default function MapScreen() {
     }
     return counts;
   }, [places]);
+
+  const initialRegion: Region | undefined = location ? {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  } : undefined;
 
   if (loading) {
     return (
@@ -278,18 +309,6 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Surface style={styles.headerSection}>
-        <View style={styles.locationRow}>
-          <MapPin size={18} color={MedicalColors.medical} />
-          <Text style={styles.locationText}>
-            {location
-              ? `Position: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
-              : "Position par défaut (Lomé)"}
-          </Text>
-        </View>
-        <Text style={styles.sourceText}>Source: OpenStreetMap</Text>
-      </Surface>
-
       <Surface style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
           <Chip
@@ -333,22 +352,34 @@ export default function MapScreen() {
           >
             <Clock size={14} color={filters.emergency24h ? MedicalColors.white : MedicalColors.textSecondary} />
             <Text style={[styles.secondaryFilterText, filters.emergency24h && styles.secondaryFilterTextActive]}>
-              Urgences 24h/24
+              Urgences 24h
             </Text>
+          </TouchableOpacity>
+
+          <View style={styles.viewToggle}>
+            <TouchableOpacity
+              style={[styles.viewToggleBtn, viewMode === "map" && styles.viewToggleBtnActive]}
+              onPress={() => setViewMode("map")}
+            >
+              <MapIcon size={14} color={viewMode === "map" ? MedicalColors.white : MedicalColors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.viewToggleBtn, viewMode === "list" && styles.viewToggleBtnActive]}
+              onPress={() => setViewMode("list")}
+            >
+              <List size={14} color={viewMode === "list" ? MedicalColors.white : MedicalColors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.refreshBtn} onPress={handleRefresh} disabled={fetching}>
+            {fetching ? (
+              <ActivityIndicator size="small" color={MedicalColors.medical} />
+            ) : (
+              <RefreshCw size={16} color={MedicalColors.medical} />
+            )}
           </TouchableOpacity>
         </View>
       </Surface>
-
-      <View style={styles.resultsHeader}>
-        <Text style={styles.resultsText}>{filteredPlaces.length} établissement(s) trouvé(s)</Text>
-        <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={fetching}>
-          {fetching ? (
-            <ActivityIndicator size="small" color={MedicalColors.medical} />
-          ) : (
-            <RefreshCw size={18} color={MedicalColors.medical} />
-          )}
-        </TouchableOpacity>
-      </View>
 
       {fetching && places.length === 0 ? (
         <View style={styles.loadingContainer}>
@@ -356,14 +387,83 @@ export default function MapScreen() {
           <Text style={styles.loadingText}>Recherche des établissements...</Text>
           <Text style={styles.loadingSubtext}>Données OpenStreetMap</Text>
         </View>
+      ) : viewMode === "map" ? (
+        <View style={styles.mapContainer}>
+          {initialRegion && (
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={initialRegion}
+              showsUserLocation
+              showsMyLocationButton
+            >
+              {filteredPlaces.map((place) => (
+                <Marker
+                  key={place.id}
+                  coordinate={{ latitude: place.latitude, longitude: place.longitude }}
+                  title={place.name}
+                  description={`${getTypeLabel(place.type)}${place.distance != null ? ` • ${place.distance} km` : ""}`}
+                  pinColor={getMarkerColor(place.type)}
+                  onPress={() => handleMarkerPress(place)}
+                />
+              ))}
+            </MapView>
+          )}
+
+          {error && (
+            <View style={styles.mapErrorBanner}>
+              <Text style={styles.mapErrorText}>{error}</Text>
+              <TouchableOpacity onPress={handleRefresh}>
+                <Text style={styles.retryText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {selectedPlace && (
+            <View style={styles.placeCard}>
+              <TouchableOpacity style={styles.placeCardClose} onPress={() => setSelectedPlace(null)}>
+                <Text style={styles.placeCardCloseText}>✕</Text>
+              </TouchableOpacity>
+              <View style={styles.placeCardContent}>
+                <View style={[styles.placeCardIcon, { backgroundColor: getTypeColor(selectedPlace.type) }]}>
+                  {(() => { const Icon = getTypeIcon(selectedPlace.type); return <Icon size={20} color={MedicalColors.white} />; })()}
+                </View>
+                <View style={styles.placeCardInfo}>
+                  <Text style={styles.placeCardName} numberOfLines={1}>{selectedPlace.name}</Text>
+                  <Text style={styles.placeCardType}>
+                    {getTypeLabel(selectedPlace.type)}{selectedPlace.distance != null ? ` • ${selectedPlace.distance} km` : ""}
+                  </Text>
+                  {selectedPlace.address && <Text style={styles.placeCardAddress} numberOfLines={1}>{selectedPlace.address}</Text>}
+                  <View style={styles.placeCardBadges}>
+                    {selectedPlace.is24h && (
+                      <View style={styles.badge24h}>
+                        <Text style={styles.badge24hText}>24h/24</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+              <View style={styles.placeCardActions}>
+                {selectedPlace.phone && (
+                  <TouchableOpacity style={styles.actionBtnCall} onPress={() => handleCall(selectedPlace.phone)}>
+                    <Phone size={14} color={MedicalColors.white} />
+                    <Text style={styles.actionBtnCallText}>Appeler</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.actionBtnNav} onPress={() => handleOpenMaps(selectedPlace)}>
+                  <Navigation size={14} color={MedicalColors.medical} />
+                  <Text style={styles.actionBtnNavText}>Itinéraire</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.mapResultsBadge}>
+            <Text style={styles.mapResultsText}>{filteredPlaces.length} établissement(s)</Text>
+          </View>
+        </View>
       ) : (
-        <ScrollView
-          style={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={fetching} onRefresh={handleRefresh} colors={[MedicalColors.medical]} />
-          }
-        >
+        <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
           {error && (
             <Surface style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
@@ -378,61 +478,52 @@ export default function MapScreen() {
             const typeColor = getTypeColor(place.type);
 
             return (
-              <Surface key={place.id} style={styles.hospitalCard}>
-                <View style={styles.hospitalCardContent}>
-                  <View style={[styles.hospitalIcon, { backgroundColor: typeColor }]}>
-                    <IconComponent size={22} color={MedicalColors.white} />
+              <TouchableOpacity key={place.id} onPress={() => handleFocusPlace(place)} activeOpacity={0.7}>
+                <Surface style={styles.hospitalCard}>
+                  <View style={styles.hospitalCardContent}>
+                    <View style={[styles.hospitalIcon, { backgroundColor: typeColor }]}>
+                      <IconComponent size={22} color={MedicalColors.white} />
+                    </View>
+
+                    <View style={styles.hospitalInfo}>
+                      <Text style={styles.hospitalName} numberOfLines={2}>{place.name}</Text>
+                      <Text style={styles.hospitalType}>{getTypeLabel(place.type)}</Text>
+                      {place.address && <Text style={styles.hospitalAddress} numberOfLines={1}>{place.address}</Text>}
+                      <View style={styles.hospitalBadges}>
+                        {place.is24h && (
+                          <View style={[styles.badge, styles.badgeGreen]}>
+                            <Clock size={10} color={MedicalColors.life} />
+                            <Text style={styles.badgeGreenText}>24h/24</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {place.distance != null && (
+                      <View style={styles.distanceContainer}>
+                        <Text style={styles.distanceValue}>{place.distance}</Text>
+                        <Text style={styles.distanceUnit}>km</Text>
+                      </View>
+                    )}
                   </View>
 
-                  <View style={styles.hospitalInfo}>
-                    <Text style={styles.hospitalName} numberOfLines={2}>{place.name}</Text>
-                    <Text style={styles.hospitalType}>{getTypeLabel(place.type)}</Text>
-                    {place.address && (
-                      <Text style={styles.hospitalAddress} numberOfLines={2}>{place.address}</Text>
+                  <View style={styles.hospitalActions}>
+                    {place.phone && (
+                      <TouchableOpacity style={styles.hospitalActionCall} onPress={() => handleCall(place.phone)}>
+                        <Phone size={14} color={MedicalColors.white} />
+                        <Text style={styles.hospitalActionCallText}>Appeler</Text>
+                      </TouchableOpacity>
                     )}
-                    {place.openingHours && (
-                      <Text style={styles.openingHours} numberOfLines={1}>{place.openingHours}</Text>
-                    )}
-
-                    <View style={styles.hospitalBadges}>
-                      {place.is24h && (
-                        <View style={[styles.badge, styles.badge24h]}>
-                          <Clock size={10} color={MedicalColors.life} />
-                          <Text style={styles.badge24hText}>24h/24</Text>
-                        </View>
-                      )}
-                      {place.hasMaternity && (
-                        <View style={[styles.badge, styles.badgeMaternity]}>
-                          <Text style={styles.badgeMaternityText}>Maternité</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-
-                  {place.distance != null && (
-                    <View style={styles.distanceContainer}>
-                      <Text style={styles.distanceValue}>{place.distance}</Text>
-                      <Text style={styles.distanceUnit}>km</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.hospitalActions}>
-                  {place.phone && (
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleCall(place.phone)}>
-                      <Phone size={16} color={MedicalColors.white} />
-                      <Text style={styles.actionButtonText}>Appeler</Text>
+                    <TouchableOpacity
+                      style={[styles.hospitalActionNav, !place.phone && styles.hospitalActionNavFull]}
+                      onPress={() => handleOpenMaps(place)}
+                    >
+                      <Navigation size={14} color={MedicalColors.medical} />
+                      <Text style={styles.hospitalActionNavText}>Itinéraire</Text>
                     </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.actionButtonNav, !place.phone && styles.actionButtonNavFull]}
-                    onPress={() => handleOpenMaps(place)}
-                  >
-                    <Navigation size={16} color={MedicalColors.medical} />
-                    <Text style={styles.actionButtonNavText}>Itinéraire</Text>
-                  </TouchableOpacity>
-                </View>
-              </Surface>
+                  </View>
+                </Surface>
+              </TouchableOpacity>
             );
           })}
 
@@ -473,39 +564,15 @@ const styles = StyleSheet.create({
     color: MedicalColors.textSecondary,
     opacity: 0.7,
   },
-  headerSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: MedicalColors.white,
-    borderBottomColor: MedicalColors.border,
-    borderBottomWidth: 1,
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  locationText: {
-    fontSize: 13,
-    color: MedicalColors.textSecondary,
-    flex: 1,
-  },
-  sourceText: {
-    fontSize: 11,
-    color: MedicalColors.textSecondary,
-    opacity: 0.6,
-    marginTop: 4,
-    marginLeft: 26,
-  },
   filtersContainer: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: MedicalColors.white,
     borderBottomColor: MedicalColors.border,
     borderBottomWidth: 1,
   },
   filtersScroll: {
-    paddingHorizontal: 16,
-    gap: 8,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   filterChip: {
     backgroundColor: MedicalColors.background,
@@ -518,14 +585,15 @@ const styles = StyleSheet.create({
   },
   secondaryFilters: {
     flexDirection: "row",
-    paddingHorizontal: 16,
+    alignItems: "center",
+    paddingHorizontal: 12,
     marginTop: 8,
     gap: 8,
   },
   secondaryFilter: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: MedicalColors.background,
@@ -541,24 +609,181 @@ const styles = StyleSheet.create({
   secondaryFilterTextActive: {
     color: MedicalColors.white,
   },
-  resultsHeader: {
+  viewToggle: {
+    flexDirection: "row",
+    backgroundColor: MedicalColors.background,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  viewToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  viewToggleBtnActive: {
+    backgroundColor: MedicalColors.medical,
+  },
+  refreshBtn: {
+    marginLeft: "auto",
+    padding: 6,
+  },
+  mapContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  map: {
+    flex: 1,
+  },
+  mapErrorBanner: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    right: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    padding: 10,
+    backgroundColor: MedicalColors.urgencyLight,
+    borderRadius: 10,
   },
-  resultsText: {
-    fontSize: 14,
+  mapErrorText: {
+    fontSize: 12,
+    color: MedicalColors.urgencyDark,
+    flex: 1,
+  },
+  mapResultsBadge: {
+    position: "absolute",
+    top: 12,
+    alignSelf: "center",
+    backgroundColor: MedicalColors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapResultsText: {
+    fontSize: 12,
     fontWeight: "600" as const,
-    color: MedicalColors.textSecondary,
+    color: MedicalColors.text,
   },
-  refreshButton: {
-    padding: 6,
+  placeCard: {
+    position: "absolute",
+    bottom: 20,
+    left: 12,
+    right: 12,
+    backgroundColor: MedicalColors.white,
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  placeCardClose: {
+    position: "absolute",
+    top: 8,
+    right: 12,
+    zIndex: 10,
+    padding: 4,
+  },
+  placeCardCloseText: {
+    fontSize: 16,
+    color: MedicalColors.textSecondary,
+    fontWeight: "600" as const,
+  },
+  placeCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  placeCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeCardInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  placeCardName: {
+    fontSize: 15,
+    fontWeight: "700" as const,
+    color: MedicalColors.text,
+    paddingRight: 20,
+  },
+  placeCardType: {
+    fontSize: 12,
+    color: MedicalColors.textSecondary,
+    marginTop: 1,
+  },
+  placeCardAddress: {
+    fontSize: 11,
+    color: MedicalColors.textSecondary,
+    marginTop: 2,
+  },
+  placeCardBadges: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 4,
+  },
+  badge24h: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: MedicalColors.lifeLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 2,
+  },
+  badge24hText: {
+    fontSize: 10,
+    fontWeight: "600" as const,
+    color: MedicalColors.life,
+  },
+  placeCardActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  actionBtnCall: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    backgroundColor: MedicalColors.urgency,
+    borderRadius: 10,
+    gap: 6,
+  },
+  actionBtnCallText: {
+    color: MedicalColors.white,
+    fontWeight: "600" as const,
+    fontSize: 13,
+  },
+  actionBtnNav: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    backgroundColor: MedicalColors.medicalLight,
+    borderRadius: 10,
+    gap: 6,
+  },
+  actionBtnNavText: {
+    color: MedicalColors.medical,
+    fontWeight: "600" as const,
+    fontSize: 13,
   },
   listContainer: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingTop: 8,
   },
   errorBanner: {
     flexDirection: "row",
@@ -583,7 +808,7 @@ const styles = StyleSheet.create({
   hospitalCard: {
     backgroundColor: MedicalColors.white,
     borderRadius: 14,
-    marginBottom: 12,
+    marginBottom: 10,
     overflow: "hidden",
   },
   hospitalCardContent: {
@@ -592,8 +817,8 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   hospitalIcon: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -603,54 +828,41 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   hospitalName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700" as const,
     color: MedicalColors.text,
   },
   hospitalType: {
     fontSize: 12,
     color: MedicalColors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   hospitalAddress: {
-    fontSize: 13,
+    fontSize: 12,
     color: MedicalColors.textSecondary,
-    marginTop: 4,
-  },
-  openingHours: {
-    fontSize: 11,
-    color: MedicalColors.medical,
     marginTop: 3,
   },
   hospitalBadges: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    marginTop: 8,
+    gap: 4,
+    marginTop: 6,
   },
   badge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
     gap: 3,
   },
-  badge24h: {
+  badgeGreen: {
     backgroundColor: MedicalColors.lifeLight,
   },
-  badge24hText: {
-    fontSize: 11,
+  badgeGreenText: {
+    fontSize: 10,
     fontWeight: "600" as const,
     color: MedicalColors.life,
-  },
-  badgeMaternity: {
-    backgroundColor: MedicalColors.maternityLight,
-  },
-  badgeMaternityText: {
-    fontSize: 11,
-    fontWeight: "600" as const,
-    color: MedicalColors.maternity,
   },
   distanceContainer: {
     alignItems: "center",
@@ -671,36 +883,36 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: MedicalColors.border,
   },
-  actionButton: {
+  hospitalActionCall: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
+    paddingVertical: 9,
     backgroundColor: MedicalColors.urgency,
     gap: 6,
   },
-  actionButtonText: {
+  hospitalActionCallText: {
     color: MedicalColors.white,
     fontWeight: "600" as const,
-    fontSize: 14,
+    fontSize: 13,
   },
-  actionButtonNav: {
+  hospitalActionNav: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
+    paddingVertical: 9,
     backgroundColor: MedicalColors.medicalLight,
     gap: 6,
   },
-  actionButtonNavFull: {
+  hospitalActionNavFull: {
     flex: 2,
   },
-  actionButtonNavText: {
+  hospitalActionNavText: {
     color: MedicalColors.medical,
     fontWeight: "600" as const,
-    fontSize: 14,
+    fontSize: 13,
   },
   emptyContainer: {
     alignItems: "center",
