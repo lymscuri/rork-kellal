@@ -1,16 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
-import { Baby, Search, CheckCircle } from 'lucide-react-native';
-import type { User } from '@/store/authStore';
+import { Baby, Mail, Info } from 'lucide-react-native';
 
 export default function AddMaternityPatientScreen() {
   const router = useRouter();
-  const { user, findPatientByEmail } = useAuthStore();
+  const { user } = useAuthStore();
   const { addMaternityPatient } = useMedicalStore();
 
   const [firstName, setFirstName] = useState('');
@@ -22,8 +21,6 @@ export default function AddMaternityPatientScreen() {
   const [deliveryPlace, setDeliveryPlace] = useState('');
   const [referentDoctor, setReferentDoctor] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
-  const [linkedUser, setLinkedUser] = useState<User | null>(null);
-  const [searchingUser, setSearchingUser] = useState(false);
 
   const PREVIOUS_OPTIONS = ['Normales', 'Complications', 'Fausse couche', 'Césarienne'];
   const DELIVERY_OPTIONS = ['Maternité', 'Domicile assisté', 'Accoucheuse traditionnelle'];
@@ -31,29 +28,6 @@ export default function AddMaternityPatientScreen() {
   const togglePrevious = useCallback((opt: string) => {
     setPreviousPregnancies(prev => prev.includes(opt) ? prev.filter(p => p !== opt) : [...prev, opt]);
   }, []);
-
-  const handleSearchUser = useCallback(async () => {
-    if (!patientEmail.trim()) {
-      Alert.alert('Info', 'Entrez l\'email du compte patiente pour la lier');
-      return;
-    }
-    setSearchingUser(true);
-    try {
-      const found = await findPatientByEmail(patientEmail.trim());
-      if (found) {
-        setLinkedUser(found);
-        if (!firstName.trim()) setFirstName(found.firstName);
-        Alert.alert('Patiente trouvée', `Compte lié à ${found.firstName} ${found.lastName}`);
-      } else {
-        setLinkedUser(null);
-        Alert.alert('Non trouvé', 'Aucun compte patient trouvé avec cet email.');
-      }
-    } catch (e) {
-      console.error('[AddMaternity] Search user error:', e);
-    } finally {
-      setSearchingUser(false);
-    }
-  }, [patientEmail, findPatientByEmail, firstName]);
 
   const calculateDueDate = (ddr: string): string | undefined => {
     try {
@@ -91,6 +65,7 @@ export default function AddMaternityPatientScreen() {
 
     const dueDate = lastPeriodDate ? calculateDueDate(lastPeriodDate) : undefined;
     const currentWeek = lastPeriodDate ? calculateCurrentWeek(lastPeriodDate) : 0;
+    const emailToLink = patientEmail.trim() || undefined;
 
     addMaternityPatient(user?.id || '', {
       firstName: firstName.trim(),
@@ -104,12 +79,16 @@ export default function AddMaternityPatientScreen() {
       deliveryPlace: deliveryPlace || 'Maternité',
       referentDoctor: referentDoctor.trim() || undefined,
       isActive: true,
-    }, linkedUser?.id);
+    }, undefined, emailToLink);
 
-    Alert.alert('Succès', 'Patiente ajoutée avec succès', [
+    const message = emailToLink
+      ? `Patiente ajoutée avec succès.\n\nLe suivi sera automatiquement visible quand elle se connectera avec l'email : ${emailToLink}`
+      : 'Patiente ajoutée avec succès (sans liaison à un compte).';
+
+    Alert.alert('Succès', message, [
       { text: 'OK', onPress: () => router.back() },
     ]);
-  }, [firstName, age, lastPeriodDate, gravidity, parity, previousPregnancies, deliveryPlace, referentDoctor, addMaternityPatient, router, user, linkedUser]);
+  }, [firstName, age, lastPeriodDate, gravidity, parity, previousPregnancies, deliveryPlace, referentDoctor, addMaternityPatient, router, user, patientEmail]);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
@@ -123,33 +102,26 @@ export default function AddMaternityPatientScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lier à un compte patiente</Text>
-        <Text style={styles.linkDescription}>Si la patiente a un compte Keneya, entrez son email pour lier le suivi à son compte.</Text>
-        <View style={styles.linkRow}>
+        <View style={styles.infoBox}>
+          <Info size={16} color={MedicalColors.maternity} />
+          <Text style={styles.infoText}>
+            Entrez l'email de la patiente si elle a un compte Keneya. Le suivi sera automatiquement visible sur son téléphone. Le lien se fera même si elle crée son compte plus tard avec cet email.
+          </Text>
+        </View>
+        <View style={styles.emailRow}>
+          <Mail size={20} color={MedicalColors.textSecondary} style={styles.emailIcon} />
           <TextInput
-            label="Email de la patiente"
+            label="Email de la patiente (optionnel)"
             value={patientEmail}
-            onChangeText={(text) => { setPatientEmail(text); setLinkedUser(null); }}
+            onChangeText={setPatientEmail}
             mode="outlined"
-            style={styles.linkInput}
+            style={styles.emailInput}
             keyboardType="email-address"
             autoCapitalize="none"
             outlineColor={MedicalColors.border}
             activeOutlineColor={MedicalColors.maternity}
           />
-          <TouchableOpacity style={styles.linkBtn} onPress={handleSearchUser} disabled={searchingUser}>
-            {searchingUser ? (
-              <ActivityIndicator size="small" color={MedicalColors.white} />
-            ) : (
-              <Search size={20} color={MedicalColors.white} />
-            )}
-          </TouchableOpacity>
         </View>
-        {linkedUser && (
-          <View style={styles.linkedBadge}>
-            <CheckCircle size={16} color={MedicalColors.life} />
-            <Text style={styles.linkedText}>Liée à : {linkedUser.firstName} {linkedUser.lastName} ({linkedUser.email})</Text>
-          </View>
-        )}
       </View>
 
       <View style={styles.section}>
@@ -226,10 +198,9 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: MedicalColors.maternity },
   saveBtn: { borderRadius: 10, marginTop: 8 },
   saveBtnContent: { paddingVertical: 10 },
-  linkDescription: { fontSize: 12, color: MedicalColors.textSecondary, marginBottom: 12, lineHeight: 17 },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  linkInput: { flex: 1, backgroundColor: MedicalColors.white },
-  linkBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: MedicalColors.maternity, justifyContent: 'center', alignItems: 'center' },
-  linkedBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: MedicalColors.lifeLight, borderRadius: 8, padding: 10, marginTop: 10 },
-  linkedText: { fontSize: 12, color: MedicalColors.life, fontWeight: '600' as const, flex: 1 },
+  infoBox: { flexDirection: 'row', backgroundColor: '#F3E5F5', borderRadius: 10, padding: 12, marginBottom: 14, gap: 10, alignItems: 'flex-start' },
+  infoText: { fontSize: 12, color: MedicalColors.text, lineHeight: 18, flex: 1 },
+  emailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  emailIcon: { marginTop: 8 },
+  emailInput: { flex: 1, backgroundColor: MedicalColors.white },
 });

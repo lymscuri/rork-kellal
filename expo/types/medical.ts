@@ -176,6 +176,7 @@ export interface VaccineRecord {
 export interface PatientRecord {
   id: string;
   userId?: string;
+  linkedEmail?: string;
   identity: PatientIdentity;
   criticalInfo: CriticalInfo;
   personalHistory: PersonalHistory;
@@ -289,6 +290,7 @@ export interface PEVVaccine {
 export interface MaternityPatient {
   id: string;
   userId?: string;
+  linkedEmail?: string;
   pregnancy: Pregnancy;
   weeklyCheckups: WeeklyCheckup[];
   prenatalConsultations: PrenatalConsultation[];

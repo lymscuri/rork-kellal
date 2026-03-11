@@ -60,11 +60,13 @@ interface MedicalStore {
   maternityPatients: MaternityPatient[];
   smsReminders: SmsReminder[];
 
-  addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string) => string;
+  addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => string;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
   getPatientByDossierNumber: (dossierNumber: string) => PatientRecord | undefined;
   getPatientByUserId: (userId: string) => PatientRecord | undefined;
+  getPatientByEmail: (email: string) => PatientRecord | undefined;
+  autoLinkPatientByEmail: (email: string, userId: string) => PatientRecord | null;
   updatePatientIdentity: (patientId: string, identity: Partial<PatientIdentity>) => void;
   updateCriticalInfo: (patientId: string, info: Partial<CriticalInfo>) => void;
   updatePersonalHistory: (patientId: string, history: Partial<PersonalHistory>) => void;
@@ -78,13 +80,16 @@ interface MedicalStore {
   linkPatientToUser: (patientId: string, userId: string) => void;
 
   getMyRecord: (userId: string) => PatientRecord | undefined;
+  getMyRecordByEmail: (email: string) => PatientRecord | undefined;
   getMyPrescriptions: (userId: string) => { consultation: ConsultationRecord; prescriptions: PrescriptionItem[] }[];
   getQRCodeData: (userId: string) => string;
 
-  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string) => string;
+  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string, linkedEmail?: string) => string;
   getMaternityPatientsByDoctor: (doctorId: string) => MaternityPatient[];
   getMyMaternityData: (patientId: string) => MaternityPatient | undefined;
   getMyMaternityDataByUserId: (userId: string) => MaternityPatient | undefined;
+  getMyMaternityDataByEmail: (email: string) => MaternityPatient | undefined;
+  autoLinkMaternityByEmail: (email: string, userId: string) => MaternityPatient | null;
   linkMaternityToUser: (maternityId: string, userId: string) => void;
   addWeeklyCheckup: (patientId: string, checkup: Omit<WeeklyCheckup, 'id' | 'pregnancyId'>) => void;
   markPrenatalConsultationDone: (patientId: string, consultationId: string, date: string, notes?: string) => void;
@@ -105,12 +110,13 @@ export const useMedicalStore = create<MedicalStore>()(
       maternityPatients: [],
       smsReminders: [],
 
-      addPatient: (doctorId, identity, userId) => {
+      addPatient: (doctorId, identity, userId, linkedEmail) => {
         const id = genId();
         const dossierNumber = identity.dossierNumber || `KNY-${new Date().getFullYear()}-${Math.floor(Math.random() * 99999).toString().padStart(5, '0')}`;
         const newPatient: PatientRecord = {
           id,
           userId,
+          linkedEmail: linkedEmail?.toLowerCase(),
           identity: {
             firstName: identity.firstName || '',
             lastName: identity.lastName || '',
@@ -156,7 +162,7 @@ export const useMedicalStore = create<MedicalStore>()(
           updatedAt: new Date().toISOString(),
         };
         set((state) => ({ patients: [...state.patients, newPatient] }));
-        console.log('[MedicalStore] Patient added:', id, dossierNumber, 'linked to userId:', userId);
+        console.log('[MedicalStore] Patient added:', id, dossierNumber, 'linked to userId:', userId, 'linkedEmail:', linkedEmail);
         return id;
       },
 
@@ -174,6 +180,33 @@ export const useMedicalStore = create<MedicalStore>()(
 
       getPatientByUserId: (userId) => {
         return get().patients.find(p => p.userId === userId);
+      },
+
+      getPatientByEmail: (email) => {
+        const lower = email.toLowerCase();
+        return get().patients.find(p => p.linkedEmail === lower);
+      },
+
+      autoLinkPatientByEmail: (email, userId) => {
+        const lower = email.toLowerCase();
+        const patient = get().patients.find(p => p.linkedEmail === lower && !p.userId);
+        if (patient) {
+          set((state) => ({
+            patients: state.patients.map(p =>
+              p.id === patient.id
+                ? { ...p, userId, updatedAt: new Date().toISOString() }
+                : p
+            ),
+          }));
+          console.log('[MedicalStore] Auto-linked patient', patient.id, 'to user', userId, 'via email', email);
+          return patient;
+        }
+        const alreadyLinked = get().patients.find(p => p.linkedEmail === lower && p.userId === userId);
+        if (alreadyLinked) {
+          console.log('[MedicalStore] Patient already linked to this user');
+          return alreadyLinked;
+        }
+        return null;
       },
 
       updatePatientIdentity: (patientId, identity) => {
@@ -327,9 +360,15 @@ export const useMedicalStore = create<MedicalStore>()(
           get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
       },
 
+      getMyRecordByEmail: (email) => {
+        const lower = email.toLowerCase();
+        return get().patients.find(p => p.linkedEmail === lower);
+      },
+
       getMyPrescriptions: (userId) => {
         const patient = get().patients.find(p => p.userId === userId) ||
-          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
+          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId) ||
+          get().patients.find(p => p.linkedEmail === userId);
         if (!patient) return [];
         return patient.consultations
           .filter(c => c.prescriptions.length > 0)
@@ -338,7 +377,8 @@ export const useMedicalStore = create<MedicalStore>()(
 
       getQRCodeData: (userId) => {
         const patient = get().patients.find(p => p.userId === userId) ||
-          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId);
+          get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId) ||
+          get().patients.find(p => p.linkedEmail === userId);
         if (!patient) return JSON.stringify({ error: 'Patient non trouvé' });
         return JSON.stringify({
           dossierNumber: patient.identity.dossierNumber,
@@ -360,7 +400,7 @@ export const useMedicalStore = create<MedicalStore>()(
         });
       },
 
-      addMaternityPatient: (soignantId, pregnancy, userId) => {
+      addMaternityPatient: (soignantId, pregnancy, userId, linkedEmail) => {
         const id = genId();
         const pregnancyId = genId();
         const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
@@ -372,6 +412,7 @@ export const useMedicalStore = create<MedicalStore>()(
         const newPatient: MaternityPatient = {
           id,
           userId,
+          linkedEmail: linkedEmail?.toLowerCase(),
           pregnancy: { ...pregnancy, id: pregnancyId, patientId: id },
           weeklyCheckups: [],
           prenatalConsultations: consultations,
@@ -397,6 +438,27 @@ export const useMedicalStore = create<MedicalStore>()(
 
       getMyMaternityDataByUserId: (userId) => {
         return get().maternityPatients.find(p => p.userId === userId);
+      },
+
+      getMyMaternityDataByEmail: (email) => {
+        const lower = email.toLowerCase();
+        return get().maternityPatients.find(p => p.linkedEmail === lower);
+      },
+
+      autoLinkMaternityByEmail: (email, userId) => {
+        const lower = email.toLowerCase();
+        const patient = get().maternityPatients.find(p => p.linkedEmail === lower && !p.userId);
+        if (patient) {
+          set((state) => ({
+            maternityPatients: state.maternityPatients.map(p =>
+              p.id === patient.id ? { ...p, userId } : p
+            ),
+          }));
+          console.log('[MedicalStore] Auto-linked maternity', patient.id, 'to user', userId);
+          return patient;
+        }
+        const alreadyLinked = get().maternityPatients.find(p => p.linkedEmail === lower && p.userId === userId);
+        return alreadyLinked || null;
       },
 
       linkMaternityToUser: (maternityId, userId) => {

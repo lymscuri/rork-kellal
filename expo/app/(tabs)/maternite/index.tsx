@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,11 +16,31 @@ function PatientView() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { maternityPatients } = useMedicalStore();
+  const autoLinkMaternityByEmail = useMedicalStore((s) => s.autoLinkMaternityByEmail);
+  const getMyMaternityDataByEmail = useMedicalStore((s) => s.getMyMaternityDataByEmail);
+
+  useEffect(() => {
+    if (!user) return;
+    const byId = maternityPatients.find(p => p.userId === user.id);
+    if (!byId && user.email) {
+      console.log('[MaternityPatientView] No data by userId, trying auto-link by email:', user.email);
+      const linked = autoLinkMaternityByEmail(user.email, user.id);
+      if (linked) {
+        console.log('[MaternityPatientView] Auto-linked maternity record:', linked.id);
+      }
+    }
+  }, [user, maternityPatients, autoLinkMaternityByEmail]);
 
   const myData = useMemo(() => {
     if (!user) return null;
-    return maternityPatients.find(p => p.userId === user.id) || null;
-  }, [maternityPatients, user]);
+    const byId = maternityPatients.find(p => p.userId === user.id);
+    if (byId) return byId;
+    if (user.email) {
+      const byEmail = getMyMaternityDataByEmail(user.email);
+      if (byEmail) return byEmail;
+    }
+    return null;
+  }, [maternityPatients, user, getMyMaternityDataByEmail]);
 
   const pregnancy = myData?.pregnancy;
   const progressPercent = pregnancy ? Math.min((pregnancy.currentWeek / 40) * 100, 100) : 0;

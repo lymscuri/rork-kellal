@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, TextInput as RNTextInput, Alert } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -189,15 +189,42 @@ function PatientDashboard() {
   const { user, logout } = useAuthStore();
   const allPatients = useMedicalStore((s) => s.patients);
   const getMyRecord = useMedicalStore((s) => s.getMyRecord);
+  const getMyRecordByEmail = useMedicalStore((s) => s.getMyRecordByEmail);
+  const autoLinkPatientByEmail = useMedicalStore((s) => s.autoLinkPatientByEmail);
   const getMyPrescriptions = useMedicalStore((s) => s.getMyPrescriptions);
+
+  useEffect(() => {
+    if (!user) return;
+    const byId = getMyRecord(user.id);
+    if (!byId && user.email) {
+      console.log('[PatientDashboard] No record by userId, trying auto-link by email:', user.email);
+      const linked = autoLinkPatientByEmail(user.email, user.id);
+      if (linked) {
+        console.log('[PatientDashboard] Auto-linked patient record:', linked.id);
+      } else {
+        console.log('[PatientDashboard] No record found by email either');
+      }
+    }
+  }, [user, allPatients, getMyRecord, autoLinkPatientByEmail]);
 
   const record = useMemo(() => {
     if (!user) return null;
-    console.log('[PatientDashboard] Looking for record with userId:', user.id, 'total patients:', allPatients.length);
-    const found = getMyRecord(user.id);
-    console.log('[PatientDashboard] Found record:', found ? found.id : 'none');
-    return found;
-  }, [user, allPatients, getMyRecord]);
+    console.log('[PatientDashboard] Looking for record with userId:', user.id, 'email:', user.email, 'total patients:', allPatients.length);
+    const byId = getMyRecord(user.id);
+    if (byId) {
+      console.log('[PatientDashboard] Found record by userId:', byId.id);
+      return byId;
+    }
+    if (user.email) {
+      const byEmail = getMyRecordByEmail(user.email);
+      if (byEmail) {
+        console.log('[PatientDashboard] Found record by email:', byEmail.id);
+        return byEmail;
+      }
+    }
+    console.log('[PatientDashboard] No record found');
+    return null;
+  }, [user, allPatients, getMyRecord, getMyRecordByEmail]);
 
   const prescriptions = useMemo(
     () => {
