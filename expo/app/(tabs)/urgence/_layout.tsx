@@ -26,6 +26,7 @@ export default function UrgenceLayout() {
         name="chat"
         options={{
           title: "Assistant IA",
+          headerShown: false,
           presentation: "modal",
         }}
       />

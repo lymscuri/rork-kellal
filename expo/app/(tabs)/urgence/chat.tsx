@@ -1,7 +1,7 @@
 import { generateText } from '@rork-ai/toolkit-sdk';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
 import { Send, Phone, ChevronLeft } from 'lucide-react-native';
@@ -42,8 +42,6 @@ export default function EmergencyChatScreen() {
 
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || isSending) return;
-
-    Keyboard.dismiss();
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -138,7 +136,7 @@ export default function EmergencyChatScreen() {
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 30}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={flatListRef}
