@@ -90,7 +90,7 @@ function PatientView() {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/weekly-checkup' as never)}>
+              <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/weekly-checkup')}>
                 <View style={[styles.menuIcon, { backgroundColor: '#FCE4EC' }]}>
                   <Heart size={22} color="#E91E63" />
                 </View>
@@ -101,7 +101,7 @@ function PatientView() {
                 <ChevronRight size={20} color={MedicalColors.textSecondary} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/prenatal-calendar' as never)}>
+              <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/prenatal-calendar')}>
                 <View style={[styles.menuIcon, { backgroundColor: MedicalColors.maternityLight }]}>
                   <Calendar size={22} color={MedicalColors.maternity} />
                 </View>
@@ -115,7 +115,7 @@ function PatientView() {
           )}
 
           {myData && myData.children.length > 0 && (
-            <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/child-tracking' as never)}>
+            <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/child-tracking')}>
               <View style={[styles.menuIcon, { backgroundColor: '#E8F5E9' }]}>
                 <Baby size={22} color={MedicalColors.life} />
               </View>
@@ -189,7 +189,7 @@ function SoignantView() {
   const renderPatient = useCallback(({ item }: { item: MaternityPatient }) => (
     <TouchableOpacity
       style={styles.patientCard}
-      onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier' as never, params: { patientId: item.id } })}
+      onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier', params: { patientId: item.id } })}
     >
       <View style={[styles.alertDot, { backgroundColor: getAlertColor(item.alertLevel) }]} />
       <View style={styles.patientInfo}>
@@ -230,15 +230,15 @@ function SoignantView() {
       </View>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.maternity }]} onPress={() => router.push('/(tabs)/maternite/add-maternity-patient' as never)}>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.maternity }]} onPress={() => router.push('/(tabs)/maternite/add-maternity-patient')}>
           <Plus size={16} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>Patiente</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.dark }]} onPress={() => router.push('/(tabs)/maternite/soignant-dashboard' as never)}>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.dark }]} onPress={() => router.push('/(tabs)/maternite/soignant-dashboard')}>
           <BarChart3 size={16} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>Tableau</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.life }]} onPress={() => router.push('/(tabs)/maternite/sms-system' as never)}>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: MedicalColors.life }]} onPress={() => router.push('/(tabs)/maternite/sms-system')}>
           <MessageSquare size={16} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>SMS</Text>
         </TouchableOpacity>

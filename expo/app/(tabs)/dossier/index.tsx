@@ -154,7 +154,7 @@ function DoctorDashboard() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: MedicalColors.life }]}
-          onPress={() => router.push('/(tabs)/dossier/doctor-reports' as never)}
+          onPress={() => router.push('/(tabs)/dossier/doctor-reports')}
         >
           <FileText size={18} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>Rapports</Text>

@@ -12,10 +12,13 @@ export default function PrescriptionsScreen() {
   const { getMyPrescriptions } = useMedicalStore();
   const [fullscreenPresc, setFullscreenPresc] = useState<{ consultation: ConsultationRecord; prescriptions: PrescriptionItem[] } | null>(null);
 
+  const allPatients = useMedicalStore((s) => s.patients);
+
   const prescriptions = useMemo(() => {
     if (!user) return [];
     return getMyPrescriptions(user.id);
-  }, [user, getMyPrescriptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, allPatients, getMyPrescriptions]);
 
   const renderItem = ({ item }: { item: { consultation: ConsultationRecord; prescriptions: PrescriptionItem[] } }) => (
     <View style={styles.card}>

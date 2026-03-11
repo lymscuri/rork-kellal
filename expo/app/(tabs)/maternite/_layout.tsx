@@ -17,7 +17,7 @@ export default function MaterniteLayout() {
       <Stack.Screen name="child-tracking" options={{ title: "Suivi pédiatrique" }} />
       <Stack.Screen name="patient-dossier" options={{ title: "Dossier prénatal" }} />
       <Stack.Screen name="soignant-dashboard" options={{ title: "Tableau de bord" }} />
-      <Stack.Screen name="sms-system" options={{ title: "SMS / Voix" }} />
+      <Stack.Screen name="sms-system" options={{ title: "SMS Rappels" }} />
       <Stack.Screen name="add-maternity-patient" options={{ title: "Nouvelle patiente" }} />
     </Stack>
   );

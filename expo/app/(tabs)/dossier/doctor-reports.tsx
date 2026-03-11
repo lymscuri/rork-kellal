@@ -9,16 +9,19 @@ import { BarChart3, Users, Calendar, AlertTriangle, TrendingUp } from 'lucide-re
 export default function DoctorReportsScreen() {
   const { user } = useAuthStore();
   const { getPatientsByDoctor, getDoctorStats } = useMedicalStore();
+  const allPatients = useMedicalStore((s) => s.patients);
 
   const stats = useMemo(() => {
     if (!user) return { totalPatients: 0, monthConsultations: 0, monthPrescriptions: 0, patientsFollowed: 0 };
     return getDoctorStats(user.id);
-  }, [user, getDoctorStats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, allPatients, getDoctorStats]);
 
   const patients = useMemo(() => {
     if (!user) return [];
     return getPatientsByDoctor(user.id);
-  }, [user, getPatientsByDoctor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, allPatients, getPatientsByDoctor]);
 
   const latePatients = useMemo(() => {
     return patients.filter(p => {

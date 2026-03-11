@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
@@ -34,10 +34,9 @@ export default function SmsSystemScreen() {
     if (isGroup) {
       let count = 0;
       maternityPatients.forEach(p => {
-        const phone = p.pregnancy.firstName;
         addSmsReminder({
           type: 'custom',
-          targetPhone: phone,
+          targetPhone: targetPhone.trim() || 'groupe',
           language,
           method: 'sms',
           message: message.trim(),
@@ -47,7 +46,7 @@ export default function SmsSystemScreen() {
         });
         count++;
       });
-      Alert.alert('Envoyé', `Rappel envoyé à ${count} patiente(s)`);
+      Alert.alert('Envoyé', `SMS envoyé à ${count} patiente(s)`);
     } else {
       addSmsReminder({
         type: 'custom',
@@ -65,6 +64,12 @@ export default function SmsSystemScreen() {
     setTargetPhone('');
     setMessage('');
   }, [targetPhone, message, language, isGroup, maternityPatients, addSmsReminder]);
+
+  const sortedReminders = useMemo(() => {
+    return [...smsReminders].sort((a, b) => 
+      new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime()
+    );
+  }, [smsReminders]);
 
   const getStatusIcon = (status: string) => {
     if (status === 'sent') return <CheckCircle size={16} color={MedicalColors.life} />;
@@ -192,13 +197,13 @@ export default function SmsSystemScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Historique des messages</Text>
-        {smsReminders.length === 0 ? (
+        {sortedReminders.length === 0 ? (
           <View style={styles.emptyHistory}>
             <MessageSquare size={32} color={MedicalColors.border} />
             <Text style={styles.emptyHistoryText}>Aucun message envoyé</Text>
           </View>
         ) : (
-          smsReminders.slice(0, 20).map(r => (
+          sortedReminders.slice(0, 20).map(r => (
             <View key={r.id} style={styles.historyCard}>
               <View style={styles.historyHeader}>
                 {getStatusIcon(r.status)}
