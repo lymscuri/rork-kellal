@@ -1,6 +1,7 @@
 import { AppStorage } from './storage';
 import { create } from 'zustand';
 
+export type UserRole = 'medecin' | 'patient';
 
 export interface User {
   id: string;
@@ -8,6 +9,8 @@ export interface User {
   firstName: string;
   lastName: string;
   phone?: string;
+  role: UserRole;
+  dossierNumber?: string;
 }
 
 interface AuthStore {
@@ -32,12 +35,19 @@ export interface SignupData {
   firstName: string;
   lastName: string;
   phone?: string;
+  role: UserRole;
 }
 
 const USERS_KEY = 'santeconnect-users';
 const AUTH_KEY = 'santeconnect-auth';
 
-async function getStoredUsers(): Promise<Array<SignupData & { id: string }>> {
+function generateDossierNumber(): string {
+  const year = new Date().getFullYear();
+  const seq = Math.floor(Math.random() * 99999).toString().padStart(5, '0');
+  return `SNC-${year}-${seq}`;
+}
+
+async function getStoredUsers(): Promise<Array<SignupData & { id: string; dossierNumber?: string }>> {
   try {
     const raw = await AppStorage.getItem(USERS_KEY);
     if (raw) {
@@ -49,7 +59,7 @@ async function getStoredUsers(): Promise<Array<SignupData & { id: string }>> {
   return [];
 }
 
-async function saveUsers(users: Array<SignupData & { id: string }>): Promise<void> {
+async function saveUsers(users: Array<SignupData & { id: string; dossierNumber?: string }>): Promise<void> {
   try {
     await AppStorage.setItem(USERS_KEY, JSON.stringify(users));
   } catch (e) {
@@ -118,8 +128,10 @@ export const useAuthStore = create<AuthStore>()(
             firstName: foundUser.firstName,
             lastName: foundUser.lastName,
             phone: foundUser.phone,
+            role: foundUser.role ?? 'patient',
+            dossierNumber: foundUser.dossierNumber,
           };
-          console.log('[Auth] Login successful for:', user.email);
+          console.log('[Auth] Login successful for:', user.email, 'role:', user.role);
           await saveAuthState(user, true);
           set({ user, isAuthenticated: true, isLoading: false, error: null });
           return true;
@@ -138,7 +150,7 @@ export const useAuthStore = create<AuthStore>()(
     signup: async (userData: SignupData) => {
       set({ isLoading: true, error: null });
       try {
-        console.log('[Auth] Attempting signup for:', userData.email);
+        console.log('[Auth] Attempting signup for:', userData.email, 'role:', userData.role);
         
         const users = await getStoredUsers();
         console.log('[Auth] Existing users count:', users.length);
@@ -148,9 +160,12 @@ export const useAuthStore = create<AuthStore>()(
           return false;
         }
         
+        const dossierNumber = userData.role === 'patient' ? generateDossierNumber() : undefined;
+        
         const newUser = {
           ...userData,
           id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
+          dossierNumber,
         };
         
         users.push(newUser);
@@ -163,6 +178,8 @@ export const useAuthStore = create<AuthStore>()(
           firstName: newUser.firstName,
           lastName: newUser.lastName,
           phone: newUser.phone,
+          role: newUser.role,
+          dossierNumber: newUser.dossierNumber,
         };
         
         await saveAuthState(user, true);

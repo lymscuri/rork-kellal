@@ -6,52 +6,19 @@ export default function MaterniteLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: {
-          backgroundColor: MedicalColors.maternity,
-        },
+        headerStyle: { backgroundColor: MedicalColors.maternity },
         headerTintColor: MedicalColors.white,
-        headerTitleStyle: {
-          fontWeight: "bold",
-        },
+        headerTitleStyle: { fontWeight: "bold" },
       }}
     >
-      <Stack.Screen
-        name="index"
-        options={{
-          title: "Santé Maternelle",
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="vaccinations"
-        options={{
-          title: "Vaccinations",
-        }}
-      />
-      <Stack.Screen
-        name="reminders"
-        options={{
-          title: "Rappels SMS/Voix",
-        }}
-      />
-      <Stack.Screen
-        name="reports"
-        options={{
-          title: "Rapports",
-        }}
-      />
-      <Stack.Screen
-        name="communication"
-        options={{
-          title: "Messages",
-        }}
-      />
-      <Stack.Screen
-        name="child-details"
-        options={{
-          title: "Détails enfant",
-        }}
-      />
+      <Stack.Screen name="index" options={{ title: "Santé Maternelle", headerShown: false }} />
+      <Stack.Screen name="weekly-checkup" options={{ title: "Suivi hebdomadaire" }} />
+      <Stack.Screen name="prenatal-calendar" options={{ title: "Calendrier prénatal" }} />
+      <Stack.Screen name="child-tracking" options={{ title: "Suivi pédiatrique" }} />
+      <Stack.Screen name="patient-dossier" options={{ title: "Dossier prénatal" }} />
+      <Stack.Screen name="soignant-dashboard" options={{ title: "Tableau de bord" }} />
+      <Stack.Screen name="sms-system" options={{ title: "SMS / Voix" }} />
+      <Stack.Screen name="add-maternity-patient" options={{ title: "Nouvelle patiente" }} />
     </Stack>
   );
 }

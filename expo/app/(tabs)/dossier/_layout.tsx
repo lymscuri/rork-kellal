@@ -6,55 +6,19 @@ export default function DossierLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: {
-          backgroundColor: MedicalColors.white,
-        },
-        headerTintColor: MedicalColors.medical,
-        headerTitleStyle: {
-          fontWeight: "bold",
-        },
-        headerShadowVisible: false,
+        headerStyle: { backgroundColor: MedicalColors.medical },
+        headerTintColor: MedicalColors.white,
+        headerTitleStyle: { fontWeight: "bold" },
       }}
     >
-      <Stack.Screen
-        name="index"
-        options={{
-          title: "Mon Dossier",
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="consultations"
-        options={{
-          title: "Consultations",
-        }}
-      />
-      <Stack.Screen
-        name="add-record"
-        options={{
-          title: "Nouveau",
-          presentation: "modal",
-        }}
-      />
-      <Stack.Screen
-        name="lab-results"
-        options={{
-          title: "Analyses",
-        }}
-      />
-      <Stack.Screen
-        name="share"
-        options={{
-          title: "Partager",
-          presentation: "modal",
-        }}
-      />
-      <Stack.Screen
-        name="profile-edit"
-        options={{
-          title: "Mon Profil",
-        }}
-      />
+      <Stack.Screen name="index" options={{ title: "Mon Dossier", headerShown: false }} />
+      <Stack.Screen name="patient-record" options={{ title: "Dossier Patient" }} />
+      <Stack.Screen name="new-consultation" options={{ title: "Nouvelle Consultation" }} />
+      <Stack.Screen name="add-patient" options={{ title: "Nouveau Patient" }} />
+      <Stack.Screen name="my-qrcode" options={{ title: "Mon QR Code" }} />
+      <Stack.Screen name="prescriptions" options={{ title: "Mes Ordonnances" }} />
+      <Stack.Screen name="scanner" options={{ title: "Scanner QR", presentation: "modal" }} />
+      <Stack.Screen name="doctor-reports" options={{ title: "Rapports" }} />
     </Stack>
   );
 }

@@ -1,670 +1,598 @@
-import { useCallback, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from 'react';
+import { View, StyleSheet, FlatList, TouchableOpacity, TextInput as RNTextInput, Alert } from 'react-native';
+import { Text } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { MedicalColors } from '@/constants/colors';
+import { useAuthStore } from '@/store/authStore';
+import { useMedicalStore } from '@/store/medicalStore';
 import {
-  ScrollView,
-  Share,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { MedicalColors } from "@/constants/colors";
-import { useMedicalStore } from "@/store/medicalStore";
-import { useAuthStore } from "@/store/authStore";
-import { useRouter } from "expo-router";
-import {
-  Activity,
-  Calendar,
-  ChevronRight,
-  ClipboardList,
-  Droplet,
-  FileText,
-  FlaskConical,
-  Heart,
-  LogOut,
-  Pill,
-  Plus,
-  Share2,
-  Shield,
-  Stethoscope,
-  UserCircle,
-  Users,
-} from "lucide-react-native";
+  Search, Plus, QrCode, Users, Calendar, FileText, ClipboardList,
+  AlertCircle, ChevronRight, Activity, LogOut, ScanLine
+} from 'lucide-react-native';
+import type { PatientRecord } from '@/types/medical';
 
-export default function DossierDashboard() {
+function DoctorDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const {
-    medicalProfile,
-    consultations,
-    labResults,
-    documents,
-    sharedAccess,
-  } = useMedicalStore();
+  const { getPatientsByDoctor, getDoctorStats } = useMedicalStore();
+  const [search, setSearch] = useState('');
+
+  const patients = useMemo(() => {
+    if (!user) return [];
+    return getPatientsByDoctor(user.id);
+  }, [user, getPatientsByDoctor]);
+
+  const stats = useMemo(() => {
+    if (!user) return { totalPatients: 0, monthConsultations: 0, monthPrescriptions: 0, patientsFollowed: 0 };
+    return getDoctorStats(user.id);
+  }, [user, getDoctorStats]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return patients;
+    const q = search.toLowerCase();
+    return patients.filter(p =>
+      p.identity.firstName.toLowerCase().includes(q) ||
+      p.identity.lastName.toLowerCase().includes(q) ||
+      p.identity.dossierNumber.toLowerCase().includes(q)
+    );
+  }, [patients, search]);
+
+  const getAlertLevel = useCallback((patient: PatientRecord) => {
+    if (patient.consultations.length === 0) return 'none';
+    const last = patient.consultations[0];
+    if (last.vitalSigns.systolicBP && last.vitalSigns.systolicBP >= 140) return 'red';
+    const lastDate = new Date(last.date);
+    const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince > 90) return 'yellow';
+    return 'green';
+  }, []);
+
+  const renderPatient = useCallback(({ item }: { item: PatientRecord }) => {
+    const alert = getAlertLevel(item);
+    return (
+      <TouchableOpacity
+        style={styles.patientCard}
+        onPress={() => router.push({ pathname: '/(tabs)/dossier/patient-record', params: { patientId: item.id } })}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.patientAvatar, { backgroundColor: alert === 'red' ? '#FFEBEE' : alert === 'yellow' ? '#FFF8E1' : MedicalColors.medicalLight }]}>
+          <Text style={[styles.avatarText, { color: alert === 'red' ? MedicalColors.urgency : alert === 'yellow' ? '#F57F17' : MedicalColors.medical }]}>
+            {item.identity.firstName.charAt(0)}{item.identity.lastName.charAt(0)}
+          </Text>
+          {alert === 'red' && <View style={styles.alertDotRed} />}
+          {alert === 'yellow' && <View style={styles.alertDotYellow} />}
+        </View>
+        <View style={styles.patientInfo}>
+          <Text style={styles.patientName}>{item.identity.lastName} {item.identity.firstName}</Text>
+          <Text style={styles.patientDossier}>{item.identity.dossierNumber}</Text>
+          {item.consultations.length > 0 && (
+            <Text style={styles.patientLastVisit}>
+              Dernière visite : {new Date(item.consultations[0].date).toLocaleDateString('fr-FR')}
+            </Text>
+          )}
+        </View>
+        <ChevronRight size={20} color={MedicalColors.textSecondary} />
+      </TouchableOpacity>
+    );
+  }, [getAlertLevel, router]);
 
   const handleLogout = useCallback(() => {
-    logout();
-    router.replace("/auth/login");
-  }, [logout, router]);
-
-  const _handleShare = useCallback(async () => {
-    try {
-      const summary = `Dossier médical - ${user?.firstName ?? ""} ${user?.lastName ?? ""}\nGroupe sanguin: ${medicalProfile.bloodGroup ?? "Non renseigné"}\nAllergies: ${medicalProfile.allergies.length}\nTraitements: ${medicalProfile.medications.length}`;
-      await Share.share({ message: summary, title: "Mon dossier médical" });
-    } catch (e) {
-      console.error("Share error:", e);
-    }
-  }, [user, medicalProfile]);
-
-  const recentActivity = useMemo(() => {
-    const items: Array<{ id: string; date: string; type: string; title: string; subtitle: string }> = [];
-
-    consultations.slice(0, 3).forEach((c) => {
-      items.push({
-        id: `c-${c.id}`,
-        date: c.date,
-        type: "consultation",
-        title: c.diagnosis,
-        subtitle: `Dr. ${c.doctorName} - ${c.specialty}`,
-      });
-    });
-
-    labResults.slice(0, 3).forEach((r) => {
-      items.push({
-        id: `l-${r.id}`,
-        date: r.date,
-        type: "analyse",
-        title: r.testName,
-        subtitle: r.result,
-      });
-    });
-
-    return items
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 5);
-  }, [consultations, labResults]);
-
-  const stats = useMemo(() => ({
-    consultations: consultations.length,
-    labResults: labResults.length,
-    medications: medicalProfile.medications.length,
-    documents: documents.length,
-    sharedWith: sharedAccess.filter((a) => a.isActive).length,
-  }), [consultations, labResults, medicalProfile.medications, documents, sharedAccess]);
-
-  const formatDate = useCallback((dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-    } catch {
-      return dateStr;
-    }
-  }, []);
-
-  const getActivityIcon = useCallback((type: string) => {
-    switch (type) {
-      case "consultation":
-        return <Stethoscope size={16} color={MedicalColors.medical} />;
-      case "analyse":
-        return <FlaskConical size={16} color="#E67E22" />;
-      default:
-        return <FileText size={16} color={MedicalColors.textSecondary} />;
-    }
-  }, []);
+    Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Déconnexion', style: 'destructive', onPress: () => logout() },
+    ]);
+  }, [logout]);
 
   return (
-    <View style={styles.root}>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatar}>
-              <UserCircle size={28} color={MedicalColors.white} />
-            </View>
-            <View>
-              <Text style={styles.greeting}>Bonjour,</Text>
-              <Text style={styles.userName}>
-                {user?.firstName ?? "Patient"} {user?.lastName ?? ""}
-              </Text>
-            </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.headerDoc}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.greeting}>Bonjour, Dr.</Text>
+            <Text style={styles.doctorName}>{user?.lastName} {user?.firstName}</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.headerBtn}
-              onPress={() => router.push("/(tabs)/dossier/share" as never)}
-            >
-              <Share2 size={20} color={MedicalColors.medical} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerBtnLogout} onPress={handleLogout}>
-              <LogOut size={20} color={MedicalColors.urgency} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+            <LogOut size={20} color={MedicalColors.white} />
+          </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Users size={18} color={MedicalColors.medical} />
+            <Text style={styles.statValue}>{stats.totalPatients}</Text>
+            <Text style={styles.statLabel}>Patients</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Calendar size={18} color={MedicalColors.life} />
+            <Text style={styles.statValue}>{stats.monthConsultations}</Text>
+            <Text style={styles.statLabel}>Consultations</Text>
+          </View>
+          <View style={styles.statCard}>
+            <ClipboardList size={18} color={MedicalColors.maternity} />
+            <Text style={styles.statValue}>{stats.monthPrescriptions}</Text>
+            <Text style={styles.statLabel}>Ordonnances</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Search size={18} color={MedicalColors.textSecondary} />
+        <RNTextInput
+          style={styles.searchInput}
+          placeholder="Rechercher par nom ou n° dossier..."
+          placeholderTextColor={MedicalColors.textSecondary}
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: MedicalColors.medical }]}
+          onPress={() => router.push('/(tabs)/dossier/add-patient')}
         >
-          {medicalProfile.bloodGroup && (
-            <View style={styles.bloodBadge}>
-              <Droplet size={16} color={MedicalColors.urgency} />
-              <Text style={styles.bloodText}>
-                {medicalProfile.bloodGroup} | Rh {medicalProfile.rhFactor ?? "?"}
-              </Text>
-              {medicalProfile.allergies.filter((a) => a.severity === "severe").length > 0 && (
-                <View style={styles.alertDot} />
-              )}
-            </View>
-          )}
+          <Plus size={18} color={MedicalColors.white} />
+          <Text style={styles.actionBtnText}>Nouveau patient</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: MedicalColors.dark }]}
+          onPress={() => router.push('/(tabs)/dossier/scanner')}
+        >
+          <ScanLine size={18} color={MedicalColors.white} />
+          <Text style={styles.actionBtnText}>Scanner QR</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: MedicalColors.life }]}
+          onPress={() => router.push('/(tabs)/dossier/doctor-reports' as never)}
+        >
+          <FileText size={18} color={MedicalColors.white} />
+          <Text style={styles.actionBtnText}>Rapports</Text>
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={[styles.quickAction, { backgroundColor: "#EBF5FB" }]}
-              onPress={() => router.push("/(tabs)/dossier/add-record" as never)}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: MedicalColors.medical }]}>
-                <Plus size={20} color={MedicalColors.white} />
-              </View>
-              <Text style={styles.quickActionLabel}>Ajouter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickAction, { backgroundColor: "#FEF9E7" }]}
-              onPress={() => router.push("/(tabs)/dossier/consultations" as never)}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: "#E67E22" }]}>
-                <Stethoscope size={20} color={MedicalColors.white} />
-              </View>
-              <Text style={styles.quickActionLabel}>Consultations</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickAction, { backgroundColor: "#F4ECF7" }]}
-              onPress={() => router.push("/(tabs)/dossier/lab-results" as never)}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: "#8E44AD" }]}>
-                <FlaskConical size={20} color={MedicalColors.white} />
-              </View>
-              <Text style={styles.quickActionLabel}>Analyses</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickAction, { backgroundColor: "#EAFAF1" }]}
-              onPress={() => router.push("/(tabs)/dossier/share" as never)}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: "#27AE60" }]}>
-                <Users size={20} color={MedicalColors.white} />
-              </View>
-              <Text style={styles.quickActionLabel}>Partager</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{stats.consultations}</Text>
-              <Text style={styles.statLabel}>Consultations</Text>
-            </View>
-            <View style={[styles.statCard, styles.statCardMiddle]}>
-              <Text style={styles.statNumber}>{stats.labResults}</Text>
-              <Text style={styles.statLabel}>Analyses</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{stats.medications}</Text>
-              <Text style={styles.statLabel}>Traitements</Text>
-            </View>
-          </View>
-
-          {medicalProfile.medications.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Pill size={18} color={MedicalColors.medical} />
-                <Text style={styles.sectionTitle}>Traitements en cours</Text>
-              </View>
-              {medicalProfile.medications.slice(0, 3).map((med) => (
-                <View key={med.id} style={styles.medCard}>
-                  <View style={styles.medDot} />
-                  <View style={styles.medInfo}>
-                    <Text style={styles.medName}>{med.name}</Text>
-                    <Text style={styles.medDosage}>
-                      {med.dosage} - {med.frequency.join(", ")}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {medicalProfile.allergies.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Shield size={18} color={MedicalColors.urgency} />
-                <Text style={styles.sectionTitle}>Allergies</Text>
-              </View>
-              <View style={styles.allergyRow}>
-                {medicalProfile.allergies.map((a) => (
-                  <View
-                    key={a.id}
-                    style={[
-                      styles.allergyTag,
-                      a.severity === "severe" && styles.allergyTagSevere,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.allergyTagText,
-                        a.severity === "severe" && styles.allergyTagTextSevere,
-                      ]}
-                    >
-                      {a.name}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Activity size={18} color={MedicalColors.medical} />
-              <Text style={styles.sectionTitle}>Activité récente</Text>
-            </View>
-            {recentActivity.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ClipboardList size={40} color={MedicalColors.border} />
-                <Text style={styles.emptyTitle}>Aucune activité</Text>
-                <Text style={styles.emptySubtitle}>
-                  Ajoutez votre première consultation ou analyse
-                </Text>
-                <TouchableOpacity
-                  style={styles.emptyBtn}
-                  onPress={() => router.push("/(tabs)/dossier/add-record" as never)}
-                >
-                  <Plus size={16} color={MedicalColors.white} />
-                  <Text style={styles.emptyBtnText}>Commencer</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              recentActivity.map((item) => (
-                <View key={item.id} style={styles.activityItem}>
-                  <View style={styles.activityIconWrap}>
-                    {getActivityIcon(item.type)}
-                  </View>
-                  <View style={styles.activityContent}>
-                    <Text style={styles.activityTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.activitySubtitle} numberOfLines={1}>
-                      {item.subtitle}
-                    </Text>
-                  </View>
-                  <Text style={styles.activityDate}>{formatDate(item.date)}</Text>
-                </View>
-              ))
-            )}
-          </View>
-
-          <View style={styles.menuSection}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push("/(tabs)/dossier/profile-edit" as never)}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: "#EBF5FB" }]}>
-                <Heart size={18} color={MedicalColors.medical} />
-              </View>
-              <Text style={styles.menuText}>Infos médicales</Text>
-              <ChevronRight size={18} color={MedicalColors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push("/(tabs)/dossier/consultations" as never)}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: "#FEF9E7" }]}>
-                <Calendar size={18} color="#E67E22" />
-              </View>
-              <Text style={styles.menuText}>Historique consultations</Text>
-              <ChevronRight size={18} color={MedicalColors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push("/(tabs)/dossier/lab-results" as never)}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: "#F4ECF7" }]}>
-                <FlaskConical size={18} color="#8E44AD" />
-              </View>
-              <Text style={styles.menuText}>Résultats d'analyses</Text>
-              <ChevronRight size={18} color={MedicalColors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => router.push("/(tabs)/dossier/share" as never)}
-            >
-              <View style={[styles.menuIcon, { backgroundColor: "#EAFAF1" }]}>
-                <Share2 size={18} color="#27AE60" />
-              </View>
-              <Text style={styles.menuText}>
-                Partage praticiens
-                {stats.sharedWith > 0 && (
-                  <Text style={styles.menuBadge}> ({stats.sharedWith})</Text>
-                )}
-              </Text>
-              <ChevronRight size={18} color={MedicalColors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ height: 32 }} />
-        </ScrollView>
-      </SafeAreaView>
-    </View>
+      {filtered.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Users size={48} color={MedicalColors.border} />
+          <Text style={styles.emptyText}>
+            {search ? 'Aucun patient trouvé' : 'Aucun patient enregistré'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {search ? 'Modifiez votre recherche' : 'Ajoutez votre premier patient'}
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          renderItem={renderPatient}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
-import { Text } from "react-native";
+function PatientDashboard() {
+  const router = useRouter();
+  const { user, logout } = useAuthStore();
+  const { getMyRecord, getMyPrescriptions } = useMedicalStore();
+
+  const record = useMemo(() => {
+    if (!user?.dossierNumber) return null;
+    return getMyRecord(user.dossierNumber);
+  }, [user, getMyRecord]);
+
+  const prescriptions = useMemo(() => {
+    if (!user?.dossierNumber) return [];
+    return getMyPrescriptions(user.dossierNumber);
+  }, [user, getMyPrescriptions]);
+
+  const handleLogout = useCallback(() => {
+    Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Déconnexion', style: 'destructive', onPress: () => logout() },
+    ]);
+  }, [logout]);
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.headerPatient}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.greeting}>Mon Dossier Médical</Text>
+            <Text style={styles.doctorName}>{user?.firstName} {user?.lastName}</Text>
+            {user?.dossierNumber && (
+              <Text style={styles.dossierNum}>{user.dossierNumber}</Text>
+            )}
+          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtnPatient}>
+            <LogOut size={20} color={MedicalColors.white} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.patientMenuContainer}>
+        {record ? (
+          <>
+            <TouchableOpacity
+              style={styles.menuCard}
+              onPress={() => router.push({ pathname: '/(tabs)/dossier/patient-record', params: { patientId: record.id, readOnly: 'true' } })}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: MedicalColors.medicalLight }]}>
+                <FileText size={24} color={MedicalColors.medical} />
+              </View>
+              <View style={styles.menuInfo}>
+                <Text style={styles.menuTitle}>Mon dossier complet</Text>
+                <Text style={styles.menuSubtitle}>Identité, infos critiques, antécédents, consultations</Text>
+              </View>
+              <ChevronRight size={20} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuCard}
+              onPress={() => router.push('/(tabs)/dossier/prescriptions')}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: MedicalColors.lifeLight }]}>
+                <ClipboardList size={24} color={MedicalColors.life} />
+              </View>
+              <View style={styles.menuInfo}>
+                <Text style={styles.menuTitle}>Mes ordonnances</Text>
+                <Text style={styles.menuSubtitle}>{prescriptions.length} ordonnance(s)</Text>
+              </View>
+              <ChevronRight size={20} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.noDossierCard}>
+            <AlertCircle size={40} color={MedicalColors.warning} />
+            <Text style={styles.noDossierTitle}>Aucun dossier trouvé</Text>
+            <Text style={styles.noDossierText}>
+              Votre dossier sera créé lorsqu'un médecin vous ajoutera dans son suivi.
+              Présentez votre QR code à votre médecin.
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={styles.menuCard}
+          onPress={() => router.push('/(tabs)/dossier/my-qrcode')}
+        >
+          <View style={[styles.menuIcon, { backgroundColor: '#F3E5F5' }]}>
+            <QrCode size={24} color={MedicalColors.maternity} />
+          </View>
+          <View style={styles.menuInfo}>
+            <Text style={styles.menuTitle}>Mon QR Code</Text>
+            <Text style={styles.menuSubtitle}>À présenter à votre médecin</Text>
+          </View>
+          <ChevronRight size={20} color={MedicalColors.textSecondary} />
+        </TouchableOpacity>
+
+        {record && (
+          <View style={styles.criticalSummary}>
+            <Text style={styles.criticalTitle}>Informations critiques</Text>
+            <View style={styles.criticalRow}>
+              <View style={styles.criticalItem}>
+                <Activity size={16} color={MedicalColors.urgency} />
+                <Text style={styles.criticalLabel}>Groupe sanguin</Text>
+                <Text style={styles.criticalValue}>{record.criticalInfo.bloodGroup || 'Non renseigné'}</Text>
+              </View>
+              <View style={styles.criticalItem}>
+                <AlertCircle size={16} color={MedicalColors.warning} />
+                <Text style={styles.criticalLabel}>Allergies</Text>
+                <Text style={styles.criticalValue}>{record.criticalInfo.drugAllergies.length + record.criticalInfo.foodAllergies.length}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export default function DossierIndex() {
+  const { user } = useAuthStore();
+
+  if (user?.role === 'medecin') {
+    return <DoctorDashboard />;
+  }
+  return <PatientDashboard />;
+}
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#0A5EB8",
-  },
   container: {
     flex: 1,
+    backgroundColor: MedicalColors.background,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  headerDoc: {
+    backgroundColor: MedicalColors.medical,
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 16,
-    backgroundColor: "#0A5EB8",
+    paddingBottom: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  headerPatient: {
+    backgroundColor: MedicalColors.medical,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   greeting: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.7)",
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: "700" as const,
-    color: MedicalColors.white,
-  },
-  headerActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerBtnLogout: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: MedicalColors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  scrollContent: {
-    paddingTop: 20,
-    paddingHorizontal: 16,
-  },
-  bloodBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: MedicalColors.urgencyLight,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-    marginBottom: 16,
-  },
-  bloodText: {
     fontSize: 14,
-    fontWeight: "600" as const,
-    color: MedicalColors.urgencyDark,
+    color: 'rgba(255,255,255,0.8)',
   },
-  alertDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: MedicalColors.urgency,
+  doctorName: {
+    fontSize: 22,
+    fontWeight: '700' as const,
+    color: MedicalColors.white,
+    marginTop: 2,
   },
-  quickActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 20,
+  dossierNum: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 4,
+    fontFamily: 'monospace',
   },
-  quickAction: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
+  logoutBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  quickActionLabel: {
-    fontSize: 11,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-    textAlign: "center" as const,
+  logoutBtnPatient: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statsRow: {
-    flexDirection: "row",
-    backgroundColor: MedicalColors.white,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
   },
   statCard: {
     flex: 1,
-    alignItems: "center",
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
   },
-  statCardMiddle: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderLeftColor: MedicalColors.border,
-    borderRightColor: MedicalColors.border,
-  },
-  statNumber: {
-    fontSize: 22,
-    fontWeight: "800" as const,
-    color: MedicalColors.medical,
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: MedicalColors.white,
+    marginTop: 4,
   },
   statLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: MedicalColors.white,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: MedicalColors.text,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  actionBtnText: {
+    color: MedicalColors.white,
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  listContent: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  patientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: MedicalColors.white,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  patientAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  alertDotRed: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: MedicalColors.urgency,
+    borderWidth: 2,
+    borderColor: MedicalColors.white,
+  },
+  alertDotYellow: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: MedicalColors.warning,
+    borderWidth: 2,
+    borderColor: MedicalColors.white,
+  },
+  patientInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  patientName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: MedicalColors.text,
+  },
+  patientDossier: {
+    fontSize: 12,
+    color: MedicalColors.textSecondary,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
+  patientLastVisit: {
     fontSize: 11,
     color: MedicalColors.textSecondary,
     marginTop: 2,
   },
-  section: {
-    backgroundColor: MedicalColors.white,
-    borderRadius: 16,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: MedicalColors.text,
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
+    marginTop: 4,
+  },
+  patientMenuContainer: {
     padding: 16,
-    marginBottom: 16,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-  },
-  medCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: MedicalColors.background,
-  },
-  medDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: MedicalColors.medical,
-  },
-  medInfo: {
-    flex: 1,
-  },
-  medName: {
-    fontSize: 14,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-  },
-  medDosage: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 2,
-  },
-  allergyRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  allergyTag: {
-    backgroundColor: "#FFF3CD",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  allergyTagSevere: {
-    backgroundColor: MedicalColors.urgency,
-  },
-  allergyTagText: {
-    fontSize: 13,
-    fontWeight: "500" as const,
-    color: "#856404",
-  },
-  allergyTagTextSevere: {
-    color: MedicalColors.white,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 24,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: MedicalColors.textSecondary,
-    textAlign: "center" as const,
-  },
-  emptyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: MedicalColors.medical,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-  emptyBtnText: {
-    color: MedicalColors.white,
-    fontWeight: "600" as const,
-    fontSize: 14,
-  },
-  activityItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: MedicalColors.background,
-  },
-  activityIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: MedicalColors.background,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-  },
-  activitySubtitle: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 2,
-  },
-  activityDate: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    fontWeight: "500" as const,
-  },
-  menuSection: {
+  menuCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: MedicalColors.white,
-    borderRadius: 16,
-    overflow: "hidden" as const,
-    marginBottom: 16,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: MedicalColors.background,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
   },
   menuIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  menuText: {
+  menuInfo: {
     flex: 1,
+    marginLeft: 14,
+  },
+  menuTitle: {
     fontSize: 15,
-    fontWeight: "500" as const,
+    fontWeight: '600' as const,
     color: MedicalColors.text,
   },
-  menuBadge: {
-    color: MedicalColors.medical,
-    fontWeight: "600" as const,
+  menuSubtitle: {
+    fontSize: 12,
+    color: MedicalColors.textSecondary,
+    marginTop: 2,
+  },
+  noDossierCard: {
+    backgroundColor: MedicalColors.warningLight,
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  noDossierTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: MedicalColors.text,
+    marginTop: 12,
+  },
+  noDossierText: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  criticalSummary: {
+    backgroundColor: MedicalColors.white,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+    marginTop: 4,
+  },
+  criticalTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: MedicalColors.text,
+    marginBottom: 12,
+  },
+  criticalRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  criticalItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: MedicalColors.background,
+    borderRadius: 10,
+    padding: 12,
+  },
+  criticalLabel: {
+    fontSize: 11,
+    color: MedicalColors.textSecondary,
+    marginTop: 6,
+  },
+  criticalValue: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: MedicalColors.text,
+    marginTop: 2,
   },
 });
