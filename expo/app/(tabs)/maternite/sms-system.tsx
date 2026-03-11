@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } f
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
-import { MessageSquare, Send, Phone, CheckCircle, XCircle, Clock } from 'lucide-react-native';
+import { MessageSquare, Send, CheckCircle, XCircle, Clock, Bell, CalendarClock } from 'lucide-react-native';
 import type { SmsReminder } from '@/types/medical';
 
 const LANGUAGES = [
@@ -19,7 +19,6 @@ export default function SmsSystemScreen() {
   const [targetPhone, setTargetPhone] = useState('');
   const [message, setMessage] = useState('');
   const [language, setLanguage] = useState<SmsReminder['language']>('francais');
-  const [method, setMethod] = useState<SmsReminder['method']>('sms');
   const [isGroup, setIsGroup] = useState(false);
 
   const handleSend = useCallback(() => {
@@ -40,7 +39,7 @@ export default function SmsSystemScreen() {
           type: 'custom',
           targetPhone: phone,
           language,
-          method,
+          method: 'sms',
           message: message.trim(),
           scheduledDate: new Date().toISOString(),
           status: 'sent',
@@ -54,7 +53,7 @@ export default function SmsSystemScreen() {
         type: 'custom',
         targetPhone: targetPhone.trim(),
         language,
-        method,
+        method: 'sms',
         message: message.trim(),
         scheduledDate: new Date().toISOString(),
         status: 'sent',
@@ -65,7 +64,7 @@ export default function SmsSystemScreen() {
 
     setTargetPhone('');
     setMessage('');
-  }, [targetPhone, message, language, method, isGroup, maternityPatients, addSmsReminder]);
+  }, [targetPhone, message, language, isGroup, maternityPatients, addSmsReminder]);
 
   const getStatusIcon = (status: string) => {
     if (status === 'sent') return <CheckCircle size={16} color={MedicalColors.life} />;
@@ -114,7 +113,7 @@ export default function SmsSystemScreen() {
             dense
             style={styles.input}
             keyboardType="phone-pad"
-            left={<TextInput.Icon icon={() => <Phone size={18} color={MedicalColors.textSecondary} />} />}
+            left={<TextInput.Icon icon={() => <MessageSquare size={18} color={MedicalColors.textSecondary} />} />}
             outlineColor={MedicalColors.border}
             activeOutlineColor={MedicalColors.maternity}
           />
@@ -135,27 +134,7 @@ export default function SmsSystemScreen() {
           ))}
         </View>
 
-        <Text style={styles.fieldLabel}>Type de rappel</Text>
-        <View style={styles.chipRow}>
-          <Chip
-            selected={method === 'sms'}
-            onPress={() => setMethod('sms')}
-            style={[styles.chip, method === 'sms' && styles.chipSelected]}
-            textStyle={{ fontSize: 12, color: method === 'sms' ? MedicalColors.white : MedicalColors.text }}
-            icon={() => <MessageSquare size={14} color={method === 'sms' ? MedicalColors.white : MedicalColors.text} />}
-          >
-            SMS texte
-          </Chip>
-          <Chip
-            selected={method === 'voice'}
-            onPress={() => setMethod('voice')}
-            style={[styles.chip, method === 'voice' && styles.chipSelected]}
-            textStyle={{ fontSize: 12, color: method === 'voice' ? MedicalColors.white : MedicalColors.text }}
-            icon={() => <Phone size={14} color={method === 'voice' ? MedicalColors.white : MedicalColors.text} />}
-          >
-            Appel vocal
-          </Chip>
-        </View>
+
 
         <TextInput
           label="Message"
@@ -181,6 +160,36 @@ export default function SmsSystemScreen() {
         </Button>
       </View>
 
+      <View style={styles.notifSection}>
+        <View style={styles.notifHeader}>
+          <View style={styles.notifIconWrap}>
+            <Bell size={18} color={MedicalColors.white} />
+          </View>
+          <View style={styles.notifHeaderText}>
+            <Text style={styles.notifTitle}>Rappels automatiques RDV</Text>
+            <Text style={styles.notifSubtitle}>Les patientes reçoivent un SMS 3 jours avant chaque rendez-vous</Text>
+          </View>
+        </View>
+        <View style={styles.notifFeatures}>
+          <View style={styles.notifFeatureRow}>
+            <CalendarClock size={16} color={MedicalColors.maternity} />
+            <Text style={styles.notifFeatureText}>Notification automatique 3 jours avant le RDV prénatal</Text>
+          </View>
+          <View style={styles.notifFeatureRow}>
+            <MessageSquare size={16} color={MedicalColors.maternity} />
+            <Text style={styles.notifFeatureText}>SMS envoyé dans la langue choisie par la patiente</Text>
+          </View>
+          <View style={styles.notifFeatureRow}>
+            <Bell size={16} color={MedicalColors.maternity} />
+            <Text style={styles.notifFeatureText}>Rappel le jour J du rendez-vous</Text>
+          </View>
+          <View style={styles.notifFeatureRow}>
+            <CheckCircle size={16} color={MedicalColors.life} />
+            <Text style={styles.notifFeatureText}>Suivi de la confirmation de présence</Text>
+          </View>
+        </View>
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Historique des messages</Text>
         {smsReminders.length === 0 ? (
@@ -194,7 +203,7 @@ export default function SmsSystemScreen() {
               <View style={styles.historyHeader}>
                 {getStatusIcon(r.status)}
                 <Text style={styles.historyDate}>{new Date(r.scheduledDate).toLocaleDateString('fr-FR')}</Text>
-                <Text style={styles.historyMethod}>{r.method === 'sms' ? 'SMS' : 'Vocal'} • {r.language}</Text>
+                <Text style={styles.historyMethod}>SMS • {r.language}</Text>
               </View>
               <Text style={styles.historyPhone}>{r.patientName || r.targetPhone}</Text>
               <Text style={styles.historyMessage} numberOfLines={2}>{r.message}</Text>
@@ -238,4 +247,13 @@ const styles = StyleSheet.create({
   statusSent: { color: MedicalColors.life },
   statusFailed: { color: MedicalColors.urgency },
   statusPending: { color: MedicalColors.warning },
+  notifSection: { backgroundColor: MedicalColors.white, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: MedicalColors.maternity, borderLeftWidth: 4 },
+  notifHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  notifIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: MedicalColors.maternity, alignItems: 'center', justifyContent: 'center' },
+  notifHeaderText: { flex: 1 },
+  notifTitle: { fontSize: 15, fontWeight: '700' as const, color: MedicalColors.text },
+  notifSubtitle: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
+  notifFeatures: { gap: 10 },
+  notifFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: MedicalColors.background, borderRadius: 8 },
+  notifFeatureText: { fontSize: 13, color: MedicalColors.text, flex: 1 },
 });
