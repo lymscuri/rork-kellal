@@ -5,8 +5,7 @@ import { FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet
 import { ActivityIndicator, Surface, Text, TextInput } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
-import { useMedicalStore } from '@/store/medicalStore';
-import { Send, Phone, AlertCircle, ChevronLeft } from 'lucide-react-native';
+import { Send, Phone, ChevronLeft } from 'lucide-react-native';
 
 interface ChatMessage {
   id: string;
@@ -18,41 +17,19 @@ interface ChatMessage {
 export default function EmergencyChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { medicalProfile, getCriticalAllergies, isPregnant, getCurrentPregnancyWeek } = useMedicalStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
-  const criticalAllergies = getCriticalAllergies();
   const [isSending, setIsSending] = useState(false);
 
   const getSystemContext = useCallback(() => {
     let context = "Tu es un assistant médical de premiers secours pour l'application SanteConnect. ";
     context += "Tu dois donner des conseils de premiers secours clairs et précis en français. ";
     context += "Tu dois toujours recommander de contacter les secours médicaux pour les situations graves. ";
-    
-    if (medicalProfile.bloodGroup) {
-      context += `Le patient a le groupe sanguin ${medicalProfile.bloodGroup}. `;
-    }
-    
-    if (criticalAllergies.length > 0) {
-      context += `ATTENTION - Allergies critiques: ${criticalAllergies.map(a => a.name).join(', ')}. `;
-      context += 'Ne jamais recommander ces médicaments. ';
-    }
-    
-    if (isPregnant()) {
-      const week = getCurrentPregnancyWeek();
-      context += `La patiente est enceinte (${week} semaines). Adapter les conseils pour une femme enceinte. `;
-    }
-    
-    if (medicalProfile.chronicDiseases.length > 0) {
-      context += `Maladies chroniques: ${medicalProfile.chronicDiseases.map(d => d.name).join(', ')}. `;
-    }
-    
     context += "Réponds de manière concise et structurée. Ne donne pas de diagnostic médical définitif. ";
     context += "Sois empathique et rassurant tout en restant professionnel.";
-    
     return context;
-  }, [medicalProfile, criticalAllergies, isPregnant, getCurrentPregnancyWeek]);
+  }, []);
 
   useEffect(() => {
     const welcomeMessage: ChatMessage = {
@@ -61,7 +38,6 @@ export default function EmergencyChatScreen() {
       content: "Bonjour ! Je suis votre assistant de premiers secours. Décrivez-moi la situation d'urgence et je vous guiderai étape par étape. N'oubliez pas d'appeler le 15 en cas de gravité.",
       timestamp: new Date().toISOString(),
     };
-    
     setMessages([welcomeMessage]);
   }, []);
 
@@ -158,25 +134,6 @@ export default function EmergencyChatScreen() {
           </View>
           <View style={styles.placeholder} />
         </View>
-        
-        <View style={styles.contextRow}>
-          {criticalAllergies.length > 0 && (
-            <View style={styles.contextBadge}>
-              <AlertCircle size={14} color={MedicalColors.urgency} />
-              <Text style={styles.contextBadgeText}>{criticalAllergies.length} allergie(s)</Text>
-            </View>
-          )}
-          {isPregnant() && (
-            <View style={[styles.contextBadge, styles.pregnancyBadge]}>
-              <Text style={styles.contextBadgeText}>Grossesse S{getCurrentPregnancyWeek()}</Text>
-            </View>
-          )}
-          {medicalProfile.bloodGroup && (
-            <View style={[styles.contextBadge, styles.bloodBadge]}>
-              <Text style={styles.contextBadgeText}>{medicalProfile.bloodGroup}</Text>
-            </View>
-          )}
-        </View>
       </Surface>
 
       <KeyboardAvoidingView 
@@ -255,7 +212,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   backButton: {
     padding: 4,
@@ -275,31 +232,6 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 32,
-  },
-  contextRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  contextBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: MedicalColors.urgencyLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  pregnancyBadge: {
-    backgroundColor: MedicalColors.maternityLight,
-  },
-  bloodBadge: {
-    backgroundColor: MedicalColors.medicalLight,
-  },
-  contextBadgeText: {
-    fontSize: 12,
-    fontWeight: '600' as const,
-    color: MedicalColors.text,
   },
   messagesList: {
     padding: 16,

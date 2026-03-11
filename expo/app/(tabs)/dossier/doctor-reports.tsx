@@ -112,8 +112,10 @@ function StatCard({ icon, value, label, color }: { icon: React.ReactNode; value:
   );
 }
 
+const STAT_CARD_WIDTH = '48%' as unknown as number;
+
 const statStyles = StyleSheet.create({
-  card: { width: '48%' as unknown as number, borderRadius: 14, padding: 16, marginBottom: 10 },
+  card: { width: STAT_CARD_WIDTH, borderRadius: 14, padding: 16, marginBottom: 10 },
   value: { fontSize: 28, fontWeight: '700' as const, color: MedicalColors.text, marginTop: 8 },
   label: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
 });

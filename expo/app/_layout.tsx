@@ -17,6 +17,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
   const { isAuthenticated, isHydrated, hydrate } = useAuthStore();
+  const hasNavigated = React.useRef(false);
 
   useEffect(() => {
     void hydrate();
@@ -29,17 +30,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     const inAuthGroup = segments[0] === "auth";
+    const isIndex = !segments[0];
     console.log('[AuthGuard] isAuthenticated:', isAuthenticated, 'inAuthGroup:', inAuthGroup, 'segments:', segments);
 
     const timer = setTimeout(() => {
-      if (!isAuthenticated && !inAuthGroup) {
-        console.log('[AuthGuard] Redirecting to login');
-        router.replace("/auth/login");
-      } else if (isAuthenticated && inAuthGroup) {
-        console.log('[AuthGuard] Redirecting to tabs');
-        router.replace("/(tabs)/urgence");
+      try {
+        if (!isAuthenticated && !inAuthGroup) {
+          console.log('[AuthGuard] Redirecting to login');
+          hasNavigated.current = true;
+          router.replace("/auth/login");
+        } else if (isAuthenticated && (inAuthGroup || isIndex)) {
+          console.log('[AuthGuard] Redirecting to tabs');
+          hasNavigated.current = true;
+          router.replace("/(tabs)/urgence");
+        }
+      } catch (e) {
+        console.error('[AuthGuard] Navigation error:', e);
       }
-    }, 50);
+    }, 100);
 
     return () => clearTimeout(timer);
   }, [isAuthenticated, segments, isHydrated, router]);
