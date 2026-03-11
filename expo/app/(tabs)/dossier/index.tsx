@@ -15,18 +15,28 @@ import type { PatientRecord } from '@/types/medical';
 function DoctorDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { getPatientsByDoctor, getDoctorStats } = useMedicalStore();
+  const allPatients = useMedicalStore((s) => s.patients);
+  const getPatientsByDoctor = useMedicalStore((s) => s.getPatientsByDoctor);
+  const getDoctorStats = useMedicalStore((s) => s.getDoctorStats);
   const [search, setSearch] = useState('');
 
-  const patients = useMemo(() => {
-    if (!user) return [];
-    return getPatientsByDoctor(user.id);
-  }, [user, getPatientsByDoctor]);
+  const patients = useMemo(
+    () => {
+      if (!user) return [];
+      return getPatientsByDoctor(user.id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, allPatients, getPatientsByDoctor]
+  );
 
-  const stats = useMemo(() => {
-    if (!user) return { totalPatients: 0, monthConsultations: 0, monthPrescriptions: 0, patientsFollowed: 0 };
-    return getDoctorStats(user.id);
-  }, [user, getDoctorStats]);
+  const stats = useMemo(
+    () => {
+      if (!user) return { totalPatients: 0, monthConsultations: 0, monthPrescriptions: 0, patientsFollowed: 0 };
+      return getDoctorStats(user.id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, allPatients, getDoctorStats]
+  );
 
   const filtered = useMemo(() => {
     if (!search.trim()) return patients;
@@ -177,17 +187,26 @@ function DoctorDashboard() {
 function PatientDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { getMyRecord, getMyPrescriptions } = useMedicalStore();
+  const allPatients = useMedicalStore((s) => s.patients);
+  const getMyRecord = useMedicalStore((s) => s.getMyRecord);
+  const getMyPrescriptions = useMedicalStore((s) => s.getMyPrescriptions);
 
   const record = useMemo(() => {
     if (!user) return null;
-    return getMyRecord(user.id);
-  }, [user, getMyRecord]);
+    console.log('[PatientDashboard] Looking for record with userId:', user.id, 'total patients:', allPatients.length);
+    const found = getMyRecord(user.id);
+    console.log('[PatientDashboard] Found record:', found ? found.id : 'none');
+    return found;
+  }, [user, allPatients, getMyRecord]);
 
-  const prescriptions = useMemo(() => {
-    if (!user) return [];
-    return getMyPrescriptions(user.id);
-  }, [user, getMyPrescriptions]);
+  const prescriptions = useMemo(
+    () => {
+      if (!user) return [];
+      return getMyPrescriptions(user.id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, allPatients, getMyPrescriptions]
+  );
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [

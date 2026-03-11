@@ -138,7 +138,7 @@ export default function EmergencyChatScreen() {
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 30}
       >
         <FlatList
           ref={flatListRef}
@@ -320,18 +320,18 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: MedicalColors.background,
+    backgroundColor: MedicalColors.white,
     maxHeight: 100,
     minHeight: 44,
     fontSize: 15,
     borderRadius: 22,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingTop: Platform.OS === 'ios' ? 12 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 10,
     borderWidth: 1,
     borderColor: MedicalColors.border,
-    color: MedicalColors.text,
-    textAlignVertical: 'center',
+    color: '#000000',
+    textAlignVertical: 'top',
   },
   sendButton: {
     width: 44,
