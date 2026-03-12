@@ -447,6 +447,36 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export type AlertUrgencyLevel = 'critique' | 'grave' | 'modere';
+export type AlertStatus = 'active' | 'prise_en_charge' | 'resolue';
+
+export interface EmergencyAlert {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderPhone?: string;
+  latitude: number;
+  longitude: number;
+  description: string;
+  urgencyLevel: AlertUrgencyLevel;
+  status: AlertStatus;
+  responderId?: string;
+  responderName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Secourist {
+  id: string;
+  name: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  isAvailable: boolean;
+  specialty?: string;
+  lastActive: string;
+}
+
 export interface Hospital {
   id: string;
   name: string;

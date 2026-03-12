@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { AlertCircle, Bot, ChevronRight, Hospital, MapPin, Phone } from "lucide-react-native";
+import { AlertCircle, Bot, ChevronRight, Hospital, MapPin, Phone, Shield } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Chip, Surface, Text } from "react-native-paper";
@@ -90,6 +90,10 @@ export default function EmergencyHomeScreen() {
     router.push("/(tabs)/urgence/map");
   }, []);
 
+  const handleSecouristPress = useCallback(() => {
+    router.push("/(tabs)/urgence/secourist-network");
+  }, []);
+
   const mapRegion = userLocation
     ? { ...userLocation, latitudeDelta: 0.06, longitudeDelta: 0.06 }
     : DEFAULT_REGION;
@@ -136,6 +140,25 @@ export default function EmergencyHomeScreen() {
             </TouchableOpacity>
           </Animated.View>
         </View>
+
+        {/* Secourist Network */}
+        <TouchableOpacity
+          style={styles.secouristBanner}
+          onPress={handleSecouristPress}
+          activeOpacity={0.8}
+          testID="secourist-network-btn"
+        >
+          <View style={styles.secouristBannerLeft}>
+            <View style={styles.secouristIconBg}>
+              <Shield color={MedicalColors.white} size={22} />
+            </View>
+            <View style={styles.secouristBannerText}>
+              <Text style={styles.secouristBannerTitle}>Réseau de Secouristes</Text>
+              <Text style={styles.secouristBannerSubtitle}>Voir les alertes et secourir</Text>
+            </View>
+          </View>
+          <ChevronRight color={MedicalColors.white} size={20} />
+        </TouchableOpacity>
 
         {/* Map Preview */}
         <View style={styles.mapSection}>
@@ -488,6 +511,45 @@ const styles = StyleSheet.create({
     color: MedicalColors.text,
     flex: 1,
     fontWeight: "500" as const,
+  },
+  secouristBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: "#1B3A5C",
+    borderRadius: 14,
+    padding: 14,
+    shadowColor: "#1B3A5C",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  secouristBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  secouristIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: MedicalColors.urgency,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  secouristBannerText: {},
+  secouristBannerTitle: {
+    fontSize: 15,
+    fontWeight: "700" as const,
+    color: MedicalColors.white,
+  },
+  secouristBannerSubtitle: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 2,
   },
   bottomSpacer: {
     height: 20,

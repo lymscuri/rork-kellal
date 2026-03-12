@@ -36,6 +36,12 @@ export default function UrgenceLayout() {
           title: "Carte des secours",
         }}
       />
+      <Stack.Screen
+        name="secourist-network"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
