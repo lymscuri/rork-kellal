@@ -60,7 +60,7 @@ export default function LoginScreen() {
             <View style={styles.logoContainer}>
               <Heart size={48} color={MedicalColors.urgency} fill={MedicalColors.urgency} />
             </View>
-            <Text style={styles.title}>Kendaya</Text>
+            <Text style={styles.title}>Kendeya</Text>
             <Text style={styles.subtitle}>Votre assistant de santé personnel</Text>
           </View>
 
