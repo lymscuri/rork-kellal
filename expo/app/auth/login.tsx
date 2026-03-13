@@ -7,6 +7,13 @@ import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { Heart, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 
+const MailIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <Mail size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+const LockIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <Lock size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+
 export default function LoginScreen() {
   const router = useRouter();
   const { login, isLoading, error, clearError } = useAuthStore();
@@ -34,19 +41,10 @@ export default function LoginScreen() {
       console.log('[Login] Attempting login...');
       const success = await login(email.trim(), password);
       console.log('[Login] Result:', success);
-      if (success) {
-        setTimeout(() => {
-          try {
-            router.replace('/(tabs)/urgence');
-          } catch (navError) {
-            console.error('[Login] Navigation error:', navError);
-          }
-        }, 200);
-      }
     } catch (e) {
       console.error('[Login] Unexpected error:', e);
     }
-  }, [email, password, login, clearError, router]);
+  }, [email, password, login, clearError]);
 
   const navigateToSignup = useCallback(() => {
     clearError();
@@ -90,7 +88,7 @@ export default function LoginScreen() {
               style={styles.input}
               keyboardType="email-address"
               autoCapitalize="none"
-              left={<TextInput.Icon icon={() => <Mail size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={MailIcon} />}
               outlineColor={MedicalColors.border}
               activeOutlineColor={MedicalColors.medical}
               disabled={isLoading}
@@ -103,7 +101,7 @@ export default function LoginScreen() {
               mode="outlined"
               style={styles.input}
               secureTextEntry={!showPassword}
-              left={<TextInput.Icon icon={() => <Lock size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={LockIcon} />}
               right={
                 <TextInput.Icon 
                   icon={() => showPassword ? <EyeOff size={20} color={MedicalColors.textSecondary} /> : <Eye size={20} color={MedicalColors.textSecondary} />} 

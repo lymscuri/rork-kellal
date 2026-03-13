@@ -7,6 +7,19 @@ import { MedicalColors } from '@/constants/colors';
 import { useAuthStore, UserRole } from '@/store/authStore';
 import { UserPlus, Mail, Lock, Eye, EyeOff, User, Phone, Stethoscope, HeartPulse } from 'lucide-react-native';
 
+const UserIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <User size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+const MailIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <Mail size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+const PhoneIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <Phone size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+const LockIcon = ({ size, color }: { size?: number; color?: string }) => (
+  <Lock size={size ?? 20} color={color ?? MedicalColors.textSecondary} />
+);
+
 export default function SignupScreen() {
   const router = useRouter();
   const { signup, isLoading, error, clearError } = useAuthStore();
@@ -72,20 +85,12 @@ export default function SignupScreen() {
       });
 
       console.log('[Signup] Result:', success);
-      if (success) {
-        setTimeout(() => {
-          try {
-            router.replace('/(tabs)/urgence');
-          } catch (navError) {
-            console.error('[Signup] Navigation error:', navError);
-          }
-        }, 200);
-      }
+      // AuthGuard handles navigation automatically when isAuthenticated changes
     } catch (e) {
       console.error('[Signup] Unexpected error:', e);
       setLocalError('Une erreur inattendue est survenue. Veuillez réessayer.');
     }
-  }, [firstName, lastName, email, phone, password, confirmPassword, role, signup, clearError, router]);
+  }, [firstName, lastName, email, phone, password, confirmPassword, role, signup, clearError]);
 
   const navigateToLogin = useCallback(() => {
     clearError();
@@ -154,7 +159,7 @@ export default function SignupScreen() {
                 onChangeText={setFirstName}
                 mode="outlined"
                 style={[styles.input, styles.halfInput]}
-                left={<TextInput.Icon icon={() => <User size={20} color={MedicalColors.textSecondary} />} />}
+                left={<TextInput.Icon icon={UserIcon} />}
                 outlineColor={MedicalColors.border}
                 activeOutlineColor={MedicalColors.medical}
                 disabled={isLoading}
@@ -179,7 +184,7 @@ export default function SignupScreen() {
               style={styles.input}
               keyboardType="email-address"
               autoCapitalize="none"
-              left={<TextInput.Icon icon={() => <Mail size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={MailIcon} />}
               outlineColor={MedicalColors.border}
               activeOutlineColor={MedicalColors.medical}
               disabled={isLoading}
@@ -192,7 +197,7 @@ export default function SignupScreen() {
               mode="outlined"
               style={styles.input}
               keyboardType="phone-pad"
-              left={<TextInput.Icon icon={() => <Phone size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={PhoneIcon} />}
               outlineColor={MedicalColors.border}
               activeOutlineColor={MedicalColors.medical}
               disabled={isLoading}
@@ -205,7 +210,7 @@ export default function SignupScreen() {
               mode="outlined"
               style={styles.input}
               secureTextEntry={!showPassword}
-              left={<TextInput.Icon icon={() => <Lock size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={LockIcon} />}
               right={
                 <TextInput.Icon
                   icon={() => showPassword ? <EyeOff size={20} color={MedicalColors.textSecondary} /> : <Eye size={20} color={MedicalColors.textSecondary} />}
@@ -224,7 +229,7 @@ export default function SignupScreen() {
               mode="outlined"
               style={styles.input}
               secureTextEntry={!showConfirmPassword}
-              left={<TextInput.Icon icon={() => <Lock size={20} color={MedicalColors.textSecondary} />} />}
+              left={<TextInput.Icon icon={LockIcon} />}
               right={
                 <TextInput.Icon
                   icon={() => showConfirmPassword ? <EyeOff size={20} color={MedicalColors.textSecondary} /> : <Eye size={20} color={MedicalColors.textSecondary} />}
