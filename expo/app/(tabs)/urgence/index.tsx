@@ -4,8 +4,17 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker } from "react-native-maps";
 import { MedicalColors } from "@/constants/colors";
+
+let MapView: React.ComponentType<any> | null = null;
+let Marker: React.ComponentType<any> | null = null;
+try {
+  const maps = require('react-native-maps');
+  MapView = maps.default;
+  Marker = maps.Marker;
+} catch (e) {
+  console.warn('[Urgence] react-native-maps not available:', e);
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -32,7 +41,7 @@ export default function EmergencyHomeScreen() {
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     Animated.loop(
@@ -171,25 +180,32 @@ export default function EmergencyHomeScreen() {
             </TouchableOpacity>
           </View>
           <TouchableOpacity activeOpacity={0.9} onPress={handleMapPress} style={styles.mapWrapper}>
-            <MapView
-              ref={mapRef}
-              style={styles.mapPreview}
-              region={mapRegion}
-              showsUserLocation
-              scrollEnabled={false}
-              zoomEnabled={false}
-              rotateEnabled={false}
-              pitchEnabled={false}
-              pointerEvents="none"
-            >
-              {userLocation && (
-                <Marker
-                  coordinate={userLocation}
-                  title="Vous êtes ici"
-                  pinColor={MedicalColors.medical}
-                />
-              )}
-            </MapView>
+            {MapView ? (
+              <MapView
+                ref={mapRef}
+                style={styles.mapPreview}
+                region={mapRegion}
+                showsUserLocation
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                pointerEvents="none"
+              >
+                {userLocation && Marker && (
+                  <Marker
+                    coordinate={userLocation}
+                    title="Vous êtes ici"
+                    pinColor={MedicalColors.medical}
+                  />
+                )}
+              </MapView>
+            ) : (
+              <View style={[styles.mapPreview, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
+                <MapPin color={MedicalColors.medical} size={32} />
+                <Text style={{ marginTop: 8, color: MedicalColors.textSecondary, fontSize: 13 }}>Carte non disponible</Text>
+              </View>
+            )}
             <View style={styles.mapOverlay}>
               <View style={styles.mapOverlayPill}>
                 <MapPin color={MedicalColors.white} size={14} />

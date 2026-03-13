@@ -27,7 +27,15 @@ import {
 } from "react-native";
 import { Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker } from "react-native-maps";
+let RNMapView: React.ComponentType<any> | null = null;
+let RNMarker: React.ComponentType<any> | null = null;
+try {
+  const maps = require('react-native-maps');
+  RNMapView = maps.default;
+  RNMarker = maps.Marker;
+} catch (e) {
+  console.warn('[SecouristNetwork] react-native-maps not available:', e);
+}
 import { MedicalColors } from "@/constants/colors";
 import type { AlertStatus, AlertUrgencyLevel, EmergencyAlert, Secourist } from "@/types/medical";
 
@@ -144,7 +152,7 @@ type ViewTab = "carte" | "alertes" | "secouristes";
 export default function SecouristNetworkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>("carte");
@@ -333,33 +341,44 @@ export default function SecouristNetworkScreen() {
 
       {activeTab === "carte" && (
         <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            region={mapRegion}
-            showsUserLocation
-            showsMyLocationButton
-          >
-            {activeAlerts.map((alert) => (
-              <Marker
-                key={alert.id}
-                coordinate={{ latitude: alert.latitude, longitude: alert.longitude }}
-                title={alert.senderName}
-                description={alert.description}
-                pinColor={getAlertMarkerColor(alert)}
-                onPress={() => setSelectedAlert(alert)}
-              />
-            ))}
-            {secourists.filter((s) => s.isAvailable).map((sec) => (
-              <Marker
-                key={sec.id}
-                coordinate={{ latitude: sec.latitude, longitude: sec.longitude }}
-                title={sec.name}
-                description={sec.specialty}
-                pinColor={MedicalColors.life}
-              />
-            ))}
-          </MapView>
+          {RNMapView ? (
+            <RNMapView
+              ref={mapRef}
+              style={styles.map}
+              region={mapRegion}
+              showsUserLocation
+              showsMyLocationButton
+            >
+              {activeAlerts.map((alert) => (
+                RNMarker ? (
+                  <RNMarker
+                    key={alert.id}
+                    coordinate={{ latitude: alert.latitude, longitude: alert.longitude }}
+                    title={alert.senderName}
+                    description={alert.description}
+                    pinColor={getAlertMarkerColor(alert)}
+                    onPress={() => setSelectedAlert(alert)}
+                  />
+                ) : null
+              ))}
+              {secourists.filter((s) => s.isAvailable).map((sec) => (
+                RNMarker ? (
+                  <RNMarker
+                    key={sec.id}
+                    coordinate={{ latitude: sec.latitude, longitude: sec.longitude }}
+                    title={sec.name}
+                    description={sec.specialty}
+                    pinColor={MedicalColors.life}
+                  />
+                ) : null
+              ))}
+            </RNMapView>
+          ) : (
+            <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
+              <MapPin color={MedicalColors.medical} size={40} />
+              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte non disponible</Text>
+            </View>
+          )}
 
           <View style={styles.mapLegend}>
             <View style={styles.legendItem}>

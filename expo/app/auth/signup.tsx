@@ -60,21 +60,30 @@ export default function SignupScreen() {
       return;
     }
 
-    console.log('[Signup] Attempting signup with role:', role);
-    const success = await signup({
-      email: email.trim(),
-      password,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: phone.trim() || undefined,
-      role,
-    });
+    try {
+      console.log('[Signup] Attempting signup with role:', role);
+      const success = await signup({
+        email: email.trim(),
+        password,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || undefined,
+        role,
+      });
 
-    console.log('[Signup] Result:', success);
-    if (success) {
-      setTimeout(() => {
-        router.replace('/');
-      }, 100);
+      console.log('[Signup] Result:', success);
+      if (success) {
+        setTimeout(() => {
+          try {
+            router.replace('/(tabs)/urgence');
+          } catch (navError) {
+            console.error('[Signup] Navigation error:', navError);
+          }
+        }, 200);
+      }
+    } catch (e) {
+      console.error('[Signup] Unexpected error:', e);
+      setLocalError('Une erreur inattendue est survenue. Veuillez réessayer.');
     }
   }, [firstName, lastName, email, phone, password, confirmPassword, role, signup, clearError, router]);
 

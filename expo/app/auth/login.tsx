@@ -30,13 +30,21 @@ export default function LoginScreen() {
       return;
     }
     
-    console.log('[Login] Attempting login...');
-    const success = await login(email.trim(), password);
-    console.log('[Login] Result:', success);
-    if (success) {
-      setTimeout(() => {
-        router.replace('/');
-      }, 100);
+    try {
+      console.log('[Login] Attempting login...');
+      const success = await login(email.trim(), password);
+      console.log('[Login] Result:', success);
+      if (success) {
+        setTimeout(() => {
+          try {
+            router.replace('/(tabs)/urgence');
+          } catch (navError) {
+            console.error('[Login] Navigation error:', navError);
+          }
+        }, 200);
+      }
+    } catch (e) {
+      console.error('[Login] Unexpected error:', e);
     }
   }, [email, password, login, clearError, router]);
 

@@ -22,7 +22,7 @@ interface AuthStore {
   
   login: (email: string, password: string) => Promise<boolean>;
   signup: (userData: SignupData) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
   updateProfile: (userData: Partial<User>) => void;
   setHydrated: (hydrated: boolean) => void;
@@ -53,7 +53,12 @@ async function getStoredUsers(): Promise<Array<SignupData & { id: string; dossie
   try {
     const raw = await AppStorage.getItem(USERS_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      console.warn('[Auth] Stored users data is not an array, resetting');
+      return [];
     }
   } catch (e) {
     console.error('[Auth] Failed to read users:', e);
@@ -63,7 +68,9 @@ async function getStoredUsers(): Promise<Array<SignupData & { id: string; dossie
 
 async function saveUsers(users: Array<SignupData & { id: string; dossierNumber?: string }>): Promise<void> {
   try {
-    await AppStorage.setItem(USERS_KEY, JSON.stringify(users));
+    const data = JSON.stringify(users);
+    await AppStorage.setItem(USERS_KEY, data);
+    console.log('[Auth] Users saved successfully, count:', users.length);
   } catch (e) {
     console.error('[Auth] Failed to save users:', e);
     throw e;
@@ -72,7 +79,9 @@ async function saveUsers(users: Array<SignupData & { id: string; dossierNumber?:
 
 async function saveAuthState(user: User | null, isAuthenticated: boolean): Promise<void> {
   try {
-    await AppStorage.setItem(AUTH_KEY, JSON.stringify({ user, isAuthenticated }));
+    const data = JSON.stringify({ user, isAuthenticated });
+    await AppStorage.setItem(AUTH_KEY, data);
+    console.log('[Auth] Auth state saved, authenticated:', isAuthenticated);
   } catch (e) {
     console.error('[Auth] Failed to save auth state:', e);
   }
@@ -96,19 +105,21 @@ export const useAuthStore = create<AuthStore>()(
         const raw = await AppStorage.getItem(AUTH_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          console.log('[Auth] Hydrated auth state, isAuthenticated:', parsed.isAuthenticated);
-          set({
-            user: parsed.user ?? null,
-            isAuthenticated: parsed.isAuthenticated ?? false,
-            isHydrated: true,
-          });
-        } else {
-          console.log('[Auth] No stored auth state found');
-          set({ isHydrated: true });
+          if (parsed && typeof parsed === 'object') {
+            console.log('[Auth] Hydrated auth state, isAuthenticated:', parsed.isAuthenticated);
+            set({
+              user: parsed.user ?? null,
+              isAuthenticated: parsed.isAuthenticated ?? false,
+              isHydrated: true,
+            });
+            return;
+          }
         }
+        console.log('[Auth] No stored auth state found');
+        set({ isHydrated: true });
       } catch (e) {
         console.error('[Auth] Hydration error:', e);
-        set({ isHydrated: true });
+        set({ isHydrated: true, user: null, isAuthenticated: false });
       }
     },
 
@@ -154,24 +165,42 @@ export const useAuthStore = create<AuthStore>()(
       try {
         console.log('[Auth] Attempting signup for:', userData.email, 'role:', userData.role);
         
-        const users = await getStoredUsers();
+        let users: Array<SignupData & { id: string; dossierNumber?: string }> = [];
+        try {
+          users = await getStoredUsers();
+        } catch (e) {
+          console.warn('[Auth] Could not read existing users, starting fresh:', e);
+          users = [];
+        }
         console.log('[Auth] Existing users count:', users.length);
         
-        if (users.some(u => u.email.toLowerCase() === userData.email.toLowerCase())) {
+        const emailExists = users.some(u => u.email.toLowerCase() === userData.email.toLowerCase());
+        if (emailExists) {
+          console.log('[Auth] Email already exists:', userData.email);
           set({ isLoading: false, error: 'Cet email est déjà utilisé' });
           return false;
         }
         
         const dossierNumber = userData.role === 'patient' ? generateDossierNumber() : undefined;
         
+        const userId = Date.now().toString() + Math.random().toString(36).substring(2, 11);
+        
         const newUser = {
           ...userData,
-          id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
+          id: userId,
           dossierNumber,
         };
         
         users.push(newUser);
-        await saveUsers(users);
+        
+        try {
+          await saveUsers(users);
+        } catch (saveError) {
+          console.error('[Auth] Failed to save new user:', saveError);
+          set({ isLoading: false, error: 'Erreur lors de la sauvegarde. Veuillez réessayer.' });
+          return false;
+        }
+        
         console.log('[Auth] User saved, total users:', users.length);
         
         const user: User = {
@@ -190,7 +219,8 @@ export const useAuthStore = create<AuthStore>()(
         return true;
       } catch (error) {
         console.error('[Auth] Signup error:', error);
-        set({ isLoading: false, error: 'Erreur lors de la création du compte. Veuillez réessayer.' });
+        const message = error instanceof Error ? error.message : 'Erreur inconnue';
+        set({ isLoading: false, error: `Erreur lors de la création du compte: ${message}` });
         return false;
       }
     },
@@ -198,6 +228,7 @@ export const useAuthStore = create<AuthStore>()(
     logout: async () => {
       try {
         await AppStorage.removeItem(AUTH_KEY);
+        console.log('[Auth] Logged out successfully');
       } catch (e) {
         console.error('[Auth] Failed to clear auth state:', e);
       }
@@ -213,7 +244,9 @@ export const useAuthStore = create<AuthStore>()(
       if (user) {
         const updatedUser = { ...user, ...userData };
         set({ user: updatedUser });
-        void saveAuthState(updatedUser, true);
+        saveAuthState(updatedUser, true).catch((e) => {
+          console.error('[Auth] Failed to persist profile update:', e);
+        });
       }
     },
 

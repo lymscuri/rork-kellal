@@ -1,11 +1,26 @@
-import * as Location from "expo-location";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { ActivityIndicator, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker, Region } from "react-native-maps";
 import { MedicalColors } from "@/constants/colors";
 import { Building2, Clock, Cross, List, Map as MapIcon, MapPin, Navigation, Phone, RefreshCw, Stethoscope } from "lucide-react-native";
+
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+let RNMapView: React.ComponentType<any> | null = null;
+let RNMarker: React.ComponentType<any> | null = null;
+try {
+  const maps = require('react-native-maps');
+  RNMapView = maps.default;
+  RNMarker = maps.Marker;
+} catch (e) {
+  console.warn('[Map] react-native-maps not available:', e);
+}
 
 interface OSMPlace {
   id: string;
@@ -147,7 +162,7 @@ export default function MapScreen() {
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [selectedPlace, setSelectedPlace] = useState<OSMPlace | null>(null);
   const [filters, setFilters] = useState({ emergency24h: false });
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   const requestLocation = useCallback(async () => {
     try {
@@ -164,19 +179,25 @@ export default function MapScreen() {
         return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
       }
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permission de localisation refusée, utilisation position par défaut");
+      try {
+        const Location = await import("expo-location");
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          console.log("Permission de localisation refusée, utilisation position par défaut");
+          return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
+        }
+
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        return {
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        };
+      } catch (locErr) {
+        console.error("Erreur expo-location:", locErr);
         return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
       }
-
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      return {
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
-      };
     } catch (err) {
       console.error("Erreur de localisation:", err);
       return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
@@ -389,8 +410,8 @@ export default function MapScreen() {
         </View>
       ) : viewMode === "map" ? (
         <View style={styles.mapContainer}>
-          {initialRegion && (
-            <MapView
+          {initialRegion && RNMapView ? (
+            <RNMapView
               ref={mapRef}
               style={styles.map}
               initialRegion={initialRegion}
@@ -398,17 +419,24 @@ export default function MapScreen() {
               showsMyLocationButton
             >
               {filteredPlaces.map((place) => (
-                <Marker
-                  key={place.id}
-                  coordinate={{ latitude: place.latitude, longitude: place.longitude }}
-                  title={place.name}
-                  description={`${getTypeLabel(place.type)}${place.distance != null ? ` • ${place.distance} km` : ""}`}
-                  pinColor={getMarkerColor(place.type)}
-                  onPress={() => handleMarkerPress(place)}
-                />
+                RNMarker ? (
+                  <RNMarker
+                    key={place.id}
+                    coordinate={{ latitude: place.latitude, longitude: place.longitude }}
+                    title={place.name}
+                    description={`${getTypeLabel(place.type)}${place.distance != null ? ` • ${place.distance} km` : ""}`}
+                    pinColor={getMarkerColor(place.type)}
+                    onPress={() => handleMarkerPress(place)}
+                  />
+                ) : null
               ))}
-            </MapView>
-          )}
+            </RNMapView>
+          ) : initialRegion ? (
+            <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
+              <MapPin color={MedicalColors.medical} size={40} />
+              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte non disponible</Text>
+            </View>
+          ) : null}
 
           {error && (
             <View style={styles.mapErrorBanner}>
