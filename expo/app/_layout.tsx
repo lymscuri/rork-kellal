@@ -8,7 +8,6 @@ import { View, ActivityIndicator } from "react-native";
 import { theme } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 import { MedicalColors } from "@/constants/colors";
-import { trpc, trpcClient } from "@/lib/trpc";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -81,16 +80,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <PaperProvider theme={theme}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <AuthGuard>
-              <RootLayoutNav />
-            </AuthGuard>
-          </GestureHandlerRootView>
-        </PaperProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <QueryClientProvider client={queryClient}>
+      <PaperProvider theme={theme}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <AuthGuard>
+            <RootLayoutNav />
+          </AuthGuard>
+        </GestureHandlerRootView>
+      </PaperProvider>
+    </QueryClientProvider>
   );
 }
