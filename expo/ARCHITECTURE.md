@@ -15,8 +15,10 @@
 6. [Gestion d'état](#6-gestion-détat)
 7. [Types & Modèles de données](#7-types--modèles-de-données)
 8. [Authentification](#8-authentification)
-9. [Thème & Design System](#9-thème--design-system)
-10. [Reproduire le projet en local](#10-reproduire-le-projet-en-local)
+9. [Backend API (tRPC + Hono)](#9-backend-api-trpc--hono)
+10. [Thème & Design System](#10-thème--design-system)
+11. [Reproduire le projet en local](#11-reproduire-le-projet-en-local)
+12. [Checklist production](#12-checklist-production)
 
 ---
 
@@ -105,6 +107,23 @@ expo/
 │           ├── doctor-reports.tsx     # Rapports médecin
 │           ├── new-lab-result.tsx     # Nouveau résultat de labo
 │           └── new-vaccine.tsx        # Nouveau vaccin
+│
+├── backend/                       # Backend API (Hono + tRPC)
+│   ├── hono.ts                    # Point d'entrée Hono (monté sur /api)
+│   └── trpc/
+│       ├── create-context.ts      # Context tRPC, procédures public/protected
+│       ├── db.ts                  # Store en mémoire + helpers (hash, token)
+│       ├── app-router.ts          # Router principal tRPC
+│       └── routes/
+│           ├── auth.ts            # signup, login, getProfile, updateProfile
+│           ├── patients.ts        # CRUD patients, consultations, labo, vaccins
+│           ├── maternity.ts       # CRUD maternité, checkups, enfants, PEV
+│           ├── emergency.ts       # Alertes urgence, secouristes
+│           └── sms.ts             # Rappels SMS multilingues
+│
+├── lib/
+│   ├── trpc.ts                    # Client tRPC (React + direct)
+│   └── api-types.ts               # Types dérivés du router
 │
 ├── constants/
 │   ├── colors.ts                 # Palette de couleurs médicales
@@ -404,7 +423,99 @@ Hospital { id, name, type, latitude, longitude, phone?, is24h?, hasMaternity? }
 
 ---
 
-## 9. Thème & Design System
+## 9. Backend API (tRPC + Hono)
+
+### Architecture
+
+```
+Client (Expo)                         Serveur (Hono)
+┌─────────────────┐                  ┌─────────────────────────┐
+│  trpc (React)   │───HTTP/JSON────▶│  /api/trpc/*            │
+│  trpcClient     │                  │  ├── auth.*             │
+│                 │                  │  ├── patients.*         │
+│  Auth token     │                  │  ├── maternity.*        │
+│  (Bearer)       │                  │  ├── emergency.*        │
+│                 │                  │  └── sms.*              │
+└─────────────────┘                  └─────────────────────────┘
+```
+
+### Point d'entree : `backend/hono.ts`
+
+Fichier deploye automatiquement. Monte tRPC sur `/api/trpc` et expose un health check sur `/api/`.
+
+### Authentification API
+
+- Token genere en base64 (payload JSON : id, email, role, etc.)
+- Envoye via header `Authorization: Bearer <token>`
+- `protectedProcedure` verifie et decode le token
+- `publicProcedure` pour login/signup (pas de token requis)
+
+### Routes disponibles
+
+| Router | Procedure | Type | Description |
+|--------|-----------|------|-------------|
+| `auth` | `signup` | mutation | Inscription (email, password, role) |
+| `auth` | `login` | mutation | Connexion |
+| `auth` | `getProfile` | query | Profil utilisateur connecte |
+| `auth` | `updateProfile` | mutation | Mise a jour profil |
+| `auth` | `findPatientByEmail` | query | Recherche patient par email |
+| `auth` | `findPatientByPhone` | query | Recherche patient par telephone |
+| `patients` | `create` | mutation | Creer un dossier patient |
+| `patients` | `listByDoctor` | query | Liste patients du medecin |
+| `patients` | `getById` | query | Dossier par ID |
+| `patients` | `getByDossierNumber` | query | Dossier par numero |
+| `patients` | `updateIdentity` | mutation | MAJ identite |
+| `patients` | `updateCriticalInfo` | mutation | MAJ infos critiques |
+| `patients` | `updatePersonalHistory` | mutation | MAJ antecedents personnels |
+| `patients` | `updateFamilyHistory` | mutation | MAJ antecedents familiaux |
+| `patients` | `updateLifeHabits` | mutation | MAJ habitudes de vie |
+| `patients` | `addConsultation` | mutation | Ajouter consultation |
+| `patients` | `addLabResult` | mutation | Ajouter resultat labo |
+| `patients` | `addVaccine` | mutation | Ajouter vaccin |
+| `patients` | `getDoctorStats` | query | Statistiques medecin |
+| `patients` | `getMyRecord` | query | Mon dossier (patient) |
+| `patients` | `getMyPrescriptions` | query | Mes ordonnances |
+| `patients` | `getQRCodeData` | query | Donnees QR code |
+| `maternity` | `create` | mutation | Creer dossier maternite |
+| `maternity` | `listByDoctor` | query | Liste patientes du soignant |
+| `maternity` | `getById` | query | Dossier par ID |
+| `maternity` | `getMyData` | query | Mon suivi maternite |
+| `maternity` | `addWeeklyCheckup` | mutation | Suivi hebdomadaire |
+| `maternity` | `markConsultationDone` | mutation | Valider consultation prenatale |
+| `maternity` | `addPrenatalExam` | mutation | Ajouter examen prenatal |
+| `maternity` | `addChild` | mutation | Ajouter enfant (+ vaccins PEV) |
+| `maternity` | `addChildGrowth` | mutation | Suivi croissance |
+| `maternity` | `markChildVaccineDone` | mutation | Valider vaccin enfant |
+| `emergency` | `createAlert` | mutation | Creer alerte urgence |
+| `emergency` | `getActiveAlerts` | query | Alertes actives |
+| `emergency` | `respondToAlert` | mutation | Prendre en charge alerte |
+| `emergency` | `resolveAlert` | mutation | Resoudre alerte |
+| `emergency` | `registerSecourist` | mutation | S'inscrire comme secouriste |
+| `emergency` | `getSecourists` | query | Liste secouristes disponibles |
+| `sms` | `create` | mutation | Creer rappel SMS |
+| `sms` | `list` | query | Liste rappels |
+| `sms` | `updateStatus` | mutation | MAJ statut rappel |
+
+### Client tRPC (`lib/trpc.ts`)
+
+```typescript
+// Dans un composant React
+const patientsQuery = trpc.patients.listByDoctor.useQuery();
+const addPatient = trpc.patients.create.useMutation();
+
+// En dehors de React
+const data = await trpcClient.patients.listByDoctor.query();
+```
+
+Le token d'authentification est gere via `setAuthToken(token)` depuis `lib/trpc.ts`.
+
+### Stockage actuel (en memoire)
+
+> **IMPORTANT** : Le backend utilise actuellement un store **en memoire** (`db.ts`). Les donnees sont perdues a chaque redemarrage du serveur. Pour la production, connecter une base de donnees (PostgreSQL, MongoDB, etc.).
+
+---
+
+## 10. Theme & Design System
 
 ### Couleurs (`constants/colors.ts`)
 
@@ -426,7 +537,7 @@ Basé sur `MD3LightTheme` avec les couleurs médicales appliquées en primary/se
 
 ---
 
-## 10. Reproduire le projet en local
+## 11. Reproduire le projet en local
 
 ### Prérequis
 
@@ -460,6 +571,9 @@ bun add expo-image expo-image-picker expo-linear-gradient
 bun add expo-blur expo-web-browser expo-splash-screen expo-system-ui
 bun add axios
 bun add react-native-web react-dom
+
+# Backend dependencies
+bun add hono @hono/trpc-server @trpc/server @trpc/client @trpc/react-query superjson zod
 ```
 
 #### 3. Configurer `app.json`
@@ -543,34 +657,44 @@ Pour le web :
 bun start --web
 ```
 
-### Pour connecter un vrai backend
+### Backend integre (tRPC + Hono)
 
-Actuellement, toutes les données sont stockées localement via AsyncStorage/Zustand persist. Pour passer en production :
+Le backend est deja en place dans `backend/`. Il utilise :
+- **Hono** comme serveur HTTP (point d'entree : `backend/hono.ts`)
+- **tRPC** pour l'API type-safe
+- **superjson** comme transformer
+- **zod** pour la validation des entrees
 
-1. **Créer un backend** (Node.js + Express/Hono, Python + FastAPI, etc.) avec :
-   - API REST ou tRPC pour les opérations CRUD
-   - Base de données (PostgreSQL recommandé)
-   - Authentification JWT avec hachage bcrypt des mots de passe
-   - Endpoints pour chaque opération du `medicalStore` et `authStore`
+Le client tRPC est configure dans `lib/trpc.ts` et branche dans `_layout.tsx` via `<trpc.Provider>`.
 
-2. **Modifier les stores** :
-   - Remplacer les opérations AsyncStorage par des appels API (via `axios` ou `fetch`)
-   - Utiliser React Query (`useQuery`, `useMutation`) pour la synchronisation
-   - Garder Zustand pour l'état local/UI et le cache optimiste
+### Variables d'environnement
 
-3. **Variables d'environnement** à configurer :
-   - `EXPO_PUBLIC_API_BASE_URL` : URL de votre backend
-   - Créer un fichier `.env` à la racine du projet Expo
+| Variable | Description |
+|----------|-------------|
+| `EXPO_PUBLIC_RORK_API_BASE_URL` | URL base de l'API backend (auto-configure sur Rork) |
+| `EXPO_PUBLIC_RORK_AUTH_URL` | URL auth Rork |
+| `EXPO_PUBLIC_PROJECT_ID` | ID du projet |
 
-4. **Schéma base de données** suggéré :
+Pour un deploiement hors Rork, creer un `.env` :
+```
+EXPO_PUBLIC_RORK_API_BASE_URL=https://votre-api.com
+```
+
+### Pour connecter une vraie base de donnees
+
+Actuellement le backend stocke en memoire. Pour la production :
+
+1. **Remplacer `db.ts`** par une connexion a PostgreSQL/MongoDB
+2. **Schema base de donnees suggere** :
    - Table `users` (id, email, password_hash, first_name, last_name, phone, role)
    - Table `patients` (toutes les colonnes de PatientRecord)
-   - Table `consultations` (colonnes de ConsultationRecord, FK vers patients)
+   - Table `consultations` (FK vers patients)
    - Table `lab_results`, `vaccines`, `prescriptions`
    - Table `maternity_patients`, `weekly_checkups`, `prenatal_consultations`
    - Table `children`, `child_growth`, `child_vaccines`
    - Table `emergency_alerts`, `secourists`
    - Table `sms_reminders`
+3. **Migrer les stores frontend** : remplacer les appels Zustand par les hooks tRPC
 
 ### Notes importantes
 
@@ -607,4 +731,30 @@ Actuellement, toutes les données sont stockées localement via AsyncStorage/Zus
 
 ---
 
-*Ce document doit être mis à jour à chaque modification significative de l'architecture du projet.*
+---
+
+## 12. Checklist production
+
+Avant de lancer en production, ces points doivent etre adresses :
+
+| # | Element | Statut | Priorite |
+|---|---------|--------|----------|
+| 1 | Connecter une base de donnees (PostgreSQL recommande) | A faire | Critique |
+| 2 | Remplacer le hash simple par bcrypt pour les mots de passe | A faire | Critique |
+| 3 | Implementer JWT avec expiration et refresh tokens | A faire | Critique |
+| 4 | Chiffrement des donnees medicales au repos (AES-256) | A faire | Critique |
+| 5 | HTTPS obligatoire sur toutes les communications | A faire | Critique |
+| 6 | Rate limiting sur les endpoints sensibles (login, signup) | A faire | Haute |
+| 7 | Validation RGPD / conformite donnees de sante | A faire | Critique |
+| 8 | Logs d'audit (qui accede a quel dossier, quand) | A faire | Haute |
+| 9 | Backup automatique de la base de donnees | A faire | Haute |
+| 10 | Tests unitaires et d'integration | A faire | Haute |
+| 11 | Migrer les stores Zustand vers les hooks tRPC | A faire | Moyenne |
+| 12 | Remplacer les donnees mockees (hopitaux) par des vraies | A faire | Moyenne |
+| 13 | Configurer les notifications push reelles | A faire | Moyenne |
+| 14 | Integrer un vrai service SMS (Twilio, Africa's Talking) | A faire | Moyenne |
+| 15 | Build EAS pour iOS/Android | A faire | Haute |
+
+---
+
+*Ce document doit etre mis a jour a chaque modification significative de l'architecture du projet.*
