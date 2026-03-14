@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { zustandStorage } from './storage';
+import { dossierAPI, maternityAPI, extractErrorMessage } from './api';
 import type {
   PatientRecord,
   PatientIdentity,
@@ -55,11 +56,57 @@ const GUINEA_PEV_VACCINES: Omit<PEVVaccine, 'id' | 'childId'>[] = [
   { name: 'DTC rappel', targetAge: '18 mois', status: 'a_faire' },
 ];
 
+function syncToBackendCreatePatient(identity: Partial<PatientIdentity>, linkedEmail?: string) {
+  dossierAPI.createPatient({
+    first_name: identity.firstName || '',
+    last_name: identity.lastName || '',
+    dossier_number: identity.dossierNumber,
+    birth_date: identity.birthDate,
+    sex: identity.sex,
+    phone: identity.phone,
+    address: identity.address,
+    commune: identity.commune,
+    prefecture: identity.prefecture,
+    linked_email: linkedEmail,
+    emergency_contacts: identity.emergencyContacts || [],
+  }).then((res) => {
+    console.log('[MedicalStore] Backend patient created:', res.data?.id);
+  }).catch((e) => {
+    console.warn('[MedicalStore] Backend createPatient failed:', extractErrorMessage(e));
+  });
+}
+
+function syncToBackendCreateConsultation(patientId: string, consultation: Record<string, unknown>) {
+  dossierAPI.createConsultation(patientId, consultation).then((res) => {
+    console.log('[MedicalStore] Backend consultation created:', res.data?.id);
+  }).catch((e) => {
+    console.warn('[MedicalStore] Backend createConsultation failed:', extractErrorMessage(e));
+  });
+}
+
+function syncToBackendAddVaccination(patientId: string, vaccine: Record<string, unknown>) {
+  dossierAPI.addVaccination(patientId, vaccine).then((res) => {
+    console.log('[MedicalStore] Backend vaccination added:', res.data?.id);
+  }).catch((e) => {
+    console.warn('[MedicalStore] Backend addVaccination failed:', extractErrorMessage(e));
+  });
+}
+
+function syncToBackendUpdatePatient(patientId: string, data: Record<string, unknown>) {
+  dossierAPI.updatePatient(patientId, data).then(() => {
+    console.log('[MedicalStore] Backend patient updated:', patientId);
+  }).catch((e) => {
+    console.warn('[MedicalStore] Backend updatePatient failed:', extractErrorMessage(e));
+  });
+}
+
 interface MedicalStore {
   patients: PatientRecord[];
   maternityPatients: MaternityPatient[];
   smsReminders: SmsReminder[];
+  isSyncing: boolean;
 
+  syncPatientsFromBackend: () => Promise<void>;
   addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => string;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
@@ -110,6 +157,26 @@ export const useMedicalStore = create<MedicalStore>()(
       patients: [],
       maternityPatients: [],
       smsReminders: [],
+      isSyncing: false,
+
+      syncPatientsFromBackend: async () => {
+        if (get().isSyncing) return;
+        set({ isSyncing: true });
+        try {
+          console.log('[MedicalStore] Syncing patients from backend...');
+          const res = await dossierAPI.listPatients();
+          const backendPatients = res.data;
+          if (Array.isArray(backendPatients) && backendPatients.length > 0) {
+            console.log('[MedicalStore] Received', backendPatients.length, 'patients from backend');
+          } else {
+            console.log('[MedicalStore] No patients from backend or empty response');
+          }
+        } catch (e) {
+          console.warn('[MedicalStore] syncPatientsFromBackend failed:', extractErrorMessage(e));
+        } finally {
+          set({ isSyncing: false });
+        }
+      },
 
       addPatient: (doctorId, identity, userId, linkedEmail) => {
         const id = genId();
@@ -164,6 +231,9 @@ export const useMedicalStore = create<MedicalStore>()(
         };
         set((state) => ({ patients: [...state.patients, newPatient] }));
         console.log('[MedicalStore] Patient added:', id, dossierNumber, 'linked to userId:', userId, 'linkedEmail:', linkedEmail);
+
+        syncToBackendCreatePatient({ ...identity, dossierNumber }, linkedEmail);
+
         return id;
       },
 
@@ -218,6 +288,16 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        syncToBackendUpdatePatient(patientId, {
+          first_name: identity.firstName,
+          last_name: identity.lastName,
+          birth_date: identity.birthDate,
+          sex: identity.sex,
+          phone: identity.phone,
+          address: identity.address,
+          commune: identity.commune,
+          prefecture: identity.prefecture,
+        });
       },
 
       updateCriticalInfo: (patientId, info) => {
@@ -228,6 +308,7 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        syncToBackendUpdatePatient(patientId, { critical_info: info });
       },
 
       updatePersonalHistory: (patientId, history) => {
@@ -238,6 +319,7 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        syncToBackendUpdatePatient(patientId, { personal_history: history });
       },
 
       updateFamilyHistory: (patientId, history) => {
@@ -248,6 +330,7 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        syncToBackendUpdatePatient(patientId, { family_history: history });
       },
 
       updateLifeHabits: (patientId, habits) => {
@@ -258,6 +341,7 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        syncToBackendUpdatePatient(patientId, { life_habits: habits });
       },
 
       addConsultation: (patientId, consultation) => {
@@ -273,6 +357,24 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+
+        syncToBackendCreateConsultation(patientId, {
+          doctor_name: consultation.doctorName,
+          date: consultation.date,
+          time: consultation.time,
+          reason: consultation.reason,
+          vital_signs: consultation.vitalSigns,
+          clinical_exams: consultation.clinicalExams,
+          main_diagnosis: consultation.mainDiagnosis,
+          differential_diagnosis: consultation.differentialDiagnosis,
+          treatment: consultation.treatment,
+          prescriptions: consultation.prescriptions,
+          requested_exams: consultation.requestedExams,
+          next_appointment: consultation.nextAppointment,
+          referral: consultation.referral,
+          referral_structure: consultation.referralStructure,
+          observations: consultation.observations,
+        });
       },
 
       addLabResult: (patientId, result) => {
@@ -303,6 +405,15 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+
+        syncToBackendAddVaccination(patientId, {
+          name: vaccine.name,
+          date: vaccine.date,
+          facility: vaccine.facility,
+          doctor: vaccine.doctor,
+          next_reminder: vaccine.nextReminder,
+          status: vaccine.status,
+        });
       },
 
       getDoctorStats: (doctorId) => {
@@ -426,6 +537,35 @@ export const useMedicalStore = create<MedicalStore>()(
         };
         set((state) => ({ maternityPatients: [...state.maternityPatients, newPatient] }));
         console.log('[MedicalStore] Maternity patient added:', id, 'linked to userId:', userId, 'soignantId:', soignantId);
+
+        if (userId) {
+          maternityAPI.createMaternityProfile(userId, {
+            linked_email: linkedEmail,
+          }).then(() => {
+            console.log('[MedicalStore] Backend maternity profile created');
+          }).catch((e) => {
+            console.warn('[MedicalStore] Backend createMaternityProfile failed:', extractErrorMessage(e));
+          });
+
+          maternityAPI.createPregnancy(userId, {
+            first_name: pregnancy.firstName,
+            age: pregnancy.age,
+            last_period_date: pregnancy.lastPeriodDate,
+            due_date: pregnancy.dueDate,
+            current_week: pregnancy.currentWeek,
+            gravidity: pregnancy.gravidity,
+            parity: pregnancy.parity,
+            previous_pregnancies: pregnancy.previousPregnancies,
+            delivery_place: pregnancy.deliveryPlace,
+            referent_doctor: pregnancy.referentDoctor,
+            is_active: pregnancy.isActive,
+          }).then(() => {
+            console.log('[MedicalStore] Backend pregnancy created');
+          }).catch((e) => {
+            console.warn('[MedicalStore] Backend createPregnancy failed:', extractErrorMessage(e));
+          });
+        }
+
         return id;
       },
 
@@ -580,6 +720,16 @@ export const useMedicalStore = create<MedicalStore>()(
             return p;
           }),
         }));
+
+        maternityAPI.addChildGrowth(childId, {
+          date: record.date,
+          weight: record.weight,
+          height: record.height,
+          head_circumference: record.headCircumference,
+          notes: record.notes,
+        }).catch((e) => {
+          console.warn('[MedicalStore] Backend addChildGrowth failed:', extractErrorMessage(e));
+        });
       },
 
       markChildVaccineDone: (vaccineId, date, facility) => {
