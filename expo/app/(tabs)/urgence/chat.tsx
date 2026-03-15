@@ -1,4 +1,4 @@
-import { generateText } from '@rork-ai/toolkit-sdk';
+import { generateText } from '@/services/ai';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';

@@ -104,7 +104,8 @@ export const useAuthStore = create<AuthStore>()(
               if (tokens?.access) {
                 try {
                   const res = await authAPI.me();
-                  const user = mapBackendUser(res.data);
+                  const responseData = res.data.data || res.data;
+                  const user = mapBackendUser(responseData);
                   await saveAuthState(user, true);
                   set({ user });
                   console.log('[Auth] Refreshed user from backend');
@@ -127,7 +128,8 @@ export const useAuthStore = create<AuthStore>()(
     fetchMe: async () => {
       try {
         const res = await authAPI.me();
-        const user = mapBackendUser(res.data);
+        const responseData = res.data.data || res.data;
+        const user = mapBackendUser(responseData);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true });
         console.log('[Auth] fetchMe success:', user.email);
@@ -141,20 +143,31 @@ export const useAuthStore = create<AuthStore>()(
       try {
         console.log('[Auth] Attempting login for:', email);
         const res = await authAPI.login({ email: email.toLowerCase(), password });
-        const data = res.data;
 
-        if (data.access && data.refresh) {
-          await storeTokens({ access: data.access, refresh: data.refresh });
-        } else if (data.tokens) {
-          await storeTokens({ access: data.tokens.access, refresh: data.tokens.refresh });
+        // Le backend enveloppe la réponse dans {success, message, data}
+        // Extraire le vrai data
+        const responseData = res.data.data || res.data;
+        console.log('[Auth] Login response data:', JSON.stringify(responseData));
+
+        // Stocker les tokens
+        if (responseData.tokens) {
+          await storeTokens({ access: responseData.tokens.access, refresh: responseData.tokens.refresh });
+        } else if (responseData.access && responseData.refresh) {
+          await storeTokens({ access: responseData.access, refresh: responseData.refresh });
         }
 
         let user: User;
-        if (data.user) {
-          user = mapBackendUser(data.user);
+        if (responseData.user) {
+          user = mapBackendUser(responseData.user);
         } else {
-          const meRes = await authAPI.me();
-          user = mapBackendUser(meRes.data);
+          // Les tokens sont déjà stockés, l'interceptor les attachera automatiquement
+          try {
+            const meRes = await authAPI.me();
+            const meData = meRes.data.data || meRes.data;
+            user = mapBackendUser(meData);
+          } catch {
+            throw new Error('Impossible de récupérer le profil utilisateur');
+          }
         }
 
         console.log('[Auth] Login successful for:', user.email, 'role:', user.role);
@@ -184,32 +197,30 @@ export const useAuthStore = create<AuthStore>()(
           role: userData.role,
         });
 
-        const data = res.data;
+        // Le backend enveloppe la réponse dans {success, message, data}
+        const responseData = res.data.data || res.data;
 
-        if (data.access && data.refresh) {
-          await storeTokens({ access: data.access, refresh: data.refresh });
-        } else if (data.tokens) {
-          await storeTokens({ access: data.tokens.access, refresh: data.tokens.refresh });
+        if (responseData.tokens) {
+          await storeTokens({ access: responseData.tokens.access, refresh: responseData.tokens.refresh });
+        } else if (responseData.access && responseData.refresh) {
+          await storeTokens({ access: responseData.access, refresh: responseData.refresh });
         }
 
+
         let user: User;
-        if (data.user) {
-          user = mapBackendUser(data.user);
+        if (responseData.user) {
+          user = mapBackendUser(responseData.user);
         } else {
-          try {
-            const meRes = await authAPI.me();
-            user = mapBackendUser(meRes.data);
-          } catch {
-            user = {
-              id: String(data.id ?? Date.now()),
-              email: userData.email,
-              firstName: userData.firstName,
-              lastName: userData.lastName,
-              phone: userData.phone,
-              role: userData.role,
-              dossierNumber: data.dossier_number ? String(data.dossier_number) : undefined,
-            };
-          }
+          // Fallback : construire depuis les données locales
+          user = {
+            id: String(responseData.id ?? Date.now()),
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            phone: userData.phone,
+            role: userData.role,
+            dossierNumber: responseData.dossier_number ? String(responseData.dossier_number) : undefined,
+          };
         }
 
         console.log('[Auth] Signup successful for:', user.email);
@@ -262,19 +273,28 @@ export const useAuthStore = create<AuthStore>()(
           last_name: updatedUser.lastName,
           phone: updatedUser.phone,
         }).catch((e) => {
-          console.warn('[Auth] Failed to sync profile to backend:', e);
+          const errorMsg = extractErrorMessage(e);
+          console.error('[Auth] Failed to sync profile to backend:', errorMsg);
+          // Note: Erreur de synchronisation backend — les données locales sont conservées
         });
       }
     },
 
     findPatientByEmail: async (email: string) => {
       try {
-        const res = await authAPI.me();
-        const user = mapBackendUser(res.data);
-        if (user.email.toLowerCase() === email.toLowerCase() && user.role === 'patient') {
-          return user;
-        }
+        // Cette fonction cherche un UTILISATEUR patient, pas un dossier patient
+        // Note: Il faudrait un endpoint backend type /auth/search-user-by-email/
+        // Pour l'instant, on retourne null car l'endpoint n'existe pas
+        console.log('[Auth] findPatientByEmail:', email, '- backend endpoint not available');
         return null;
+
+        // TODO: Si le backend expose un endpoint de recherche :
+        // const res = await authAPI.searchUserByEmail(email);
+        // const userData = res.data.data || res.data;
+        // if (userData && userData.role === 'patient') {
+        //   return mapBackendUser(userData);
+        // }
+        // return null;
       } catch (e) {
         console.error('[Auth] findPatientByEmail error:', e);
         return null;
@@ -283,8 +303,19 @@ export const useAuthStore = create<AuthStore>()(
 
     findPatientByPhone: async (phone: string) => {
       try {
-        console.log('[Auth] findPatientByPhone:', phone);
+        // Cette fonction cherche un UTILISATEUR patient, pas un dossier patient
+        // Note: Il faudrait un endpoint backend type /auth/search-user-by-phone/
+        // Pour l'instant, on retourne null car l'endpoint n'existe pas
+        console.log('[Auth] findPatientByPhone:', phone, '- backend endpoint not available');
         return null;
+
+        // TODO: Si le backend expose un endpoint de recherche :
+        // const res = await authAPI.searchUserByPhone(phone);
+        // const userData = res.data.data || res.data;
+        // if (userData && userData.role === 'patient') {
+        //   return mapBackendUser(userData);
+        // }
+        // return null;
       } catch (e) {
         console.error('[Auth] findPatientByPhone error:', e);
         return null;

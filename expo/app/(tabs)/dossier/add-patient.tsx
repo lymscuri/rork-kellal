@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
+import { extractErrorMessage } from '@/store/api';
 import { UserPlus, Mail, Info } from 'lucide-react-native';
 import type { PatientIdentity } from '@/types/medical';
 
@@ -26,7 +27,7 @@ export default function AddPatientScreen() {
   const [contactPhone, setContactPhone] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!firstName.trim() || !lastName.trim()) {
       Alert.alert('Erreur', 'Le nom et le prénom sont requis');
       return;
@@ -50,17 +51,23 @@ export default function AddPatientScreen() {
       }] : [],
     };
 
-    const emailToLink = patientEmail.trim() || undefined;
-    const patientId = addPatient(user.id, identity, undefined, emailToLink);
-    console.log('[AddPatient] Created patient:', patientId, 'linkedEmail:', emailToLink);
-    
-    const message = emailToLink
-      ? `Patient ajouté avec succès.\n\nLe dossier sera automatiquement visible par le patient quand il se connectera avec l'email : ${emailToLink}`
-      : 'Patient ajouté avec succès (sans liaison à un compte patient).';
-    
-    Alert.alert('Succès', message, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    try {
+      const emailToLink = patientEmail.trim() || undefined;
+      const patientId = await addPatient(user.id, identity, undefined, emailToLink);
+      console.log('[AddPatient] Created patient:', patientId, 'linkedEmail:', emailToLink);
+
+      const message = emailToLink
+        ? `Patient ajouté avec succès.\n\nLe dossier sera automatiquement visible par le patient quand il se connectera avec l'email : ${emailToLink}`
+        : 'Patient ajouté avec succès (sans liaison à un compte patient).';
+
+      Alert.alert('Succès', message, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      console.error('[AddPatient] Error:', error);
+      const message = extractErrorMessage(error) || 'Impossible de créer le patient. Vérifiez votre connexion.';
+      Alert.alert('Erreur', message);
+    }
   }, [firstName, lastName, birthDate, sex, phone, address, commune, prefecture, contactName, contactRelation, contactPhone, user, addPatient, router, patientEmail]);
 
   return (

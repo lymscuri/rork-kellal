@@ -56,7 +56,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           router.replace("/auth/login");
         } else if (isAuthenticated && (inAuthGroup || isIndex)) {
           console.log('[AuthGuard] Redirecting to tabs');
-          router.replace("/(tabs)/urgence");
+          router.replace("/(tabs)/dossier");
         }
       } catch (e) {
         console.error('[AuthGuard] Navigation error:', e);

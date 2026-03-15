@@ -15,7 +15,9 @@ export default function PrenatalCalendarScreen() {
     return maternityPatients.find(p => p.userId === user.id) || null;
   }, [maternityPatients, user]);
   const consultations = useMemo(() => myData?.prenatalConsultations || [], [myData]);
+  console.log('[PrenatalCalendar] user:', user?.id, 'myData:', myData?.id, 'patients count:', maternityPatients.length);
   const currentWeek = myData?.pregnancy?.currentWeek || 0;
+  console.log('[PrenatalCalendar] user:', user?.id, 'myData:', myData?.id, 'patients:', maternityPatients.length);
 
   const handleMarkDone = useCallback((consultationId: string, weekTarget: number) => {
     if (!myData) return;

@@ -38,59 +38,10 @@ try {
 }
 import { MedicalColors } from "@/constants/colors";
 import type { AlertStatus, AlertUrgencyLevel, EmergencyAlert, Secourist } from "@/types/medical";
+import { useEmergencyStore } from "@/store/emergencyStore";
 
 const DEFAULT_LAT = 9.537;
 const DEFAULT_LON = -13.6785;
-
-const MOCK_SECOURISTS: Secourist[] = [
-  { id: "s1", name: "Mamadou Diallo", phone: "+224620000001", latitude: 9.54, longitude: -13.675, isAvailable: true, specialty: "Secouriste certifié", lastActive: new Date().toISOString() },
-  { id: "s2", name: "Aissatou Barry", phone: "+224620000002", latitude: 9.535, longitude: -13.682, isAvailable: true, specialty: "Infirmière", lastActive: new Date().toISOString() },
-  { id: "s3", name: "Ibrahim Camara", phone: "+224620000003", latitude: 9.532, longitude: -13.671, isAvailable: false, specialty: "Pompier volontaire", lastActive: new Date(Date.now() - 3600000).toISOString() },
-  { id: "s4", name: "Fatoumata Soumah", phone: "+224620000004", latitude: 9.543, longitude: -13.688, isAvailable: true, specialty: "Agent de santé", lastActive: new Date().toISOString() },
-];
-
-const MOCK_ALERTS: EmergencyAlert[] = [
-  {
-    id: "a1",
-    senderId: "u1",
-    senderName: "Ousmane Bah",
-    senderPhone: "+224620000010",
-    latitude: 9.538,
-    longitude: -13.68,
-    description: "Accident de la route, personne blessée",
-    urgencyLevel: "critique",
-    status: "active",
-    createdAt: new Date(Date.now() - 300000).toISOString(),
-    updatedAt: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: "a2",
-    senderId: "u2",
-    senderName: "Kadiatou Balde",
-    senderPhone: "+224620000011",
-    latitude: 9.534,
-    longitude: -13.676,
-    description: "Malaise cardiaque, besoin d'aide urgente",
-    urgencyLevel: "critique",
-    status: "prise_en_charge",
-    responderId: "s1",
-    responderName: "Mamadou Diallo",
-    createdAt: new Date(Date.now() - 600000).toISOString(),
-    updatedAt: new Date(Date.now() - 120000).toISOString(),
-  },
-  {
-    id: "a3",
-    senderId: "u3",
-    senderName: "Alpha Souare",
-    latitude: 9.541,
-    longitude: -13.672,
-    description: "Chute dans l'escalier, douleur au genou",
-    urgencyLevel: "modere",
-    status: "active",
-    createdAt: new Date(Date.now() - 900000).toISOString(),
-    updatedAt: new Date(Date.now() - 900000).toISOString(),
-  },
-];
 
 function getUrgencyColor(level: AlertUrgencyLevel): string {
   switch (level) {
@@ -154,10 +105,15 @@ export default function SecouristNetworkScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<any>(null);
 
+  const alerts = useEmergencyStore((state) => state.alerts);
+  const secourists = useEmergencyStore((state) => state.secourists);
+  const createEmergencyAlert = useEmergencyStore((state) => state.createEmergencyAlert);
+  const syncAlertsFromBackend = useEmergencyStore((state) => state.syncAlertsFromBackend);
+  const syncSecouristsFromBackend = useEmergencyStore((state) => state.syncSecouristsFromBackend);
+  const takeAlert = useEmergencyStore((state) => state.takeAlert);
+
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [activeTab, setActiveTab] = useState<ViewTab>("carte");
-  const [alerts, setAlerts] = useState<EmergencyAlert[]>(MOCK_ALERTS);
-  const [secourists] = useState<Secourist[]>(MOCK_SECOURISTS);
   const [selectedAlert, setSelectedAlert] = useState<EmergencyAlert | null>(null);
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosDescription, setSosDescription] = useState("");
@@ -203,6 +159,13 @@ export default function SecouristNetworkScreen() {
     }
   }, []);
 
+  // Synchroniser les alertes et secouristes depuis le backend au montage
+  useEffect(() => {
+    console.log('[SecouristNetwork] Syncing alerts and secourists from backend on mount');
+    syncAlertsFromBackend();
+    syncSecouristsFromBackend();
+  }, [syncAlertsFromBackend, syncSecouristsFromBackend]);
+
   const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "resolue"), [alerts]);
   const availableSecourists = useMemo(() => secourists.filter((s) => s.isAvailable), [secourists]);
 
@@ -221,20 +184,14 @@ export default function SecouristNetworkScreen() {
           text: "Confirmer",
           style: "default",
           onPress: () => {
-            setAlerts((prev) =>
-              prev.map((a) =>
-                a.id === alertId
-                  ? { ...a, status: "prise_en_charge" as const, responderId: "me", responderName: "Vous", updatedAt: new Date().toISOString() }
-                  : a
-              )
-            );
+            takeAlert(alertId, "Vous");
             setSelectedAlert(null);
             console.log("[SecouristNetwork] Alert taken:", alertId);
           },
         },
       ]
     );
-  }, []);
+  }, [takeAlert]);
 
   const handleNavigateToAlert = useCallback((alert: EmergencyAlert) => {
     const url = Platform.select({
@@ -265,24 +222,18 @@ export default function SecouristNetworkScreen() {
       return;
     }
     const loc = userLocation ?? { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
-    const newAlert: EmergencyAlert = {
-      id: `a-${Date.now()}`,
-      senderId: "me",
-      senderName: "Vous",
+    const alertId = createEmergencyAlert({
       latitude: loc.latitude,
       longitude: loc.longitude,
       description: sosDescription.trim(),
       urgencyLevel: sosUrgency,
-      status: "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setAlerts((prev) => [newAlert, ...prev]);
+      senderName: "Vous",
+    });
     setShowSOSModal(false);
     setSosDescription("");
     Alert.alert("Alerte envoyée", "Les secouristes proches ont été notifiés de votre position.");
-    console.log("[SecouristNetwork] SOS sent:", newAlert.id);
-  }, [sosDescription, sosUrgency, userLocation]);
+    console.log("[SecouristNetwork] SOS sent:", alertId);
+  }, [sosDescription, sosUrgency, userLocation, createEmergencyAlert]);
 
   const handleFocusOnAlert = useCallback((alert: EmergencyAlert) => {
     setSelectedAlert(alert);

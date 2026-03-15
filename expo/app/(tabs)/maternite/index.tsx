@@ -18,9 +18,10 @@ function PatientView() {
   const { maternityPatients } = useMedicalStore();
   const autoLinkMaternityByEmail = useMedicalStore((s) => s.autoLinkMaternityByEmail);
   const getMyMaternityDataByEmail = useMedicalStore((s) => s.getMyMaternityDataByEmail);
+  const hasAttemptedAutoLink = React.useRef(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || hasAttemptedAutoLink.current) return;
     const byId = maternityPatients.find(p => p.userId === user.id);
     if (!byId && user.email) {
       console.log('[MaternityPatientView] No data by userId, trying auto-link by email:', user.email);
@@ -28,6 +29,7 @@ function PatientView() {
       if (linked) {
         console.log('[MaternityPatientView] Auto-linked maternity record:', linked.id);
       }
+      hasAttemptedAutoLink.current = true;
     }
   }, [user, maternityPatients, autoLinkMaternityByEmail]);
 
@@ -192,6 +194,7 @@ function SoignantView() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const { maternityPatients } = useMedicalStore();
+  const syncMaternityPatientsFromBackend = useMedicalStore((s) => s.syncMaternityPatientsFromBackend);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('toutes');
 
   const doctorPatients = useMemo(() => {
@@ -218,6 +221,12 @@ function SoignantView() {
     if (activeFilter === 'a_jour') return doctorPatients.filter(p => getPatientConsultProgress(p).isUpToDate);
     return doctorPatients.filter(p => !getPatientConsultProgress(p).isUpToDate);
   }, [doctorPatients, activeFilter]);
+
+  // Synchroniser les patientes de maternité depuis le backend au montage
+  React.useEffect(() => {
+    console.log('[SoignantView] Syncing maternity patients from backend on mount');
+    syncMaternityPatientsFromBackend();
+  }, [syncMaternityPatientsFromBackend]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
@@ -343,7 +352,7 @@ function SoignantView() {
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={item => item.id}
+          keyExtractor={(item, index) => item.id || `maternity-${index}`}
           renderItem={renderPatient}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}

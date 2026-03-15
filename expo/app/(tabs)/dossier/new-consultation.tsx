@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
+import { extractErrorMessage } from '@/store/api';
 import type { VitalSigns, ClinicalExam, PrescriptionItem } from '@/types/medical';
 
 const EXAM_SYSTEMS = ['Cardiovasculaire', 'Pulmonaire', 'Abdominal', 'Neurologique', 'ORL', 'Peau', 'Autres'];
@@ -87,7 +88,7 @@ export default function NewConsultationScreen() {
     }
   }, [medName, patient, doAddPrescription]);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!reason.trim() || !mainDiagnosis.trim()) {
       Alert.alert('Erreur', 'Le motif et le diagnostic sont requis');
       return;
@@ -112,26 +113,32 @@ export default function NewConsultationScreen() {
       observation: examObservations[system] || undefined,
     }));
 
-    addConsultation(patientId, {
-      doctorId: user.id,
-      doctorName: `${user.lastName} ${user.firstName}`,
-      date: new Date().toISOString(),
-      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      reason: reason.trim(),
-      vitalSigns,
-      clinicalExams,
-      mainDiagnosis: mainDiagnosis.trim(),
-      differentialDiagnosis: diffDiagnosis.trim() || undefined,
-      treatment: treatment.trim(),
-      prescriptions,
-      requestedExams,
-      nextAppointment: nextAppointment.trim() || undefined,
-      observations: observations.trim() || undefined,
-    });
+    try {
+      await addConsultation(patientId, {
+        doctorId: user.id,
+        doctorName: `${user.lastName} ${user.firstName}`,
+        date: new Date().toISOString(),
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        reason: reason.trim(),
+        vitalSigns,
+        clinicalExams,
+        mainDiagnosis: mainDiagnosis.trim(),
+        differentialDiagnosis: diffDiagnosis.trim() || undefined,
+        treatment: treatment.trim(),
+        prescriptions,
+        requestedExams,
+        nextAppointment: nextAppointment.trim() || undefined,
+        observations: observations.trim() || undefined,
+      });
 
-    Alert.alert('Succès', 'Consultation enregistrée', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+      Alert.alert('Succès', 'Consultation enregistrée', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      console.error('[NewConsultation] Error:', error);
+      const message = extractErrorMessage(error) || 'Impossible d\'enregistrer la consultation. Vérifiez votre connexion.';
+      Alert.alert('Erreur', message);
+    }
   }, [reason, mainDiagnosis, patientId, user, weight, height, bmi, temperature, systolic, diastolic, heartRate, spo2, respRate, selectedExams, examObservations, diffDiagnosis, treatment, prescriptions, requestedExams, nextAppointment, observations, addConsultation, router]);
 
   return (

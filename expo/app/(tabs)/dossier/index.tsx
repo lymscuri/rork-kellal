@@ -18,6 +18,7 @@ function DoctorDashboard() {
   const allPatients = useMedicalStore((s) => s.patients);
   const getPatientsByDoctor = useMedicalStore((s) => s.getPatientsByDoctor);
   const getDoctorStats = useMedicalStore((s) => s.getDoctorStats);
+  const syncPatientsFromBackend = useMedicalStore((s) => s.syncPatientsFromBackend);
   const [search, setSearch] = useState('');
 
   const patients = useMemo(
@@ -47,6 +48,12 @@ function DoctorDashboard() {
       p.identity.dossierNumber.toLowerCase().includes(q)
     );
   }, [patients, search]);
+
+  // Synchroniser les patients depuis le backend au montage
+  useEffect(() => {
+    console.log('[DoctorDashboard] Syncing patients from backend on mount');
+    syncPatientsFromBackend();
+  }, [syncPatientsFromBackend]);
 
   const getAlertLevel = useCallback((patient: PatientRecord) => {
     if (patient.consultations.length === 0) return 'none';
@@ -192,9 +199,10 @@ function PatientDashboard() {
   const getMyRecordByEmail = useMedicalStore((s) => s.getMyRecordByEmail);
   const autoLinkPatientByEmail = useMedicalStore((s) => s.autoLinkPatientByEmail);
   const getMyPrescriptions = useMedicalStore((s) => s.getMyPrescriptions);
+  const hasAttemptedAutoLink = React.useRef(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || hasAttemptedAutoLink.current) return;
     const byId = getMyRecord(user.id);
     if (!byId && user.email) {
       console.log('[PatientDashboard] No record by userId, trying auto-link by email:', user.email);
@@ -204,6 +212,7 @@ function PatientDashboard() {
       } else {
         console.log('[PatientDashboard] No record found by email either');
       }
+      hasAttemptedAutoLink.current = true;
     }
   }, [user, allPatients, getMyRecord, autoLinkPatientByEmail]);
 

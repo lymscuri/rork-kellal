@@ -96,7 +96,16 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const noRetryRoutes = ['/auth/login/', '/auth/register/', '/auth/refresh/'];
+    const shouldNotRetry = noRetryRoutes.some(route => originalRequest.url?.includes(route));
+
+    if (error.response?.status === 404) {
+      return Promise.reject(error);
+    }
+
+    // Ne pas tenter le refresh sur les 404 — ce n'est pas un problème d'auth
+    if (error.response?.status === 401 && !originalRequest._retry && !shouldNotRetry) {
+
       if (isRefreshing) {
         return new Promise<string>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -118,7 +127,7 @@ apiClient.interceptors.response.use(
         }
 
         console.log('[API] Attempting token refresh...');
-        const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
           refresh: tokens.refresh,
         });
 
@@ -131,7 +140,16 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         console.error('[API] Token refresh failed:', refreshError);
         processQueue(refreshError, null);
-        await clearTokens();
+
+        // Ne supprimer les tokens que si le refresh token est réellement invalide (401)
+        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) {
+          console.log('[API] Refresh token invalid (401) - clearing tokens');
+          await clearTokens();
+        } else {
+          console.log('[API] Refresh failed but tokens preserved (status:',
+            axios.isAxiosError(refreshError) ? refreshError.response?.status : 'unknown', ')');
+        }
+
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -152,7 +170,10 @@ export function extractErrorMessage(error: unknown): string {
       if (typeof data === 'string') return data;
       if (data.detail) return data.detail;
       if (data.message) return data.message;
-      if (data.error) return data.error;
+      if (data.error) {
+        if (typeof data.error === 'string') return data.error;
+        if (data.error.message) return String(data.error.message);
+      }
       if (data.non_field_errors) {
         return Array.isArray(data.non_field_errors)
           ? data.non_field_errors.join(', ')
@@ -207,7 +228,7 @@ export const authAPI = {
   }) => apiClient.post('/auth/change-password/', data),
 
   refreshToken: (refresh: string) =>
-    apiClient.post('/auth/token/refresh/', { refresh }),
+    apiClient.post('/auth/refresh/', { refresh }),
 };
 
 export const dossierAPI = {
@@ -257,84 +278,80 @@ export const dossierAPI = {
 };
 
 export const emergencyAPI = {
+  // Alertes d'urgence
   createAlert: (data: Record<string, unknown>) =>
     apiClient.post('/emergency/alerts/', data),
 
-  getAlert: (alertId: string) =>
-    apiClient.get(`/emergency/alerts/${alertId}/`),
+  listAlerts: () =>
+    apiClient.get('/emergency/alerts/'),
 
-  assignAlert: (alertId: string) =>
-    apiClient.patch(`/emergency/alerts/${alertId}/assign/`),
+  takeAlert: (alertId: string) =>
+    apiClient.patch(`/emergency/alerts/${alertId}/take/`),
 
-  updateAlertStatus: (alertId: string, data: { status: string }) =>
-    apiClient.patch(`/emergency/alerts/${alertId}/status/`, data),
+  resolveAlert: (alertId: string) =>
+    apiClient.patch(`/emergency/alerts/${alertId}/resolve/`),
 
-  listAlerts: () => apiClient.get('/emergency/alerts/list/'),
+  // Secouristes
+  listSecourists: () =>
+    apiClient.get('/emergency/secourists/'),
 
-  listPendingAlerts: () => apiClient.get('/emergency/alerts/pending/'),
+  updateSecouristLocation: (data: Record<string, unknown>) =>
+    apiClient.patch('/emergency/secourists/me/location/', data),
 
-  listHospitals: () => apiClient.get('/emergency/hospitals/'),
-
-  getHospital: (hospitalId: string) =>
-    apiClient.get(`/emergency/hospitals/${hospitalId}/`),
-
-  createSecouristProfile: (data: Record<string, unknown>) =>
-    apiClient.post('/emergency/secourist/profile/', data),
-
-  getSecouristProfile: () =>
-    apiClient.get('/emergency/secourist/profile/detail/'),
-
-  updateSecouristProfile: (data: Record<string, unknown>) =>
-    apiClient.patch('/emergency/secourist/profile/detail/', data),
-
-  listSecourists: () => apiClient.get('/emergency/secourists/'),
+  // Hôpitaux
+  listHospitals: () =>
+    apiClient.get('/emergency/hospitals/'),
 };
 
 export const maternityAPI = {
-  createMaternityProfile: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/maternity-profile/`, data),
+  // Gestion des patientes maternité
+  createMaternityPatient: (data: Record<string, unknown>) =>
+    apiClient.post('/maternity/patients/', data),
 
-  getMaternityProfile: (patientId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/maternity-profile/detail/`),
+  listMaternityPatients: () =>
+    apiClient.get('/maternity/patients/'),
 
-  updateMaternityProfile: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/patients/${patientId}/maternity-profile/detail/`, data),
+  getMaternityPatient: (patientId: string) =>
+    apiClient.get(`/maternity/patients/${patientId}/`),
 
-  listPregnancies: (patientId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/pregnancies/`),
+  // Suivis hebdomadaires
+  createWeeklyCheckup: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/weekly-checkups/`, data),
 
-  createPregnancy: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/pregnancies/`, data),
+  listWeeklyCheckups: (patientId: string) =>
+    apiClient.get(`/maternity/patients/${patientId}/weekly-checkups/`),
 
-  getPregnancy: (patientId: string, pregnancyId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/`),
+  // Examens prénataux
+  createPrenatalExam: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/prenatal-exams/`, data),
 
-  updatePregnancy: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/`, data),
+  listPrenatalExams: (patientId: string) =>
+    apiClient.get(`/maternity/patients/${patientId}/prenatal-exams/`),
 
-  listChildren: (patientId: string, pregnancyId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/children/`),
+  // Consultations prénatales
+  schedulePrenatalConsultation: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
+    apiClient.patch(`/maternity/patients/${patientId}/consultations/${consultationId}/schedule/`, data),
 
-  addChild: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/children/`, data),
+  markPrenatalConsultationDone: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
+    apiClient.patch(`/maternity/patients/${patientId}/consultations/${consultationId}/done/`, data),
 
-  listPrenatalConsultations: (patientId: string, pregnancyId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/`),
+  // Enfants
+  createChild: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/children/`, data),
 
-  createPrenatalConsultation: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/`, data),
+  listChildren: (patientId: string) =>
+    apiClient.get(`/maternity/patients/${patientId}/children/`),
 
-  getPrenatalConsultation: (patientId: string, pregnancyId: string, consultationId: string) =>
-    apiClient.get(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/${consultationId}/`),
-
-  updatePrenatalConsultation: (patientId: string, pregnancyId: string, consultationId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/${consultationId}/`, data),
-
+  // Croissance des enfants
   addChildGrowth: (childId: string, data: Record<string, unknown>) =>
     apiClient.post(`/maternity/children/${childId}/growth/`, data),
 
-  addChildVaccine: (childId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/children/${childId}/vaccines/`, data),
+  listChildGrowth: (childId: string) =>
+    apiClient.get(`/maternity/children/${childId}/growth/`),
+
+  // Vaccins des enfants
+  markChildVaccineDone: (vaccineId: string, data: Record<string, unknown>) =>
+    apiClient.patch(`/maternity/children/vaccines/${vaccineId}/done/`, data),
 };
 
 export default apiClient;

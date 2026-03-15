@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
+import { extractErrorMessage } from '@/store/api';
 import { Baby, Mail, Info } from 'lucide-react-native';
 
 export default function AddMaternityPatientScreen() {
@@ -53,7 +54,7 @@ export default function AddMaternityPatientScreen() {
     return 0;
   };
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!firstName.trim()) {
       Alert.alert('Erreur', 'Le prénom est requis');
       return;
@@ -67,27 +68,33 @@ export default function AddMaternityPatientScreen() {
     const currentWeek = lastPeriodDate ? calculateCurrentWeek(lastPeriodDate) : 0;
     const emailToLink = patientEmail.trim() || undefined;
 
-    addMaternityPatient(user?.id || '', {
-      firstName: firstName.trim(),
-      age: parseInt(age),
-      lastPeriodDate: lastPeriodDate.trim() || undefined,
-      dueDate,
-      currentWeek,
-      gravidity: parseInt(gravidity) || 1,
-      parity: parseInt(parity) || 0,
-      previousPregnancies,
-      deliveryPlace: deliveryPlace || 'Maternité',
-      referentDoctor: referentDoctor.trim() || undefined,
-      isActive: true,
-    }, undefined, emailToLink);
+    try {
+      await addMaternityPatient(user?.id || '', {
+        firstName: firstName.trim(),
+        age: parseInt(age),
+        lastPeriodDate: lastPeriodDate.trim() || undefined,
+        dueDate,
+        currentWeek,
+        gravidity: parseInt(gravidity) || 1,
+        parity: parseInt(parity) || 0,
+        previousPregnancies,
+        deliveryPlace: deliveryPlace || 'Maternité',
+        referentDoctor: referentDoctor.trim() || undefined,
+        isActive: true,
+      }, undefined, emailToLink);
 
-    const message = emailToLink
-      ? `Patiente ajoutée avec succès.\n\nLe suivi sera automatiquement visible quand elle se connectera avec l'email : ${emailToLink}`
-      : 'Patiente ajoutée avec succès (sans liaison à un compte).';
+      const message = emailToLink
+        ? `Patiente ajoutée avec succès.\n\nLe suivi sera automatiquement visible quand elle se connectera avec l'email : ${emailToLink}`
+        : 'Patiente ajoutée avec succès (sans liaison à un compte).';
 
-    Alert.alert('Succès', message, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+      Alert.alert('Succès', message, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      console.error('[AddMaternityPatient] Error:', error);
+      const message = extractErrorMessage(error) || 'Impossible d\'ajouter la patiente. Vérifiez votre connexion.';
+      Alert.alert('Erreur', message);
+    }
   }, [firstName, age, lastPeriodDate, gravidity, parity, previousPregnancies, deliveryPlace, referentDoctor, addMaternityPatient, router, user, patientEmail]);
 
   return (

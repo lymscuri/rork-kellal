@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
+import { extractErrorMessage } from '@/store/api';
 import type { VaccineRecord } from '@/types/medical';
 
 const COMMON_VACCINES = [
@@ -42,7 +43,7 @@ export default function NewVaccineScreen() {
     }
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     const finalName = vaccineName || customName.trim();
     if (!finalName) {
       Alert.alert('Erreur', 'Le nom du vaccin est requis');
@@ -50,18 +51,24 @@ export default function NewVaccineScreen() {
     }
     if (!patientId || !user) return;
 
-    addVaccine(patientId, {
-      name: finalName,
-      date: new Date().toISOString(),
-      facility: facility.trim() || 'Non précisé',
-      doctor: `Dr. ${user.lastName} ${user.firstName}`,
-      nextReminder: nextReminder.trim() || undefined,
-      status,
-    });
+    try {
+      await addVaccine(patientId, {
+        name: finalName,
+        date: new Date().toISOString(),
+        facility: facility.trim() || 'Non précisé',
+        doctor: `Dr. ${user.lastName} ${user.firstName}`,
+        nextReminder: nextReminder.trim() || undefined,
+        status,
+      });
 
-    Alert.alert('Succès', 'Vaccin enregistré', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+      Alert.alert('Succès', 'Vaccin enregistré', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      console.error('[NewVaccine] Error:', error);
+      const message = extractErrorMessage(error) || 'Impossible d\'enregistrer le vaccin. Vérifiez votre connexion.';
+      Alert.alert('Erreur', message);
+    }
   }, [vaccineName, customName, facility, status, nextReminder, patientId, user, addVaccine, router]);
 
   return (

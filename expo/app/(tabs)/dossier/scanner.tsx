@@ -5,12 +5,13 @@ import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
+import { extractErrorMessage } from '@/store/api';
 import { ScanLine, Search, Mail } from 'lucide-react-native';
 
 export default function ScannerScreen() {
   const router = useRouter();
-  const { user, findPatientByEmail } = useAuthStore();
-  const { getPatientByDossierNumber, getPatientByUserId, linkPatientToDoctor, addPatient } = useMedicalStore();
+  const { user } = useAuthStore();
+  const { getPatientByDossierNumber, getPatientByUserId, linkPatientToDoctor, addPatient, searchPatientInStore } = useMedicalStore();
   const [dossierNumber, setDossierNumber] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
   const [searchingEmail, setSearchingEmail] = useState(false);
@@ -51,12 +52,7 @@ export default function ScannerScreen() {
     if (!patientEmail.trim() || !user) return;
     setSearchingEmail(true);
     try {
-      const patientUser = await findPatientByEmail(patientEmail.trim());
-      if (!patientUser) {
-        Alert.alert('Non trouvé', 'Aucun compte patient avec cet email.');
-        return;
-      }
-      const existingRecord = getPatientByUserId(patientUser.id);
+      const existingRecord = searchPatientInStore(patientEmail.trim());
       if (existingRecord) {
         const existingDoctorIds = existingRecord.doctorIds || [existingRecord.doctorId];
         if (!existingDoctorIds.includes(user.id)) {
@@ -74,35 +70,16 @@ export default function ScannerScreen() {
           },
         ]);
       } else {
-        Alert.alert(
-          'Patient trouvé',
-          `${patientUser.firstName} ${patientUser.lastName} n'a pas encore de dossier médical. Voulez-vous en créer un ?`,
-          [
-            { text: 'Annuler', style: 'cancel' },
-            {
-              text: 'Créer le dossier',
-              onPress: () => {
-                const newId = addPatient(user.id, {
-                  firstName: patientUser.firstName,
-                  lastName: patientUser.lastName,
-                  phone: patientUser.phone,
-                }, patientUser.id);
-                router.back();
-                setTimeout(() => {
-                  router.push({ pathname: '/(tabs)/dossier/patient-record', params: { patientId: newId } });
-                }, 100);
-              },
-            },
-          ]
-        );
+        Alert.alert('Non trouvé', 'Aucun dossier patient avec cet email. Le médecin doit d\'abord créer le dossier via "Nouveau patient".');
       }
     } catch (e) {
       console.error('[Scanner] Email search error:', e);
-      Alert.alert('Erreur', 'Erreur lors de la recherche');
+      const message = extractErrorMessage(e) || 'Erreur lors de la recherche';
+      Alert.alert('Erreur', message);
     } finally {
       setSearchingEmail(false);
     }
-  }, [patientEmail, user, findPatientByEmail, getPatientByUserId, linkPatientToDoctor, addPatient, router]);
+  }, [patientEmail, user, searchPatientInStore, linkPatientToDoctor, router]);
 
   return (
     <View style={styles.container}>

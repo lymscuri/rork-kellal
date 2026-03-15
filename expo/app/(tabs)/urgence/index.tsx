@@ -5,6 +5,9 @@ import { Alert, Animated, Dimensions, Linking, Platform, ScrollView, StyleSheet,
 import { Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MedicalColors } from "@/constants/colors";
+import { useAuthStore } from "@/store/authStore";
+import { useMedicalStore } from "@/store/medicalStore";
+import { useEmergencyStore } from "@/store/emergencyStore";
 
 let MapView: React.ComponentType<any> | null = null;
 let Marker: React.ComponentType<any> | null = null;
@@ -35,9 +38,19 @@ const DEFAULT_REGION = {
 };
 
 export default function EmergencyHomeScreen() {
-  const criticalAllergies: { name: string }[] = [];
-  const medicalProfile = { bloodGroup: '' };
-  const isPregnant = false;
+  const { user } = useAuthStore();
+  const { patients, maternityPatients } = useMedicalStore();
+  const syncAlertsFromBackend = useEmergencyStore((s) => s.syncAlertsFromBackend);
+  const syncSecouristsFromBackend = useEmergencyStore((s) => s.syncSecouristsFromBackend);
+
+  const myRecord = user ? patients.find(p => p.userId === user.id) : null;
+  const myMaternity = user ? maternityPatients.find(p => p.userId === user.id) : null;
+
+  const criticalAllergies = myRecord?.criticalInfo.drugAllergies || [];
+  const medicalProfile = {
+    bloodGroup: myRecord?.criticalInfo.bloodGroup || ''
+  };
+  const isPregnant = myMaternity?.pregnancy.isActive || false;
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -80,6 +93,13 @@ export default function EmergencyHomeScreen() {
       })();
     }
   }, []);
+
+  // Synchroniser les alertes et secouristes depuis le backend au montage
+  useEffect(() => {
+    console.log('[EmergencyHome] Syncing alerts and secourists from backend on mount');
+    syncAlertsFromBackend();
+    syncSecouristsFromBackend();
+  }, [syncAlertsFromBackend, syncSecouristsFromBackend]);
 
   const handleEmergencyCall = useCallback(async (number: string) => {
     const url = `tel:${number}`;
