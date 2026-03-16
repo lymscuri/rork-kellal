@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { apiClient } from './api';
 
@@ -27,6 +28,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
    */
   registerForPushNotifications: async (userId?: string, userRole?: string) => {
     try {
+      // Vérifier si on est dans Expo Go
+      const isExpoGo = Constants.appOwnership === 'expo';
+
+      if (isExpoGo) {
+        console.log('[Notifications] Expo Go détecté — notifications push désactivées. Fonctionne dans APK.');
+        return null;
+      }
+
       // Vérifier que c'est un vrai appareil
       if (!Device.isDevice) {
         console.warn('[Notifications] Les notifications push ne fonctionnent que sur un appareil physique');
