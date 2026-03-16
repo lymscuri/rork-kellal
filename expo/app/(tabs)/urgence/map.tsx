@@ -2,25 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { ActivityIndicator, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 import { MedicalColors } from "@/constants/colors";
 import { Building2, Clock, Cross, List, Map as MapIcon, MapPin, Navigation, Phone, RefreshCw, Stethoscope } from "lucide-react-native";
-
-type Region = {
-  latitude: number;
-  longitude: number;
-  latitudeDelta: number;
-  longitudeDelta: number;
-};
-
-let RNMapView: React.ComponentType<any> | null = null;
-let RNMarker: React.ComponentType<any> | null = null;
-try {
-  const maps = require('react-native-maps');
-  RNMapView = maps.default;
-  RNMarker = maps.Marker;
-} catch (e) {
-  console.warn('[Map] react-native-maps not available:', e);
-}
 
 interface OSMPlace {
   id: string;
@@ -49,6 +33,108 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c * 10) / 10;
+}
+
+function generateLeafletHTML(userLat: number, userLon: number, places: OSMPlace[]): string {
+  const placesJSON = JSON.stringify(places);
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map').setView([${userLat}, ${userLon}], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Marqueur utilisateur
+    const userIcon = L.divIcon({
+      className: 'custom-user-marker',
+      html: '<div style="background: #0D6EFD; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+
+    L.marker([${userLat}, ${userLon}], { icon: userIcon })
+      .addTo(map)
+      .bindPopup('Vous êtes ici');
+
+    // Marqueurs des établissements
+    const places = ${placesJSON};
+
+    function getMarkerColor(type) {
+      switch(type) {
+        case 'hospital': return '#DC3545';
+        case 'pharmacy': return '#4CAF50';
+        case 'clinic': return '#0D6EFD';
+        default: return '#6C757D';
+      }
+    }
+
+    function getTypeLabel(type) {
+      switch(type) {
+        case 'hospital': return 'Hôpital';
+        case 'pharmacy': return 'Pharmacie';
+        case 'clinic': return 'Clinique';
+        default: return '';
+      }
+    }
+
+    places.forEach(place => {
+      const color = getMarkerColor(place.type);
+      const icon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background: ' + color + '; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+
+      const popupContent =
+        '<strong>' + place.name + '</strong><br>' +
+        getTypeLabel(place.type) +
+        (place.distance ? ' • ' + place.distance + ' km' : '') +
+        (place.address ? '<br><small>' + place.address + '</small>' : '') +
+        (place.is24h ? '<br><small style="color: #4CAF50;">24h/24</small>' : '');
+
+      L.marker([place.latitude, place.longitude], { icon: icon })
+        .addTo(map)
+        .bindPopup(popupContent)
+        .on('click', function() {
+          window.ReactNativeWebView?.postMessage(JSON.stringify({
+            type: 'markerClick',
+            place: place
+          }));
+        });
+    });
+
+    // Écouter les messages de React Native
+    window.addEventListener('message', function(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'focusPlace' && data.place) {
+          map.setView([data.place.latitude, data.place.longitude], 16);
+        }
+      } catch(e) {
+        console.error('Error parsing message:', e);
+      }
+    });
+  </script>
+</body>
+</html>
+  `;
 }
 
 function buildOverpassQuery(lat: number, lon: number, radius: number): string {
@@ -141,14 +227,6 @@ function getTypeIcon(type: OSMPlace["type"]) {
     case "hospital": return Building2;
     case "pharmacy": return Cross;
     case "clinic": return Stethoscope;
-  }
-}
-
-function getMarkerColor(type: OSMPlace["type"]): string {
-  switch (type) {
-    case "hospital": return "#DC3545";
-    case "pharmacy": return "#4CAF50";
-    case "clinic": return "#0D6EFD";
   }
 }
 
@@ -296,12 +374,11 @@ export default function MapScreen() {
   const handleFocusPlace = useCallback((place: OSMPlace) => {
     setSelectedPlace(place);
     setViewMode("map");
-    mapRef.current?.animateToRegion({
-      latitude: place.latitude,
-      longitude: place.longitude,
-      latitudeDelta: 0.005,
-      longitudeDelta: 0.005,
-    }, 500);
+    // Envoyer un message à la WebView pour centrer sur le lieu
+    mapRef.current?.postMessage(JSON.stringify({
+      type: 'focusPlace',
+      place: { latitude: place.latitude, longitude: place.longitude }
+    }));
   }, []);
 
   const typeCounts = useMemo(() => {
@@ -312,12 +389,21 @@ export default function MapScreen() {
     return counts;
   }, [places]);
 
-  const initialRegion: Region | undefined = location ? {
-    latitude: location.latitude,
-    longitude: location.longitude,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  } : undefined;
+  const leafletHTML = useMemo(() => {
+    if (!location) return '';
+    return generateLeafletHTML(location.latitude, location.longitude, filteredPlaces);
+  }, [location, filteredPlaces]);
+
+  const handleWebViewMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'markerClick' && data.place) {
+        setSelectedPlace(data.place);
+      }
+    } catch (e) {
+      console.error('Error parsing WebView message:', e);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -410,33 +496,22 @@ export default function MapScreen() {
         </View>
       ) : viewMode === "map" ? (
         <View style={styles.mapContainer}>
-          {initialRegion && RNMapView ? (
-            <RNMapView
+          {location && leafletHTML ? (
+            <WebView
               ref={mapRef}
               style={styles.map}
-              initialRegion={initialRegion}
-              showsUserLocation
-              showsMyLocationButton
-            >
-              {filteredPlaces.map((place) => (
-                RNMarker ? (
-                  <RNMarker
-                    key={place.id}
-                    coordinate={{ latitude: place.latitude, longitude: place.longitude }}
-                    title={place.name}
-                    description={`${getTypeLabel(place.type)}${place.distance != null ? ` • ${place.distance} km` : ""}`}
-                    pinColor={getMarkerColor(place.type)}
-                    onPress={() => handleMarkerPress(place)}
-                  />
-                ) : null
-              ))}
-            </RNMapView>
-          ) : initialRegion ? (
+              originWhitelist={['*']}
+              source={{ html: leafletHTML }}
+              onMessage={handleWebViewMessage}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+            />
+          ) : (
             <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
               <MapPin color={MedicalColors.medical} size={40} />
-              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte non disponible</Text>
+              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte en chargement...</Text>
             </View>
-          ) : null}
+          )}
 
           {error && (
             <View style={styles.mapErrorBanner}>

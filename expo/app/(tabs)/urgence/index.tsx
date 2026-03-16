@@ -9,16 +9,6 @@ import { useAuthStore } from "@/store/authStore";
 import { useMedicalStore } from "@/store/medicalStore";
 import { useEmergencyStore } from "@/store/emergencyStore";
 
-let MapView: React.ComponentType<any> | null = null;
-let Marker: React.ComponentType<any> | null = null;
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-} catch (e) {
-  console.warn('[Urgence] react-native-maps not available:', e);
-}
-
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const HOSPITALS = [
@@ -29,13 +19,6 @@ const HOSPITALS = [
   { name: "Croix-Rouge Guinée", location: "Secours", number: "3013" },
   { name: "Protection Civile", location: "Pompiers", number: "18" },
 ];
-
-const DEFAULT_REGION = {
-  latitude: 9.5370,
-  longitude: -13.6785,
-  latitudeDelta: 0.06,
-  longitudeDelta: 0.06,
-};
 
 export default function EmergencyHomeScreen() {
   const { user } = useAuthStore();
@@ -52,9 +35,7 @@ export default function EmergencyHomeScreen() {
   };
   const isPregnant = myMaternity?.pregnancy.isActive || false;
 
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     Animated.loop(
@@ -64,35 +45,6 @@ export default function EmergencyHomeScreen() {
       ])
     ).start();
   }, [pulseAnim]);
-
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-          () => setUserLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }),
-          { timeout: 10000 }
-        );
-      } else {
-        setUserLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
-      }
-    } else {
-      void (async () => {
-        try {
-          const Location = await import("expo-location");
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === "granted") {
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-          } else {
-            setUserLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
-          }
-        } catch {
-          setUserLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
-        }
-      })();
-    }
-  }, []);
 
   // Synchroniser les alertes et secouristes depuis le backend au montage
   useEffect(() => {
@@ -122,10 +74,6 @@ export default function EmergencyHomeScreen() {
   const handleSecouristPress = useCallback(() => {
     router.push("/(tabs)/urgence/secourist-network");
   }, []);
-
-  const mapRegion = userLocation
-    ? { ...userLocation, latitudeDelta: 0.06, longitudeDelta: 0.06 }
-    : DEFAULT_REGION;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -189,48 +137,25 @@ export default function EmergencyHomeScreen() {
           <ChevronRight color={MedicalColors.white} size={20} />
         </TouchableOpacity>
 
-        {/* Map Preview */}
+        {/* Map Button */}
         <View style={styles.mapSection}>
           <View style={styles.sectionHeader}>
             <MapPin color={MedicalColors.medical} size={18} />
             <Text style={styles.sectionTitle}>Carte des secours</Text>
-            <TouchableOpacity style={styles.seeAllBtn} onPress={handleMapPress}>
-              <Text style={styles.seeAllText}>Voir tout</Text>
-              <ChevronRight color={MedicalColors.medical} size={16} />
-            </TouchableOpacity>
           </View>
-          <TouchableOpacity activeOpacity={0.9} onPress={handleMapPress} style={styles.mapWrapper}>
-            {MapView ? (
-              <MapView
-                ref={mapRef}
-                style={styles.mapPreview}
-                region={mapRegion}
-                showsUserLocation
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                pointerEvents="none"
-              >
-                {userLocation && Marker && (
-                  <Marker
-                    coordinate={userLocation}
-                    title="Vous êtes ici"
-                    pinColor={MedicalColors.medical}
-                  />
-                )}
-              </MapView>
-            ) : (
-              <View style={[styles.mapPreview, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
-                <MapPin color={MedicalColors.medical} size={32} />
-                <Text style={{ marginTop: 8, color: MedicalColors.textSecondary, fontSize: 13 }}>Carte non disponible</Text>
-              </View>
-            )}
-            <View style={styles.mapOverlay}>
-              <View style={styles.mapOverlayPill}>
-                <MapPin color={MedicalColors.white} size={14} />
-                <Text style={styles.mapOverlayText}>Appuyez pour explorer</Text>
-              </View>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleMapPress}
+            style={styles.mapButton}
+            testID="map-btn"
+          >
+            <View style={styles.mapButtonIcon}>
+              <MapPin color={MedicalColors.white} size={32} />
+            </View>
+            <Text style={styles.mapButtonTitle}>Voir la carte complète</Text>
+            <Text style={styles.mapButtonSubtitle}>Hôpitaux, pharmacies et cliniques à proximité</Text>
+            <View style={styles.mapButtonArrow}>
+              <ChevronRight color={MedicalColors.medical} size={20} />
             </View>
           </TouchableOpacity>
         </View>
@@ -399,41 +324,42 @@ const styles = StyleSheet.create({
     color: MedicalColors.medical,
     fontWeight: "600" as const,
   },
-  mapWrapper: {
-    borderRadius: 16,
-    overflow: "hidden",
-    height: 200,
+  mapButton: {
     backgroundColor: MedicalColors.white,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    position: "relative",
   },
-  mapPreview: {
-    width: "100%",
-    height: "100%",
+  mapButtonIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: MedicalColors.medical,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  mapOverlay: {
+  mapButtonTitle: {
+    fontSize: 16,
+    fontWeight: "700" as const,
+    color: MedicalColors.text,
+    marginBottom: 4,
+  },
+  mapButtonSubtitle: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
+    textAlign: "center",
+  },
+  mapButtonArrow: {
     position: "absolute",
-    bottom: 12,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  mapOverlayPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(13,110,253,0.9)",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    gap: 6,
-  },
-  mapOverlayText: {
-    color: MedicalColors.white,
-    fontSize: 12,
-    fontWeight: "600" as const,
+    top: 16,
+    right: 16,
   },
   hospitalsSection: {
     marginBottom: 20,

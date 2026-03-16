@@ -27,15 +27,6 @@ import {
 } from "react-native";
 import { Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-let RNMapView: React.ComponentType<any> | null = null;
-let RNMarker: React.ComponentType<any> | null = null;
-try {
-  const maps = require('react-native-maps');
-  RNMapView = maps.default;
-  RNMarker = maps.Marker;
-} catch (e) {
-  console.warn('[SecouristNetwork] react-native-maps not available:', e);
-}
 import { MedicalColors } from "@/constants/colors";
 import type { AlertStatus, AlertUrgencyLevel, EmergencyAlert, Secourist } from "@/types/medical";
 import { useEmergencyStore } from "@/store/emergencyStore";
@@ -98,12 +89,11 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return `${dist.toFixed(1)} km`;
 }
 
-type ViewTab = "carte" | "alertes" | "secouristes";
+type ViewTab = "alertes" | "secouristes";
 
 export default function SecouristNetworkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<any>(null);
 
   const alerts = useEmergencyStore((state) => state.alerts);
   const secourists = useEmergencyStore((state) => state.secourists);
@@ -113,7 +103,7 @@ export default function SecouristNetworkScreen() {
   const takeAlert = useEmergencyStore((state) => state.takeAlert);
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [activeTab, setActiveTab] = useState<ViewTab>("carte");
+  const [activeTab, setActiveTab] = useState<ViewTab>("alertes");
   const [selectedAlert, setSelectedAlert] = useState<EmergencyAlert | null>(null);
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosDescription, setSosDescription] = useState("");
@@ -168,11 +158,6 @@ export default function SecouristNetworkScreen() {
 
   const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "resolue"), [alerts]);
   const availableSecourists = useMemo(() => secourists.filter((s) => s.isAvailable), [secourists]);
-
-  const mapRegion = useMemo(() => {
-    if (userLocation) return { ...userLocation, latitudeDelta: 0.03, longitudeDelta: 0.03 };
-    return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON, latitudeDelta: 0.03, longitudeDelta: 0.03 };
-  }, [userLocation]);
 
   const handleTakeCharge = useCallback((alertId: string) => {
     Alert.alert(
@@ -235,21 +220,9 @@ export default function SecouristNetworkScreen() {
     console.log("[SecouristNetwork] SOS sent:", alertId);
   }, [sosDescription, sosUrgency, userLocation, createEmergencyAlert]);
 
-  const handleFocusOnAlert = useCallback((alert: EmergencyAlert) => {
-    setSelectedAlert(alert);
-    setActiveTab("carte");
-    mapRef.current?.animateToRegion(
-      { latitude: alert.latitude, longitude: alert.longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 },
-      500
-    );
-  }, []);
-
-  const getAlertMarkerColor = (alert: EmergencyAlert): string => {
-    if (alert.status === "prise_en_charge") return "#FF8C00";
-    if (alert.urgencyLevel === "critique") return MedicalColors.urgency;
-    if (alert.urgencyLevel === "grave") return "#FF8C00";
-    return "#FFC107";
-  };
+  const handleViewOnMap = useCallback(() => {
+    router.push("/(tabs)/urgence/map");
+  }, [router]);
 
   return (
     <View style={styles.container}>
@@ -274,138 +247,28 @@ export default function SecouristNetworkScreen() {
       </View>
 
       <View style={styles.tabBar}>
-        {(["carte", "alertes", "secouristes"] as ViewTab[]).map((tab) => (
+        {(["alertes", "secouristes"] as ViewTab[]).map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tab, activeTab === tab && styles.tabActive]}
             onPress={() => setActiveTab(tab)}
           >
-            {tab === "carte" && <MapPin size={14} color={activeTab === tab ? MedicalColors.white : MedicalColors.textSecondary} />}
             {tab === "alertes" && <Siren size={14} color={activeTab === tab ? MedicalColors.white : MedicalColors.textSecondary} />}
             {tab === "secouristes" && <Users size={14} color={activeTab === tab ? MedicalColors.white : MedicalColors.textSecondary} />}
             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === "carte" ? "Carte" : tab === "alertes" ? "Alertes" : "Secouristes"}
+              {tab === "alertes" ? "Alertes" : "Secouristes"}
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={styles.mapTabButton}
+          onPress={handleViewOnMap}
+          testID="view-map-btn"
+        >
+          <MapPin size={14} color={MedicalColors.medical} />
+          <Text style={styles.mapTabButtonText}>Carte</Text>
+        </TouchableOpacity>
       </View>
-
-      {activeTab === "carte" && (
-        <View style={styles.mapContainer}>
-          {RNMapView ? (
-            <RNMapView
-              ref={mapRef}
-              style={styles.map}
-              region={mapRegion}
-              showsUserLocation
-              showsMyLocationButton
-            >
-              {activeAlerts.map((alert) => (
-                RNMarker ? (
-                  <RNMarker
-                    key={alert.id}
-                    coordinate={{ latitude: alert.latitude, longitude: alert.longitude }}
-                    title={alert.senderName}
-                    description={alert.description}
-                    pinColor={getAlertMarkerColor(alert)}
-                    onPress={() => setSelectedAlert(alert)}
-                  />
-                ) : null
-              ))}
-              {secourists.filter((s) => s.isAvailable).map((sec) => (
-                RNMarker ? (
-                  <RNMarker
-                    key={sec.id}
-                    coordinate={{ latitude: sec.latitude, longitude: sec.longitude }}
-                    title={sec.name}
-                    description={sec.specialty}
-                    pinColor={MedicalColors.life}
-                  />
-                ) : null
-              ))}
-            </RNMapView>
-          ) : (
-            <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
-              <MapPin color={MedicalColors.medical} size={40} />
-              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte non disponible</Text>
-            </View>
-          )}
-
-          <View style={styles.mapLegend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: MedicalColors.urgency }]} />
-              <Text style={styles.legendText}>Alerte</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#FF8C00" }]} />
-              <Text style={styles.legendText}>En charge</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: MedicalColors.life }]} />
-              <Text style={styles.legendText}>Secouriste</Text>
-            </View>
-          </View>
-
-          {selectedAlert && (
-            <View style={styles.alertCard}>
-              <TouchableOpacity style={styles.alertCardClose} onPress={() => setSelectedAlert(null)}>
-                <X size={18} color={MedicalColors.textSecondary} />
-              </TouchableOpacity>
-              <View style={styles.alertCardHeader}>
-                <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(selectedAlert.urgencyLevel) }]}>
-                  <AlertTriangle size={12} color={MedicalColors.white} />
-                  <Text style={styles.urgencyBadgeText}>{getUrgencyLabel(selectedAlert.urgencyLevel)}</Text>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedAlert.status) + "20" }]}>
-                  <Text style={[styles.statusBadgeText, { color: getStatusColor(selectedAlert.status) }]}>
-                    {getStatusLabel(selectedAlert.status)}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.alertCardName}>{selectedAlert.senderName}</Text>
-              <Text style={styles.alertCardDesc}>{selectedAlert.description}</Text>
-              <Text style={styles.alertCardTime}>{getTimeSince(selectedAlert.createdAt)}</Text>
-              {userLocation && (
-                <Text style={styles.alertCardDistance}>
-                  {haversineDistance(userLocation.latitude, userLocation.longitude, selectedAlert.latitude, selectedAlert.longitude)}
-                </Text>
-              )}
-              {selectedAlert.responderId && (
-                <View style={styles.responderInfo}>
-                  <ShieldCheck size={14} color={MedicalColors.life} />
-                  <Text style={styles.responderText}>Pris en charge par {selectedAlert.responderName}</Text>
-                </View>
-              )}
-              <View style={styles.alertCardActions}>
-                {selectedAlert.status === "active" && (
-                  <TouchableOpacity
-                    style={styles.takeChargeBtn}
-                    onPress={() => handleTakeCharge(selectedAlert.id)}
-                  >
-                    <Shield size={16} color={MedicalColors.white} />
-                    <Text style={styles.takeChargeBtnText}>Prendre en charge</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.navigateBtn}
-                  onPress={() => handleNavigateToAlert(selectedAlert)}
-                >
-                  <Navigation size={16} color={MedicalColors.medical} />
-                  <Text style={styles.navigateBtnText}>Itinéraire</Text>
-                </TouchableOpacity>
-                {selectedAlert.senderPhone && (
-                  <TouchableOpacity
-                    style={styles.callBtn}
-                    onPress={() => handleCallPerson(selectedAlert.senderPhone)}
-                  >
-                    <Phone size={16} color={MedicalColors.white} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          )}
-        </View>
-      )}
 
       {activeTab === "alertes" && (
         <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
@@ -420,7 +283,7 @@ export default function SecouristNetworkScreen() {
               <TouchableOpacity
                 key={alert.id}
                 style={styles.alertListItem}
-                onPress={() => handleFocusOnAlert(alert)}
+                onPress={() => setSelectedAlert(alert)}
                 activeOpacity={0.7}
               >
                 <View style={[styles.alertListBadge, { backgroundColor: getUrgencyColor(alert.urgencyLevel) }]}>
@@ -501,6 +364,70 @@ export default function SecouristNetworkScreen() {
           ))}
           <View style={{ height: 100 }} />
         </ScrollView>
+      )}
+
+      {selectedAlert && (
+        <Modal visible={true} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.alertDetailModal, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+              <View style={styles.modalHandle} />
+              <TouchableOpacity style={styles.alertCardClose} onPress={() => setSelectedAlert(null)}>
+                <X size={18} color={MedicalColors.textSecondary} />
+              </TouchableOpacity>
+              <View style={styles.alertCardHeader}>
+                <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(selectedAlert.urgencyLevel) }]}>
+                  <AlertTriangle size={12} color={MedicalColors.white} />
+                  <Text style={styles.urgencyBadgeText}>{getUrgencyLabel(selectedAlert.urgencyLevel)}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedAlert.status) + "20" }]}>
+                  <Text style={[styles.statusBadgeText, { color: getStatusColor(selectedAlert.status) }]}>
+                    {getStatusLabel(selectedAlert.status)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.alertCardName}>{selectedAlert.senderName}</Text>
+              <Text style={styles.alertCardDesc}>{selectedAlert.description}</Text>
+              <Text style={styles.alertCardTime}>{getTimeSince(selectedAlert.createdAt)}</Text>
+              {userLocation && (
+                <Text style={styles.alertCardDistance}>
+                  {haversineDistance(userLocation.latitude, userLocation.longitude, selectedAlert.latitude, selectedAlert.longitude)}
+                </Text>
+              )}
+              {selectedAlert.responderId && (
+                <View style={styles.responderInfo}>
+                  <ShieldCheck size={14} color={MedicalColors.life} />
+                  <Text style={styles.responderText}>Pris en charge par {selectedAlert.responderName}</Text>
+                </View>
+              )}
+              <View style={styles.alertCardActions}>
+                {selectedAlert.status === "active" && (
+                  <TouchableOpacity
+                    style={styles.takeChargeBtn}
+                    onPress={() => handleTakeCharge(selectedAlert.id)}
+                  >
+                    <Shield size={16} color={MedicalColors.white} />
+                    <Text style={styles.takeChargeBtnText}>Prendre en charge</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.navigateBtn}
+                  onPress={() => handleNavigateToAlert(selectedAlert)}
+                >
+                  <Navigation size={16} color={MedicalColors.medical} />
+                  <Text style={styles.navigateBtnText}>Itinéraire</Text>
+                </TouchableOpacity>
+                {selectedAlert.senderPhone && (
+                  <TouchableOpacity
+                    style={styles.callBtn}
+                    onPress={() => handleCallPerson(selectedAlert.senderPhone)}
+                  >
+                    <Phone size={16} color={MedicalColors.white} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
 
       <Animated.View style={[styles.sosFab, { transform: [{ scale: pulseAnim }] }]}>
@@ -666,57 +593,27 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: MedicalColors.white,
   },
-  mapContainer: {
+  mapTabButton: {
     flex: 1,
-    position: "relative",
-  },
-  map: {
-    flex: 1,
-  },
-  mapLegend: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: MedicalColors.medicalLight,
+    gap: 5,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  mapTabButtonText: {
+    fontSize: 13,
+    fontWeight: "600" as const,
+    color: MedicalColors.medical,
   },
-  legendText: {
-    fontSize: 10,
-    color: MedicalColors.text,
-    fontWeight: "500" as const,
-  },
-  alertCard: {
-    position: "absolute",
-    bottom: 90,
-    left: 12,
-    right: 12,
+  alertDetailModal: {
     backgroundColor: MedicalColors.white,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingTop: 12,
   },
   alertCardClose: {
     position: "absolute",
