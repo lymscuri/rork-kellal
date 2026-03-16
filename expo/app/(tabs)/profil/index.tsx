@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNT
 import { Text, Button } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
+import { encode as base64Encode } from 'base-64';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
@@ -68,7 +69,7 @@ export default function ProfilScreen() {
 
     // Encoder en base64 (sans URL, juste le base64)
     const jsonString = JSON.stringify(medicalData);
-    const base64Data = btoa(unescape(encodeURIComponent(jsonString)));
+    const base64Data = base64Encode(unescape(encodeURIComponent(jsonString)));
 
     return base64Data;
   }, [user, myRecord, myMaternity]);

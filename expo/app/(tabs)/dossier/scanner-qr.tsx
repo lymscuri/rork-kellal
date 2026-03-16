@@ -4,6 +4,7 @@ import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { decode as base64Decode } from 'base-64';
 import { ArrowLeft, ScanLine } from 'lucide-react-native';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
@@ -65,7 +66,7 @@ export default function ScannerQRScreen() {
 
     try {
       // Décoder le base64
-      const jsonString = decodeURIComponent(escape(atob(data)));
+      const jsonString = decodeURIComponent(escape(base64Decode(data)));
       const medicalData = JSON.parse(jsonString);
 
       // Vérifier que les données sont valides

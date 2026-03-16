@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from '
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { decode as base64Decode } from 'base-64';
 import { Phone, ArrowLeft, Calendar } from 'lucide-react-native';
 import { MedicalColors } from '@/constants/colors';
 
@@ -33,7 +34,7 @@ export default function FicheUrgenceScreen() {
 
     try {
       // Décoder le base64
-      const jsonString = decodeURIComponent(escape(atob(dataParam)));
+      const jsonString = decodeURIComponent(escape(base64Decode(dataParam)));
       const parsed = JSON.parse(jsonString);
       console.log('[FicheUrgence] Données décodées:', parsed);
       return parsed;
