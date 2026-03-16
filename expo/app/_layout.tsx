@@ -7,6 +7,7 @@ import { PaperProvider } from "react-native-paper";
 import { View, ActivityIndicator, LogBox } from "react-native";
 import { theme } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { MedicalColors } from "@/constants/colors";
 import { AppErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -26,8 +27,10 @@ const queryClient = new QueryClient({
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
-  const { isAuthenticated, isHydrated, hydrate } = useAuthStore();
+  const { isAuthenticated, isHydrated, hydrate, user } = useAuthStore();
+  const { registerForPushNotifications, setupNotificationHandlers } = useNotificationStore();
   const hasHydrated = useRef(false);
+  const hasInitializedNotifications = useRef(false);
 
   useEffect(() => {
     if (!hasHydrated.current) {
@@ -38,6 +41,29 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       });
     }
   }, [hydrate]);
+
+  // Initialiser les notifications après le login réussi
+  useEffect(() => {
+    if (isAuthenticated && isHydrated && !hasInitializedNotifications.current) {
+      hasInitializedNotifications.current = true;
+      console.log('[AuthGuard] Initializing notifications for authenticated user...');
+
+      // Configurer les handlers de notifications
+      setupNotificationHandlers();
+
+      // Enregistrer pour les notifications push
+      registerForPushNotifications(user?.id, user?.role).catch((error) => {
+        console.error('[AuthGuard] Failed to register for push notifications:', error);
+        // Ne pas bloquer l'app si les notifications échouent
+      });
+    }
+
+    // Réinitialiser le flag si l'utilisateur se déconnecte
+    if (!isAuthenticated && hasInitializedNotifications.current) {
+      hasInitializedNotifications.current = false;
+      console.log('[AuthGuard] User logged out, reset notification flag');
+    }
+  }, [isAuthenticated, isHydrated, user, registerForPushNotifications, setupNotificationHandlers]);
 
   useEffect(() => {
     if (!isHydrated) {

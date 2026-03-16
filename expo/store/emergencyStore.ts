@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AppStorage } from './storage';
 import { emergencyAPI, extractErrorMessage } from './api';
+import { sendLocalNotification } from './notificationStore';
 import type { EmergencyAlert, Secourist, AlertUrgencyLevel } from '@/types/medical';
 
 interface EmergencyState {
@@ -59,6 +60,15 @@ export const useEmergencyStore = create<EmergencyState>()(
         set((state) => ({
           alerts: [newAlert, ...state.alerts],
         }));
+
+        // Envoyer une notification locale immédiate
+        sendLocalNotification(
+          '🚨 Alerte Urgence envoyée',
+          data.description || 'Votre SOS a été envoyé aux secouristes à proximité',
+          { type: 'emergency', alertId: id }
+        ).catch((error) => {
+          console.warn('[EmergencyStore] Failed to send local notification:', error);
+        });
 
         // Sync backend en arrière-plan
         emergencyAPI.createAlert({

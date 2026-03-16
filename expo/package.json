@@ -23,6 +23,7 @@
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
+    "expo-device": "^55.0.9",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
@@ -49,7 +50,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
-    "react-native-webview": "13.12.5",
+    "react-native-webview": "^13.16.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
