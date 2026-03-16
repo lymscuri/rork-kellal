@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { zustandStorage } from './storage';
-import { dossierAPI, maternityAPI, extractErrorMessage } from './api';
+import { dossierAPI, maternityAPI, remindersAPI, extractErrorMessage } from './api';
 import type {
   PatientRecord,
   PatientIdentity,
@@ -147,7 +147,7 @@ export const useMedicalStore = create<MedicalStore>()(
         try {
           console.log('[MedicalStore] Syncing patients from backend...');
           const res = await dossierAPI.listPatients();
-          const backendPatients = res.data.data || res.data;
+          const backendPatients = res.data.data || res.data.results || res.data;
 
           if (Array.isArray(backendPatients) && backendPatients.length > 0) {
             const mappedPatients: PatientRecord[] = backendPatients.map(bp => ({
@@ -204,9 +204,16 @@ export const useMedicalStore = create<MedicalStore>()(
           const res = await dossierAPI.createPatient({
             first_name: identity.firstName || '',
             last_name: identity.lastName || '',
-            date_of_birth: identity.birthDate 
-              ? new Date(identity.birthDate).toISOString().split('T')[0] 
-              : '1990-01-01',
+            date_of_birth: (() => {
+              if (!identity.birthDate) return '1990-01-01';
+              try {
+                const d = new Date(identity.birthDate);
+                if (isNaN(d.getTime())) return '1990-01-01';
+                return d.toISOString().split('T')[0];
+              } catch {
+                return '1990-01-01';
+              }
+            })(),
             gender: identity.sex || 'M',
             phone: identity.phone || '',
             email: linkedEmail?.toLowerCase() || '',
@@ -656,7 +663,7 @@ export const useMedicalStore = create<MedicalStore>()(
         try {
           console.log('[MedicalStore] Syncing maternity patients from backend...');
           const res = await maternityAPI.listMaternityPatients();
-          const backendPatients = res.data.data || res.data;
+          const backendPatients = res.data.data || res.data.results || res.data;
 
           if (Array.isArray(backendPatients) && backendPatients.length > 0) {
             const mappedPatients: MaternityPatient[] = backendPatients.map(bp => {
@@ -950,6 +957,15 @@ export const useMedicalStore = create<MedicalStore>()(
         set((state) => ({
           smsReminders: [...state.smsReminders, { ...reminder, id }],
         }));
+
+        // Envoi direct au backend — le numéro de téléphone est la cible
+        remindersAPI.createAppointmentReminder({
+          phone_number: reminder.targetPhone,
+          scheduled_at: reminder.scheduledDate,
+          patient_name: reminder.patientName || 'Patient',
+          date: reminder.scheduledDate,
+          message: reminder.message,
+        }).catch((e) => console.warn('[Reminders] Backend sync failed:', extractErrorMessage(e)));
       },
 
       updateReminderStatus: (id, status) => {

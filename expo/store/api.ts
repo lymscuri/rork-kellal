@@ -96,7 +96,7 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    const noRetryRoutes = ['/auth/login/', '/auth/register/', '/auth/refresh/'];
+    const noRetryRoutes = ['/auth/login/', '/auth/register/', '/auth/token/refresh/'];
     const shouldNotRetry = noRetryRoutes.some(route => originalRequest.url?.includes(route));
 
     if (error.response?.status === 404) {
@@ -127,7 +127,7 @@ apiClient.interceptors.response.use(
         }
 
         console.log('[API] Attempting token refresh...');
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
+        const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
           refresh: tokens.refresh,
         });
 
@@ -228,7 +228,7 @@ export const authAPI = {
   }) => apiClient.post('/auth/change-password/', data),
 
   refreshToken: (refresh: string) =>
-    apiClient.post('/auth/refresh/', { refresh }),
+    apiClient.post('/auth/token/refresh/', { refresh }),
 };
 
 export const dossierAPI = {
@@ -283,7 +283,7 @@ export const emergencyAPI = {
     apiClient.post('/emergency/alerts/', data),
 
   listAlerts: () =>
-    apiClient.get('/emergency/alerts/'),
+    apiClient.get('/emergency/alerts/list/'),
 
   takeAlert: (alertId: string) =>
     apiClient.patch(`/emergency/alerts/${alertId}/take/`),
@@ -352,6 +352,41 @@ export const maternityAPI = {
   // Vaccins des enfants
   markChildVaccineDone: (vaccineId: string, data: Record<string, unknown>) =>
     apiClient.patch(`/maternity/children/vaccines/${vaccineId}/done/`, data),
+};
+
+export const remindersAPI = {
+  // CRUD rappels
+  listReminders: (params?: { status?: string; type?: string }) =>
+    apiClient.get('/reminders/sms/', { params }),
+
+  createReminder: (data: Record<string, unknown>) =>
+    apiClient.post('/reminders/sms/', data),
+
+  getReminder: (id: string) =>
+    apiClient.get(`/reminders/sms/${id}/`),
+
+  updateReminder: (id: string, data: Record<string, unknown>) =>
+    apiClient.patch(`/reminders/sms/${id}/`, data),
+
+  cancelReminder: (id: string) =>
+    apiClient.delete(`/reminders/sms/${id}/`),
+
+  sendNow: (id: string) =>
+    apiClient.post(`/reminders/sms/${id}/send/`),
+
+  // Création rapide avec message automatique
+  createVaccinationReminder: (data: Record<string, unknown>) =>
+    apiClient.post('/reminders/vaccination/', data),
+
+  createPrenatalReminder: (data: Record<string, unknown>) =>
+    apiClient.post('/reminders/prenatal/', data),
+
+  createAppointmentReminder: (data: Record<string, unknown>) =>
+    apiClient.post('/reminders/appointment/', data),
+
+  // Stats
+  getStats: () =>
+    apiClient.get('/reminders/stats/'),
 };
 
 export default apiClient;

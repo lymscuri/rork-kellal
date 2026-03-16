@@ -242,9 +242,12 @@ export const useAuthStore = create<AuthStore>()(
           try {
             await authAPI.logout(tokens.refresh);
             console.log('[Auth] Server logout successful');
-          } catch (e) {
-            console.warn('[Auth] Server logout failed (token may be expired):', e);
+          } catch (e: any) {
+            if (e?.response?.status !== 400) {
+              console.warn('[Auth] Server logout failed:', e);
+            }
           }
+          
         }
         await clearTokens();
         await AppStorage.removeItem(AUTH_KEY);
