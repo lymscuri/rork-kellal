@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, AlertCircle, Baby, Stethoscope, Syringe, Check, RefreshCw, Search, X } from 'lucide-react-native';
+import { ArrowLeft, AlertCircle, Baby, Stethoscope, Syringe, Check, RefreshCw } from 'lucide-react-native';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
@@ -55,7 +55,7 @@ const MODULES = [
 export default function OrdinogrammeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { getPatientsByDoctor, addConsultation } = useMedicalStore();
+  const { patients, addConsultation } = useMedicalStore();
 
   const [step, setStep] = useState<Step>('module-selection');
   const [selectedModule, setSelectedModule] = useState<OrdinogrammeModule | null>(null);
@@ -64,11 +64,11 @@ export default function OrdinogrammeScreen() {
   const [questionHistory, setQuestionHistory] = useState<Array<{ question: string; answer: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Patient selection modal
-  const [showPatientModal, setShowPatientModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Email input modal (Android only)
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
 
   // Sécurité : seuls les médecins peuvent accéder
   if (user?.role !== 'medecin') {
@@ -152,6 +152,49 @@ export default function OrdinogrammeScreen() {
     setError(null);
   };
 
+  const handleRequestPatientEmail = () => {
+    if (Platform.OS === 'ios') {
+      // Sur iOS, utiliser Alert.prompt
+      Alert.prompt(
+        'Email du patient',
+        'Entrez l\'email du patient pour sauvegarder la consultation dans son dossier',
+        [
+          {
+            text: 'Annuler',
+            style: 'cancel',
+          },
+          {
+            text: 'Sauvegarder',
+            onPress: (email) => {
+              if (email) {
+                handleFindPatientByEmail(email.trim());
+              }
+            },
+          },
+        ],
+        'plain-text',
+        '',
+        'email-address'
+      );
+    } else {
+      // Sur Android, utiliser un Modal simple
+      setEmailInput('');
+      setShowEmailModal(true);
+    }
+  };
+
+  const handleFindPatientByEmail = (email: string) => {
+    const patient = patients.find(
+      (p) => p.linkedEmail?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (patient) {
+      handleSaveToPatient(patient.id);
+    } else {
+      Alert.alert('Erreur', 'Aucun patient trouvé avec cet email.');
+    }
+  };
+
   const handleSaveToPatient = async (patientId: string) => {
     if (!result || !selectedModule || !user) return;
 
@@ -196,7 +239,7 @@ RÉFÉRENCE : ${result.referral ? '⚠️ Référence à un spécialiste recomma
         observations: consultationNotes,
       });
 
-      setShowPatientModal(false);
+      setShowEmailModal(false);
       Alert.alert(
         'Consultation enregistrée',
         'Les résultats de l\'ordinogramme ont été sauvegardés dans le dossier du patient.',
@@ -218,19 +261,6 @@ RÉFÉRENCE : ${result.referral ? '⚠️ Référence à un spécialiste recomma
       setIsSaving(false);
     }
   };
-
-  // Get patients for this doctor
-  const myPatients = user?.role === 'medecin' ? getPatientsByDoctor(user.id) : [];
-
-  // Filter patients by search query
-  const filteredPatients = myPatients.filter((patient) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      patient.identity.firstName.toLowerCase().includes(query) ||
-      patient.identity.lastName.toLowerCase().includes(query) ||
-      patient.identity.dossierNumber.toLowerCase().includes(query)
-    );
-  });
 
   const getProgressPercent = () => {
     const totalSteps = 7; // Maximum de questions
@@ -436,7 +466,7 @@ RÉFÉRENCE : ${result.referral ? '⚠️ Référence à un spécialiste recomma
 
               <TouchableOpacity
                 style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => setShowPatientModal(true)}
+                onPress={handleRequestPatientEmail}
               >
                 <Text style={styles.secondaryButtonText}>Sauvegarder dans le dossier patient</Text>
               </TouchableOpacity>
@@ -445,78 +475,62 @@ RÉFÉRENCE : ${result.referral ? '⚠️ Référence à un spécialiste recomma
         )}
       </ScrollView>
 
-      {/* Modal de sélection du patient */}
-      <Modal
-        visible={showPatientModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowPatientModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            {/* Header du modal */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Sélectionner un patient</Text>
-              <TouchableOpacity
-                onPress={() => setShowPatientModal(false)}
-                style={styles.closeButton}
-              >
-                <X size={24} color={MedicalColors.white} />
-              </TouchableOpacity>
-            </View>
+      {/* Modal de saisie d'email (Android uniquement) */}
+      {Platform.OS === 'android' && (
+        <Modal
+          visible={showEmailModal}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setShowEmailModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.emailModalContainer}>
+              <Text style={styles.emailModalTitle}>Email du patient</Text>
+              <Text style={styles.emailModalMessage}>
+                Entrez l'email du patient pour sauvegarder la consultation dans son dossier
+              </Text>
 
-            {/* Barre de recherche */}
-            <View style={styles.searchContainer}>
-              <Search size={20} color={MedicalColors.textSecondary} />
               <TextInput
-                style={styles.searchInput}
-                placeholder="Rechercher par nom ou numéro de dossier..."
+                style={styles.emailInput}
+                placeholder="email@exemple.com"
                 placeholderTextColor="rgba(255,255,255,0.5)"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
+                value={emailInput}
+                onChangeText={setEmailInput}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={true}
               />
-            </View>
 
-            {/* Liste des patients */}
-            <ScrollView style={styles.patientList} contentContainerStyle={styles.patientListContent}>
-              {filteredPatients.length === 0 && (
-                <View style={styles.emptyState}>
-                  <AlertCircle size={48} color={MedicalColors.textSecondary} />
-                  <Text style={styles.emptyStateText}>
-                    {searchQuery ? 'Aucun patient trouvé' : 'Aucun patient dans votre liste'}
-                  </Text>
-                </View>
-              )}
-
-              {filteredPatients.map((patient) => (
+              <View style={styles.emailModalButtons}>
                 <TouchableOpacity
-                  key={patient.id}
-                  style={styles.patientItem}
-                  onPress={() => handleSaveToPatient(patient.id)}
+                  style={[styles.emailModalButton, styles.cancelButton]}
+                  onPress={() => setShowEmailModal(false)}
                   disabled={isSaving}
                 >
-                  <View style={styles.patientInfo}>
-                    <Text style={styles.patientName}>
-                      {patient.identity.firstName} {patient.identity.lastName}
-                    </Text>
-                    <Text style={styles.patientDossier}>
-                      {patient.identity.dossierNumber}
-                    </Text>
-                  </View>
-                  {isSaving && <ActivityIndicator size="small" color={MedicalColors.medical} />}
+                  <Text style={styles.cancelButtonText}>Annuler</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
 
-            {isSaving && (
-              <View style={styles.savingOverlay}>
-                <ActivityIndicator size="large" color={MedicalColors.medical} />
-                <Text style={styles.savingText}>Enregistrement en cours...</Text>
+                <TouchableOpacity
+                  style={[styles.emailModalButton, styles.saveButton]}
+                  onPress={() => {
+                    if (emailInput.trim()) {
+                      handleFindPatientByEmail(emailInput.trim());
+                    }
+                  }}
+                  disabled={isSaving || !emailInput.trim()}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color={MedicalColors.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Sauvegarder</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-            )}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -832,107 +846,70 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#0A0E1A',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: MedicalColors.white,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    margin: 16,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  searchInput: {
-    flex: 1,
-    color: MedicalColors.white,
-    fontSize: 16,
-    paddingVertical: 14,
-  },
-  patientList: {
-    flex: 1,
-  },
-  patientListContent: {
-    paddingHorizontal: 16,
-  },
-  patientItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  emailModalContainer: {
+    backgroundColor: '#0A0E1A',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  patientInfo: {
-    flex: 1,
+  emailModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: MedicalColors.white,
+    marginBottom: 12,
+    textAlign: 'center',
   },
-  patientName: {
+  emailModalMessage: {
+    fontSize: 14,
+    color: MedicalColors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emailInput: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: MedicalColors.white,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  emailModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  emailModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: MedicalColors.white,
-    marginBottom: 4,
   },
-  patientDossier: {
-    fontSize: 14,
-    color: MedicalColors.textSecondary,
+  saveButton: {
+    backgroundColor: MedicalColors.medical,
   },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyStateText: {
+  saveButtonText: {
     fontSize: 16,
-    color: MedicalColors.textSecondary,
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  savingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(10,14,26,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  savingText: {
-    fontSize: 16,
+    fontWeight: '700',
     color: MedicalColors.white,
-    marginTop: 16,
   },
 });
