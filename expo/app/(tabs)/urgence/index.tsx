@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { AlertCircle, Bot, ChevronRight, Hospital, MapPin, Phone, Shield } from "lucide-react-native";
+import { AlertCircle, Bot, ChevronRight, Hospital, MapPin, Phone, Shield, User } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Dimensions, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Chip, Surface, Text } from "react-native-paper";
@@ -77,6 +77,14 @@ export default function EmergencyHomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Header avec bouton profil */}
+      <View style={styles.headerUrgence}>
+        <Text style={styles.headerTitle}>Urgence</Text>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.profileBtn}>
+          <User size={22} color={MedicalColors.urgency} />
+        </TouchableOpacity>
+      </View>
+
       {(medicalProfile.bloodGroup || criticalAllergies.length > 0 || isPregnant) && (
         <View style={styles.medicalBanner}>
           {medicalProfile.bloodGroup && (
@@ -227,6 +235,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F1F3F5",
+  },
+  headerUrgence: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: MedicalColors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: MedicalColors.border,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700" as const,
+    color: MedicalColors.text,
+  },
+  profileBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: MedicalColors.urgencyLight,
+    justifyContent: "center",
+    alignItems: "center",
   },
   medicalBanner: {
     flexDirection: "row",

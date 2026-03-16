@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { AlertCircle, Baby, FileText } from "lucide-react-native";
+import { AlertCircle, Baby, FileText, User } from "lucide-react-native";
 import React from "react";
 import { MedicalColors } from "@/constants/colors";
 
@@ -47,6 +47,16 @@ export default function TabLayout() {
           title: "Mon Dossier",
           tabBarIcon: ({ color, size }) => (
             <FileText color={color} size={size} />
+          ),
+          tabBarActiveTintColor: MedicalColors.medical,
+        }}
+      />
+      <Tabs.Screen
+        name="profil"
+        options={{
+          title: "Profil",
+          tabBarIcon: ({ color, size }) => (
+            <User color={color} size={size} />
           ),
           tabBarActiveTintColor: MedicalColors.medical,
         }}

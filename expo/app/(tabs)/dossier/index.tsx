@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Search, Plus, QrCode, Users, Calendar, FileText, ClipboardList,
-  AlertCircle, ChevronRight, Activity, LogOut, ScanLine
+  AlertCircle, ChevronRight, Activity, LogOut, ScanLine, User
 } from 'lucide-react-native';
 import type { PatientRecord } from '@/types/medical';
 
@@ -109,9 +109,14 @@ function DoctorDashboard() {
             <Text style={styles.greeting}>Bonjour, Dr.</Text>
             <Text style={styles.doctorName}>{user?.lastName} {user?.firstName}</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-            <LogOut size={20} color={MedicalColors.white} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.logoutBtn}>
+              <User size={20} color={MedicalColors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+              <LogOut size={20} color={MedicalColors.white} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.statsRow}>
@@ -262,9 +267,14 @@ function PatientDashboard() {
               <Text style={styles.dossierNum}>{user.dossierNumber}</Text>
             )}
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtnPatient}>
-            <LogOut size={20} color={MedicalColors.white} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.logoutBtnPatient}>
+              <User size={20} color={MedicalColors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtnPatient}>
+              <LogOut size={20} color={MedicalColors.white} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
