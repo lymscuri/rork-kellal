@@ -158,7 +158,9 @@ apiClient.interceptors.response.use(
 
     const status = error.response?.status;
     const data = error.response?.data;
-    console.error(`[API] Error ${status} from ${error.config?.url}:`, JSON.stringify(data));
+    if (!(status === 400 && error.config?.url?.includes('/auth/logout/'))) {
+      console.error(`[API] Error ${status} from ${error.config?.url}:`, JSON.stringify(data));
+    }
     return Promise.reject(error);
   }
 );
