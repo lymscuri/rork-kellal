@@ -35,17 +35,43 @@ export default function ProfilScreen() {
     };
   }, [user, patients, maternityPatients]);
 
-  // Données pour le QR Code
+  // Données médicales pour le QR Code (patients uniquement)
+  const myRecord = useMemo(() => {
+    if (!user) return null;
+    return patients.find(p => p.userId === user.id);
+  }, [user, patients]);
+
+  const myMaternity = useMemo(() => {
+    if (!user) return null;
+    return maternityPatients.find(p => p.userId === user.id);
+  }, [user, maternityPatients]);
+
   const qrData = useMemo(() => {
-    if (!user) return '';
-    return JSON.stringify({
+    if (!user || user.role !== 'patient') return '';
+
+    const medicalData = {
       id: user.id,
       name: `${user.firstName} ${user.lastName}`,
-      role: user.role,
-      email: user.email,
       phone: user.phone || '',
-    });
-  }, [user]);
+      dossier: {
+        bloodType: myRecord?.criticalInfo?.bloodGroup || '',
+        drugAllergies: myRecord?.criticalInfo?.drugAllergies || [],
+        chronicDiseases: myRecord?.criticalInfo?.chronicDiseases || [],
+        permanentTreatments: myRecord?.criticalInfo?.permanentTreatments || [],
+      },
+      maternity: myMaternity ? {
+        isPregnant: myMaternity.pregnancy?.isActive || false,
+        currentWeek: myMaternity.pregnancy?.currentWeek || 0,
+        dueDate: myMaternity.pregnancy?.dueDate || '',
+      } : null,
+    };
+
+    // Encoder en base64 (sans URL, juste le base64)
+    const jsonString = JSON.stringify(medicalData);
+    const base64Data = btoa(unescape(encodeURIComponent(jsonString)));
+
+    return base64Data;
+  }, [user, myRecord, myMaternity]);
 
   const getInitials = () => {
     if (!user) return '??';
@@ -255,25 +281,32 @@ export default function ProfilScreen() {
           </View>
         )}
 
-        {/* Section QR Code */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <QrCode size={20} color={MedicalColors.medical} />
-            <Text style={styles.sectionTitle}>Mon QR Code</Text>
-          </View>
-
-          <View style={styles.qrCodeCard}>
-            <View style={styles.qrCodeContainer}>
-              <QRCode
-                value={qrData}
-                size={180}
-                backgroundColor="white"
-                color="black"
-              />
+        {/* Section QR Code Médical (patients uniquement) */}
+        {user.role === 'patient' && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <QrCode size={20} color={MedicalColors.medical} />
+              <Text style={styles.sectionTitle}>Mon QR Code Médical</Text>
             </View>
-            <Text style={styles.qrCodeText}>Scannez pour accéder à mon profil</Text>
+
+            <View style={styles.qrCodeCard}>
+              <Text style={styles.qrCodeSubtitle}>
+                Montrez ce code à votre médecin pour partager votre dossier
+              </Text>
+              <View style={styles.qrCodeContainer}>
+                <QRCode
+                  value={qrData}
+                  size={200}
+                  backgroundColor="white"
+                  color="black"
+                />
+              </View>
+              <Text style={styles.qrCodeWarning}>
+                ⚠️ Ne partagez ce code qu'avec des professionnels de santé de confiance
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Bouton Se déconnecter */}
         <View style={styles.logoutSection}>
@@ -481,6 +514,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
   },
+  qrCodeSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 12,
+  },
   qrCodeContainer: {
     backgroundColor: MedicalColors.white,
     padding: 16,
@@ -492,6 +533,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
+  },
+  qrCodeWarning: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFA500',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+    lineHeight: 18,
   },
   logoutSection: {
     marginHorizontal: 20,

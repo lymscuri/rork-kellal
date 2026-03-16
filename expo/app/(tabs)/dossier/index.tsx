@@ -159,7 +159,7 @@ function DoctorDashboard() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: MedicalColors.dark }]}
-          onPress={() => router.push('/(tabs)/dossier/scanner')}
+          onPress={() => router.push('/(tabs)/dossier/scanner-qr')}
         >
           <ScanLine size={18} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>Scanner QR</Text>
