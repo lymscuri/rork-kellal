@@ -41,8 +41,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Kendeya a besoin de votre localisation pour les urgences."
         }
-      ],
-      "react-native-webview"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
