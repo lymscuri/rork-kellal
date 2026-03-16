@@ -248,6 +248,8 @@ export const dossierAPI = {
   deletePatient: (patientId: string) =>
     apiClient.delete(`/dossiers/patients/${patientId}/`),
 
+  myRecord: () => apiClient.get('/dossiers/my-record/'),
+
   getMedicalRecord: (patientId: string) =>
     apiClient.get(`/dossiers/patients/${patientId}/medical-record/`),
 

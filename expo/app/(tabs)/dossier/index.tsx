@@ -208,8 +208,15 @@ function PatientDashboard() {
   const getMyRecord = useMedicalStore((s) => s.getMyRecord);
   const getMyRecordByEmail = useMedicalStore((s) => s.getMyRecordByEmail);
   const autoLinkPatientByEmail = useMedicalStore((s) => s.autoLinkPatientByEmail);
+  const syncMyRecordFromBackend = useMedicalStore((s) => s.syncMyRecordFromBackend);
   const getMyPrescriptions = useMedicalStore((s) => s.getMyPrescriptions);
   const hasAttemptedAutoLink = React.useRef(false);
+
+  // Synchroniser mon dossier depuis le backend au montage
+  useEffect(() => {
+    console.log('[PatientDashboard] Syncing my record from backend on mount');
+    syncMyRecordFromBackend();
+  }, [syncMyRecordFromBackend]);
 
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;

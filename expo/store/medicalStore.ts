@@ -86,6 +86,7 @@ interface MedicalStore {
   isSyncing: boolean;
 
   syncPatientsFromBackend: () => Promise<void>;
+  syncMyRecordFromBackend: () => Promise<void>;
   addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => string;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
@@ -194,6 +195,86 @@ export const useMedicalStore = create<MedicalStore>()(
           console.warn('[MedicalStore] syncPatientsFromBackend failed:', extractErrorMessage(e));
         } finally {
           set({ isSyncing: false });
+        }
+      },
+
+      syncMyRecordFromBackend: async () => {
+        try {
+          console.log('[MedicalStore] Syncing my record from backend...');
+          const res = await dossierAPI.myRecord();
+          const data = res.data?.data || res.data;
+
+          if (!data) {
+            console.log('[MedicalStore] No data returned from my-record endpoint');
+            return;
+          }
+
+          // Mapper vers PatientRecord
+          const mappedRecord: PatientRecord = {
+            id: String(data.id),
+            userId: data.user_id ? String(data.user_id) : undefined,
+            linkedEmail: data.email?.toLowerCase(),
+            identity: {
+              firstName: data.first_name || '',
+              lastName: data.last_name || '',
+              dossierNumber: data.dossier_number || `KNY-${Date.now()}`,
+              emergencyContacts: data.emergency_contacts || [],
+              photo: data.photo,
+              birthDate: data.date_of_birth || data.birth_date,
+              sex: data.gender === 'M' || data.gender === 'F' ? data.gender : undefined,
+              phone: data.phone,
+              address: data.address,
+              commune: data.city || data.commune,
+              prefecture: data.prefecture,
+            },
+            criticalInfo: data.critical_info || { drugAllergies: [], foodAllergies: [], chronicDiseases: [], permanentTreatments: [] },
+            personalHistory: data.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
+            familyHistory: data.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
+            lifeHabits: data.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
+            consultations: data.consultations || [],
+            labResults: data.lab_results || [],
+            vaccines: data.vaccinations || [],
+            doctorIds: data.doctor_ids || [],
+            doctorId: data.doctor_id || data.created_by,
+            createdAt: data.created_at || new Date().toISOString(),
+            updatedAt: data.updated_at || new Date().toISOString(),
+          };
+
+          // Fusionner avec les données locales existantes
+          // Ne pas écraser si déjà présent avec userId
+          set((state) => {
+            const existingPatient = state.patients.find(
+              (p) => p.id === mappedRecord.id || p.userId === mappedRecord.userId
+            );
+
+            if (existingPatient && existingPatient.userId) {
+              console.log('[MedicalStore] My record already exists locally, skipping overwrite');
+              return state;
+            }
+
+            // Si le patient existe sans userId, on le met à jour
+            // Sinon on l'ajoute
+            if (existingPatient) {
+              return {
+                patients: state.patients.map((p) =>
+                  p.id === mappedRecord.id ? { ...mappedRecord } : p
+                ),
+              };
+            } else {
+              return {
+                patients: [...state.patients, mappedRecord],
+              };
+            }
+          });
+
+          console.log('[MedicalStore] My record synced from backend:', mappedRecord.id);
+        } catch (e: any) {
+          // Ignorer silencieusement les 404 (patient sans dossier)
+          if (e?.response?.status !== 404) {
+            console.warn('[MedicalStore] syncMyRecord failed:', extractErrorMessage(e));
+          } else {
+            console.log('[MedicalStore] No medical record found for current user (404)');
+          }
         }
       },
 

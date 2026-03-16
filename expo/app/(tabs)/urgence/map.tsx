@@ -48,17 +48,50 @@ function generateLeafletHTML(userLat: number, userLon: number, places: OSMPlace[
   <style>
     body { margin: 0; padding: 0; }
     #map { width: 100vw; height: 100vh; }
+    #loader {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 20px;
+      border-radius: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+  <div id="loader">Chargement de la carte...</div>
   <div id="map"></div>
   <script>
-    const map = L.map('map').setView([${userLat}, ${userLon}], 13);
+    // Initialiser la carte avec performances améliorées
+    const map = L.map('map', {
+      preferCanvas: true,
+      zoomAnimation: true,
+      fadeAnimation: true,
+      markerZoomAnimation: true,
+      tap: false
+    }).setView([${userLat}, ${userLon}], 13);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19
+    // Couche de tuiles principale avec fallback
+    const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+      subdomains: ['a', 'b', 'c'],
+      crossOrigin: true,
+      keepBuffer: 4,
+      updateWhenIdle: false,
+      updateWhenZooming: false
     }).addTo(map);
+
+    // Gestion des erreurs de tuiles avec fallback
+    tileLayer.on('tileerror', function(e) {
+      e.tile.src = 'https://tile.openstreetmap.fr/osmfr/'
+        + e.coords.z + '/' + e.coords.x + '/' + e.coords.y + '.png';
+    });
 
     // Marqueur utilisateur
     const userIcon = L.divIcon({
@@ -119,6 +152,21 @@ function generateLeafletHTML(userLat: number, userLon: number, places: OSMPlace[
           }));
         });
     });
+
+    // Cacher le loader après le chargement de la carte
+    map.on('load', function() {
+      const loader = document.getElementById('loader');
+      if (loader) loader.style.display = 'none';
+
+      // Précharger les tuiles autour de la position
+      map.flyTo([${userLat}, ${userLon}], 14, { duration: 1 });
+    });
+
+    // Cacher le loader après 3 secondes même si pas complètement chargé
+    setTimeout(function() {
+      const loader = document.getElementById('loader');
+      if (loader) loader.style.display = 'none';
+    }, 3000);
 
     // Écouter les messages de React Native
     window.addEventListener('message', function(event) {
