@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Baby, Calendar, Heart, Plus, ChevronRight,
-  Users, BarChart3, MessageSquare, LogOut, CalendarDays, User
+  Users, BarChart3, MessageSquare, CalendarDays, User
 } from 'lucide-react-native';
 import type { MaternityPatient } from '@/types/medical';
 
@@ -292,12 +292,7 @@ function SoignantView() {
             <Text style={styles.soignantName}>{user?.role === 'medecin' ? 'Dr.' : ''} {user?.lastName}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.logoutBtn}>
-              <User size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-              <LogOut size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
+
           </View>
         </View>
 

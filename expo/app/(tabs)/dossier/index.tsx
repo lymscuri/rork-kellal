@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Search, Plus, QrCode, Users, Calendar, FileText, ClipboardList,
-  AlertCircle, ChevronRight, Activity, LogOut, ScanLine, User
+  AlertCircle, ChevronRight, Activity, ScanLine, User, GitBranch
 } from 'lucide-react-native';
 import type { PatientRecord } from '@/types/medical';
 
@@ -110,12 +110,7 @@ function DoctorDashboard() {
             <Text style={styles.doctorName}>{user?.lastName} {user?.firstName}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.logoutBtn}>
-              <User size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-              <LogOut size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
+
           </View>
         </View>
 
@@ -170,6 +165,16 @@ function DoctorDashboard() {
         >
           <FileText size={18} color={MedicalColors.white} />
           <Text style={styles.actionBtnText}>Rapports</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: '#9B59B6', flex: 1 }]}
+          onPress={() => router.push('/(tabs)/dossier/ordinogramme')}
+        >
+          <GitBranch size={18} color={MedicalColors.white} />
+          <Text style={styles.actionBtnText}>Ordinogramme IA</Text>
         </TouchableOpacity>
       </View>
 
@@ -268,12 +273,7 @@ function PatientDashboard() {
             )}
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.logoutBtnPatient}>
-              <User size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtnPatient}>
-              <LogOut size={20} color={MedicalColors.white} />
-            </TouchableOpacity>
+
           </View>
         </View>
       </View>

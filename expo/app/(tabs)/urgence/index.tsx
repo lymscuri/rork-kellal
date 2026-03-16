@@ -80,9 +80,7 @@ export default function EmergencyHomeScreen() {
       {/* Header avec bouton profil */}
       <View style={styles.headerUrgence}>
         <Text style={styles.headerTitle}>Urgence</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/profil')} style={styles.profileBtn}>
-          <User size={22} color={MedicalColors.urgency} />
-        </TouchableOpacity>
+
       </View>
 
       {(medicalProfile.bloodGroup || criticalAllergies.length > 0 || isPregnant) && (
