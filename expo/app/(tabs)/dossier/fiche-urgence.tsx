@@ -107,9 +107,9 @@ export default function FicheUrgenceScreen() {
         <View style={styles.section}>
           <View style={[styles.card, styles.allergiesCard]}>
             <Text style={styles.cardTitle}>⚠️ ALLERGIES MÉDICAMENTEUSES</Text>
-            {medicalData.dossier.drugAllergies.length > 0 ? (
+            {medicalData.dossier.drugAllergies?.length || 0 > 0 ? (
               <View style={styles.cardContent}>
-                {medicalData.dossier.drugAllergies.map((allergy, index) => (
+                {medicalData.dossier.drugAllergies?.map((allergy, index) => (
                   <View key={index} style={styles.allergyItem}>
                     <Text style={styles.allergyText}>• {allergy.name}</Text>
                     {allergy.severity && (
@@ -135,12 +135,12 @@ export default function FicheUrgenceScreen() {
         </View>
 
         {/* Carte MALADIES CHRONIQUES - Orange */}
-        {medicalData.dossier.chronicDiseases.length > 0 && (
+        {medicalData.dossier.chronicDiseases?.length || 0 > 0 && (
           <View style={styles.section}>
             <View style={[styles.card, styles.diseaseCard]}>
               <Text style={styles.cardTitle}>🏥 MALADIES CHRONIQUES</Text>
               <View style={styles.cardContent}>
-                {medicalData.dossier.chronicDiseases.map((disease, index) => (
+                {medicalData.dossier.chronicDiseases?.map((disease, index) => (
                   <Text key={index} style={styles.listItem}>• {disease}</Text>
                 ))}
               </View>
@@ -149,12 +149,12 @@ export default function FicheUrgenceScreen() {
         )}
 
         {/* Carte TRAITEMENTS EN COURS - Verte */}
-        {medicalData.dossier.permanentTreatments.length > 0 && (
+        {medicalData.dossier.permanentTreatments?.length || 0 > 0 && (
           <View style={styles.section}>
             <View style={[styles.card, styles.treatmentCard]}>
               <Text style={styles.cardTitle}>💊 TRAITEMENTS EN COURS</Text>
               <View style={styles.cardContent}>
-                {medicalData.dossier.permanentTreatments.map((treatment, index) => (
+                {medicalData.dossier.permanentTreatments?.map((treatment, index) => (
                   <Text key={index} style={styles.listItem}>• {treatment}</Text>
                 ))}
               </View>

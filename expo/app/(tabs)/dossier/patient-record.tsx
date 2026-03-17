@@ -160,15 +160,15 @@ export default function PatientRecordScreen() {
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Allergies médicamenteuses</Text>
-        {patient.criticalInfo.drugAllergies.map(a => (
+        {patient.criticalInfo.drugAllergies?.map(a => (
           <View key={a.id} style={[styles.allergyBadge, a.severity === 'anaphylaxie' ? styles.allergyDanger : a.severity === 'severe' ? styles.allergyWarn : styles.allergyMild]}>
             <Text style={styles.allergyText}>{a.name} — {a.severity}</Text>
           </View>
         ))}
-        {patient.criticalInfo.foodAllergies.length > 0 && (
+        {patient.criticalInfo.foodAllergies?.length || 0 > 0 && (
           <>
             <Text style={[styles.subSectionTitle, { marginTop: 12 }]}>Allergies alimentaires</Text>
-            {patient.criticalInfo.foodAllergies.map(a => (
+            {patient.criticalInfo.foodAllergies?.map(a => (
               <View key={a.id} style={[styles.allergyBadge, styles.allergyMild]}>
                 <Text style={styles.allergyText}>{a.name}</Text>
               </View>
@@ -203,20 +203,20 @@ export default function PatientRecordScreen() {
         <Text style={styles.subSectionTitle}>Maladies chroniques actives</Text>
         {isReadOnly ? (
           <View style={styles.chipRow}>
-            {patient.criticalInfo.chronicDiseases.map(d => (
+            {patient.criticalInfo.chronicDiseases?.map(d => (
               <Chip key={d} style={styles.chipActive} textStyle={{ color: MedicalColors.white, fontSize: 12 }}>{d}</Chip>
             ))}
-            {patient.criticalInfo.chronicDiseases.length === 0 && <Text style={styles.readValue}>Aucune</Text>}
+            {patient.criticalInfo.chronicDiseases?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
           </View>
         ) : (
           <View style={styles.chipRow}>
             {CHRONIC_OPTIONS.map(d => (
               <Chip
                 key={d}
-                selected={patient.criticalInfo.chronicDiseases.includes(d)}
+                selected={patient.criticalInfo.chronicDiseases?.includes(d)}
                 onPress={() => toggleChronic(d)}
-                style={[styles.chip, patient.criticalInfo.chronicDiseases.includes(d) && styles.chipSelected]}
-                textStyle={{ fontSize: 11, color: patient.criticalInfo.chronicDiseases.includes(d) ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, patient.criticalInfo.chronicDiseases?.includes(d) && styles.chipSelected]}
+                textStyle={{ fontSize: 11, color: patient.criticalInfo.chronicDiseases?.includes(d) ? MedicalColors.white : MedicalColors.text }}
               >
                 {d}
               </Chip>
@@ -225,10 +225,10 @@ export default function PatientRecordScreen() {
         )}
       </View>
 
-      {patient.criticalInfo.permanentTreatments.length > 0 && (
+      {patient.criticalInfo.permanentTreatments?.length || 0 > 0 && (
         <View style={styles.fieldGroup}>
           <Text style={styles.subSectionTitle}>Traitements permanents</Text>
-          {patient.criticalInfo.permanentTreatments.map(t => (
+          {patient.criticalInfo.permanentTreatments?.map(t => (
             <View key={t.id} style={styles.treatmentCard}>
               <Text style={styles.treatmentName}>{t.medication}</Text>
               <Text style={styles.treatmentDetail}>{t.dosage} — {t.frequency}</Text>

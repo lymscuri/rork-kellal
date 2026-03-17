@@ -96,8 +96,8 @@ export default function MyQRCodeScreen() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Résumé médical</Text>
           <SummaryRow label="Groupe sanguin" value={record.criticalInfo.bloodGroup || 'Non renseigné'} />
-          <SummaryRow label="Allergies médicamenteuses" value={record.criticalInfo.drugAllergies.length > 0 ? record.criticalInfo.drugAllergies.map(a => a.name).join(', ') : 'Aucune'} />
-          <SummaryRow label="Maladies chroniques" value={record.criticalInfo.chronicDiseases.length > 0 ? record.criticalInfo.chronicDiseases.join(', ') : 'Aucune'} />
+          <SummaryRow label="Allergies médicamenteuses" value={record.criticalInfo.drugAllergies?.length || 0 > 0 ? record.criticalInfo.drugAllergies?.map(a => a.name).join(', ') : 'Aucune'} />
+          <SummaryRow label="Maladies chroniques" value={record.criticalInfo.chronicDiseases?.length || 0 > 0 ? record.criticalInfo.chronicDiseases.join(', ') : 'Aucune'} />
           <SummaryRow label="Contacts d'urgence" value={record.identity.emergencyContacts.length > 0 ? record.identity.emergencyContacts.map(c => `${c.fullName} (${c.phoneNumber})`).join(', ') : 'Aucun'} />
         </View>
       )}

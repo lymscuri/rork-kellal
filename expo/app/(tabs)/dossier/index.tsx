@@ -354,7 +354,7 @@ function PatientDashboard() {
               <View style={styles.criticalItem}>
                 <AlertCircle size={16} color={MedicalColors.warning} />
                 <Text style={styles.criticalLabel}>Allergies</Text>
-                <Text style={styles.criticalValue}>{record.criticalInfo.drugAllergies.length + record.criticalInfo.foodAllergies.length}</Text>
+                <Text style={styles.criticalValue}>{(record.criticalInfo.drugAllergies?.length || 0) + (record.criticalInfo.foodAllergies?.length || 0)}</Text>
               </View>
             </View>
           </View>
