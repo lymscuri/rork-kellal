@@ -825,7 +825,7 @@ export const useMedicalStore = create<MedicalStore>()(
           const mappedRecord: MaternityPatient = {
             id: String(data.id),
             userId: userId,
-            linkedEmail: data.linked_email?.toLowerCase(),
+            linkedEmail: data.email?.toLowerCase() || data.linked_email?.toLowerCase(),
             pregnancy: {
               id: pregnancyId,
               patientId: String(data.id),
