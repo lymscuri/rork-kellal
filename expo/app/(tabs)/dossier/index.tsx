@@ -219,6 +219,16 @@ function PatientDashboard() {
     syncMyRecordFromBackend(user.id);
   }, [user?.id, syncMyRecordFromBackend]);
 
+  // Synchronisation automatique toutes les 30 secondes
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      console.log('[PatientDashboard] Auto-syncing my record from backend, userId:', user.id);
+      syncMyRecordFromBackend(user.id);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user?.id, syncMyRecordFromBackend]);
+
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;
     const byId = getMyRecord(user.id);

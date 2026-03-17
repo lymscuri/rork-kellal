@@ -28,6 +28,16 @@ function PatientView() {
     syncMyMaternityFromBackend(user.id);
   }, [user?.id, syncMyMaternityFromBackend]);
 
+  // Synchronisation automatique toutes les 30 secondes
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      console.log('[MaternityPatientView] Auto-syncing my maternity record from backend, userId:', user.id);
+      syncMyMaternityFromBackend(user.id);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user?.id, syncMyMaternityFromBackend]);
+
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;
     const byId = maternityPatients.find(p => p.userId === user.id);
