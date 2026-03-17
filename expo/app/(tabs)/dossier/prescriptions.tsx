@@ -32,7 +32,7 @@ export default function PrescriptionsScreen() {
         </TouchableOpacity>
       </View>
       <Text style={styles.diagnosis}>{item.consultation.mainDiagnosis}</Text>
-      {item.prescriptions.map((p, i) => (
+      {item.prescriptions?.map((p, i) => (
         <View key={p.id} style={styles.medItem}>
           <Text style={styles.medName}>{i + 1}. {p.nameDCI} {p.nameCommercial ? `(${p.nameCommercial})` : ''}</Text>
           <Text style={styles.medDetail}>{p.dose} — {p.frequency.join(', ')} — {p.duration} — voie {p.route}</Text>
@@ -73,7 +73,7 @@ export default function PrescriptionsScreen() {
               <Text style={styles.fullscreenDoctor}>Dr. {fullscreenPresc.consultation.doctorName}</Text>
               <Text style={styles.fullscreenDiag}>{fullscreenPresc.consultation.mainDiagnosis}</Text>
               <View style={styles.fullscreenDivider} />
-              {fullscreenPresc.prescriptions.map((p, i) => (
+              {fullscreenPresc.prescriptions?.map((p, i) => (
                 <View key={p.id} style={styles.fullscreenMed}>
                   <Text style={styles.fullscreenMedName}>{i + 1}. {p.nameDCI}</Text>
                   <Text style={styles.fullscreenMedDetail}>{p.dose} — {p.frequency.join(', ')}</Text>

@@ -25,7 +25,7 @@ export default function DoctorReportsScreen() {
 
   const latePatients = useMemo(() => {
     return patients.filter(p => {
-      if (p.consultations.length === 0) return true;
+      if (p.consultations?.length === 0) return true;
       const lastDate = new Date(p.consultations[0].date);
       const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
       return daysSince > 90;
@@ -37,7 +37,7 @@ export default function DoctorReportsScreen() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     patients.forEach(p => {
-      p.consultations.forEach(c => {
+      p.consultations?.forEach(c => {
         if (c.date >= monthStart && c.mainDiagnosis) {
           diagMap[c.mainDiagnosis] = (diagMap[c.mainDiagnosis] || 0) + 1;
         }
@@ -74,7 +74,7 @@ export default function DoctorReportsScreen() {
               <View style={styles.lateInfo}>
                 <Text style={styles.lateName}>{p.identity.lastName} {p.identity.firstName}</Text>
                 <Text style={styles.lateDetail}>
-                  {p.consultations.length > 0
+                  {p.consultations?.length > 0
                     ? `Dernière visite : ${new Date(p.consultations[0].date).toLocaleDateString('fr-FR')}`
                     : 'Aucune consultation'
                   }

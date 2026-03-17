@@ -56,7 +56,7 @@ function DoctorDashboard() {
   }, [syncPatientsFromBackend]);
 
   const getAlertLevel = useCallback((patient: PatientRecord) => {
-    if (patient.consultations.length === 0) return 'none';
+    if (patient.consultations?.length === 0) return 'none';
     const last = patient.consultations[0];
     if (last.vitalSigns.systolicBP && last.vitalSigns.systolicBP >= 140) return 'red';
     const lastDate = new Date(last.date);
@@ -83,7 +83,7 @@ function DoctorDashboard() {
         <View style={styles.patientInfo}>
           <Text style={styles.patientName}>{item.identity.lastName} {item.identity.firstName}</Text>
           <Text style={styles.patientDossier}>{item.identity.dossierNumber}</Text>
-          {item.consultations.length > 0 && (
+          {item.consultations?.length > 0 && (
             <Text style={styles.patientLastVisit}>
               Dernière visite : {new Date(item.consultations[0].date).toLocaleDateString('fr-FR')}
             </Text>

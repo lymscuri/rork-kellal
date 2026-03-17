@@ -592,10 +592,10 @@ export const useMedicalStore = create<MedicalStore>()(
         let monthConsultations = 0;
         let monthPrescriptions = 0;
         patients.forEach(p => {
-          p.consultations.forEach(c => {
+          p.consultations?.forEach(c => {
             if (c.date >= monthStart) {
               monthConsultations++;
-              monthPrescriptions += c.prescriptions.length > 0 ? 1 : 0;
+              monthPrescriptions += c.prescriptions?.length > 0 ? 1 : 0;
             }
           });
         });
@@ -652,7 +652,7 @@ export const useMedicalStore = create<MedicalStore>()(
           get().patients.find(p => p.linkedEmail === userId);
         if (!patient) return [];
         return patient.consultations
-          .filter(c => c.prescriptions.length > 0)
+          .filter(c => c.prescriptions?.length > 0)
           .map(c => ({ consultation: c, prescriptions: c.prescriptions }));
       },
 

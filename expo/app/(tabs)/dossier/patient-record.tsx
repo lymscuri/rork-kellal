@@ -121,10 +121,10 @@ export default function PatientRecordScreen() {
         <InfoRow label="Commune" value={patient.identity.commune || 'Non renseigné'} />
         <InfoRow label="Préfecture" value={patient.identity.prefecture || 'Non renseigné'} />
       </View>
-      {patient.identity.emergencyContacts.length > 0 && (
+      {patient.identity.emergencyContacts?.length > 0 && (
         <View style={styles.contactsSection}>
           <Text style={styles.subSectionTitle}>Contacts d'urgence</Text>
-          {patient.identity.emergencyContacts.map(c => (
+          {patient.identity.emergencyContacts?.map(c => (
             <View key={c.id} style={styles.contactCard}>
               <Text style={styles.contactName}>{c.fullName}</Text>
               <Text style={styles.contactDetail}>{c.relationship} • {c.phoneNumber}</Text>
@@ -482,13 +482,13 @@ export default function PatientRecordScreen() {
           Nouvelle consultation
         </Button>
       )}
-      {patient.consultations.length === 0 ? (
+      {patient.consultations?.length === 0 ? (
         <View style={styles.emptySection}>
           <Stethoscope size={32} color={MedicalColors.border} />
           <Text style={styles.emptySectionText}>Aucune consultation</Text>
         </View>
       ) : (
-        patient.consultations.map(c => (
+        patient.consultations?.map(c => (
           <View key={c.id} style={styles.consultCard}>
             <View style={styles.consultHeader}>
               <Text style={styles.consultDate}>{new Date(c.date).toLocaleDateString('fr-FR')}</Text>
@@ -496,9 +496,9 @@ export default function PatientRecordScreen() {
             </View>
             <Text style={styles.consultDiag}>{c.mainDiagnosis}</Text>
             <Text style={styles.consultReason}>{c.reason}</Text>
-            {c.prescriptions.length > 0 && (
+            {c.prescriptions?.length > 0 && (
               <View style={styles.prescBadge}>
-                <Text style={styles.prescBadgeText}>{c.prescriptions.length} médicament(s) prescrit(s)</Text>
+                <Text style={styles.prescBadgeText}>{c.prescriptions?.length} médicament(s) prescrit(s)</Text>
               </View>
             )}
           </View>
@@ -520,13 +520,13 @@ export default function PatientRecordScreen() {
           Nouveau résultat d'examen
         </Button>
       )}
-      {patient.labResults.length === 0 ? (
+      {patient.labResults?.length === 0 ? (
         <View style={styles.emptySection}>
           <FlaskConical size={32} color={MedicalColors.border} />
           <Text style={styles.emptySectionText}>Aucun résultat d'examen</Text>
         </View>
       ) : (
-        patient.labResults.map(r => (
+        patient.labResults?.map(r => (
           <View key={r.id} style={styles.examCard}>
             <Text style={styles.examType}>{r.examType}</Text>
             <Text style={styles.examDate}>{new Date(r.date).toLocaleDateString('fr-FR')} — {r.facility}</Text>
@@ -551,13 +551,13 @@ export default function PatientRecordScreen() {
           Nouveau vaccin
         </Button>
       )}
-      {patient.vaccines.length === 0 ? (
+      {patient.vaccines?.length === 0 ? (
         <View style={styles.emptySection}>
           <Syringe size={32} color={MedicalColors.border} />
           <Text style={styles.emptySectionText}>Aucun vaccin enregistré</Text>
         </View>
       ) : (
-        patient.vaccines.map(v => (
+        patient.vaccines?.map(v => (
           <View key={v.id} style={styles.vaccineCard}>
             <View style={[styles.vaccineStatus, v.status === 'fait' ? styles.statusDone : v.status === 'en_retard' ? styles.statusLate : styles.statusPending]} />
             <View style={styles.vaccineInfo}>
