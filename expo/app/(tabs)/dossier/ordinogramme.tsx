@@ -165,7 +165,7 @@ export default function OrdinogrammeScreen() {
           },
           {
             text: 'Sauvegarder',
-            onPress: (email: string) => {
+            onPress: (email?: string) => {
               if (email) {
                 handleFindPatientByEmail(email.trim());
               }
