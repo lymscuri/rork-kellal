@@ -87,7 +87,7 @@ interface MedicalStore {
 
   syncPatientsFromBackend: () => Promise<void>;
   syncMyRecordFromBackend: (userId: string) => Promise<void>;
-  addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => string;
+  addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => Promise<string>;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
   getPatientByDossierNumber: (dossierNumber: string) => PatientRecord | undefined;
@@ -113,7 +113,7 @@ interface MedicalStore {
   searchPatientInStore: (email: string) => PatientRecord | null;
   searchPatientInStoreByPhone: (phone: string) => PatientRecord | null;
 
-  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string, linkedEmail?: string) => string;
+  addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string, linkedEmail?: string) => Promise<string>;
   syncMaternityPatientsFromBackend: () => Promise<void>;
   syncMyMaternityFromBackend: (userId: string) => Promise<void>;
   getMaternityPatientsByDoctor: (doctorId: string) => MaternityPatient[];
@@ -1143,7 +1143,7 @@ export const useMedicalStore = create<MedicalStore>()(
         maternityAPI.createChild(patientId, {
           first_name: child.firstName,
           birth_date: child.birthDate,
-          sex: child.sex,
+          // sex: child.sex, // Property does not exist on Omit<ChildProfile, "id"|"parentId">
           birth_weight: child.birthWeight,
           birth_height: child.birthHeight,
         }).catch((e) => {

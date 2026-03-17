@@ -107,7 +107,7 @@ export const useEmergencyStore = create<EmergencyState>()(
           if (Array.isArray(backendAlerts) && backendAlerts.length > 0) {
             const mappedAlerts: EmergencyAlert[] = backendAlerts.map((a: any) => ({
               id: String(a.id),
-              senderId: a.sender_id ? String(a.sender_id) : undefined,
+              senderId: String(a.sender_id || ''),
               senderName: a.sender_name || 'Anonyme',
               senderPhone: a.sender_phone,
               latitude: a.latitude,

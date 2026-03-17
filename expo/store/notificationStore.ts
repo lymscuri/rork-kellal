@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { apiClient } from './api';
+import apiClient from './api';
 
 type NotificationState = {
   expoPushToken: string | null;
@@ -121,6 +121,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
         };
       },
     });
@@ -199,9 +201,7 @@ export const scheduleNotification = async (
         data: data || {},
         sound: true,
       },
-      trigger: {
-        date: triggerDate,
-      },
+      trigger: { type: 'date', date: triggerDate } as any,
     });
     console.log('[Notifications] Notification planifiée:', { identifier, title, triggerDate });
     return identifier;
