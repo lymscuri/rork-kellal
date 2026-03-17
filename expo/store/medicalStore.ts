@@ -192,12 +192,32 @@ export const useMedicalStore = create<MedicalStore>()(
             }));
 
             set((state) => {
-              const existingIds = new Set(state.patients.map(p => p.id));
-              const newPatients = mappedPatients.filter(p => !existingIds.has(p.id));
-              return { patients: [...state.patients, ...newPatients] };
-            });
+              const updatedPatients = [...state.patients];
+              let addedCount = 0;
+              let updatedCount = 0;
 
-            console.log('[MedicalStore] Synced', mappedPatients.length, 'patients from backend');
+              mappedPatients.forEach(backendPatient => {
+                // Chercher si le patient existe déjà localement (par id, linkedEmail, ou userId)
+                const existingIndex = updatedPatients.findIndex(p =>
+                  p.id === backendPatient.id ||
+                  (p.linkedEmail && backendPatient.linkedEmail && p.linkedEmail === backendPatient.linkedEmail) ||
+                  (p.userId && backendPatient.userId && p.userId === backendPatient.userId)
+                );
+
+                if (existingIndex !== -1) {
+                  // Patient existe → Mettre à jour avec les données du backend (source de vérité)
+                  updatedPatients[existingIndex] = backendPatient;
+                  updatedCount++;
+                } else {
+                  // Patient n'existe pas → Ajouter
+                  updatedPatients.push(backendPatient);
+                  addedCount++;
+                }
+              });
+
+              console.log(`[MedicalStore] Synced ${mappedPatients.length} patients from backend: ${updatedCount} updated, ${addedCount} added`);
+              return { patients: updatedPatients };
+            });
           } else {
             console.log('[MedicalStore] No patients from backend or empty response');
           }
@@ -263,12 +283,15 @@ export const useMedicalStore = create<MedicalStore>()(
           // 1. Le médecin crée un dossier sur Railway avec le email du patient
           // 2. Le patient se connecte → on récupère son dossier via GET /dossiers/my-record/
           // 3. On assigne userId au dossier récupéré
-          // 4. On cherche si ce dossier existe déjà localement (par id backend OU par userId)
+          // 4. On cherche si ce dossier existe déjà localement (par id backend, userId, OU linkedEmail)
           // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
           // 6. Si pas trouvé → Ajouter le nouveau dossier
           set((state) => {
             const existingIndex = state.patients.findIndex(
-              (p) => p.id === mappedRecord.id || p.userId === mappedRecord.userId
+              (p) =>
+                p.id === mappedRecord.id ||
+                p.userId === mappedRecord.userId ||
+                (p.linkedEmail && mappedRecord.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
             );
 
             if (existingIndex !== -1) {
@@ -813,12 +836,32 @@ export const useMedicalStore = create<MedicalStore>()(
             });
 
             set((state) => {
-              const existingIds = new Set(state.maternityPatients.map(p => p.id));
-              const newPatients = mappedPatients.filter(p => !existingIds.has(p.id));
-              return { maternityPatients: [...state.maternityPatients, ...newPatients] };
-            });
+              const updatedPatients = [...state.maternityPatients];
+              let addedCount = 0;
+              let updatedCount = 0;
 
-            console.log('[MedicalStore] Synced', mappedPatients.length, 'maternity patients from backend');
+              mappedPatients.forEach(backendPatient => {
+                // Chercher si le patient existe déjà localement (par id, linkedEmail, ou userId)
+                const existingIndex = updatedPatients.findIndex(p =>
+                  p.id === backendPatient.id ||
+                  (p.linkedEmail && backendPatient.linkedEmail && p.linkedEmail === backendPatient.linkedEmail) ||
+                  (p.userId && backendPatient.userId && p.userId === backendPatient.userId)
+                );
+
+                if (existingIndex !== -1) {
+                  // Patient existe → Mettre à jour avec les données du backend (source de vérité)
+                  updatedPatients[existingIndex] = backendPatient;
+                  updatedCount++;
+                } else {
+                  // Patient n'existe pas → Ajouter
+                  updatedPatients.push(backendPatient);
+                  addedCount++;
+                }
+              });
+
+              console.log(`[MedicalStore] Synced ${mappedPatients.length} maternity patients from backend: ${updatedCount} updated, ${addedCount} added`);
+              return { maternityPatients: updatedPatients };
+            });
           } else {
             console.log('[MedicalStore] No maternity patients from backend or empty response');
           }
@@ -881,12 +924,15 @@ export const useMedicalStore = create<MedicalStore>()(
           // 1. Le soignant crée un dossier maternité sur Railway avec le email de la patiente
           // 2. La patiente se connecte → on récupère son dossier via GET /maternity/my-record/
           // 3. On assigne userId au dossier récupéré
-          // 4. On cherche si ce dossier existe déjà localement (par id backend OU par userId)
+          // 4. On cherche si ce dossier existe déjà localement (par id backend, userId, OU linkedEmail)
           // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
           // 6. Si pas trouvé → Ajouter le nouveau dossier
           set((state) => {
             const existingIndex = state.maternityPatients.findIndex(
-              (p) => p.id === mappedRecord.id || p.userId === mappedRecord.userId
+              (p) =>
+                p.id === mappedRecord.id ||
+                p.userId === mappedRecord.userId ||
+                (p.linkedEmail && mappedRecord.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
             );
 
             if (existingIndex !== -1) {
@@ -1190,6 +1236,85 @@ export const useMedicalStore = create<MedicalStore>()(
               return p;
             });
           }
+
+          // Nettoyage des doublons : dédupliquer par id, linkedEmail, et userId
+          const cleanDuplicates = () => {
+            const seenPatients = new Map<string, PatientRecord>();
+            const seenEmails = new Set<string>();
+            const seenUserIds = new Set<string>();
+
+            state.patients.forEach(patient => {
+              // Priorité 1 : Utiliser l'id backend comme clé unique
+              if (seenPatients.has(patient.id)) {
+                console.log('[MedicalStore] Duplicate patient by id:', patient.id);
+                return; // Ignorer le doublon
+              }
+
+              // Priorité 2 : Vérifier par linkedEmail
+              if (patient.linkedEmail) {
+                if (seenEmails.has(patient.linkedEmail)) {
+                  console.log('[MedicalStore] Duplicate patient by email:', patient.linkedEmail);
+                  return; // Ignorer le doublon
+                }
+                seenEmails.add(patient.linkedEmail);
+              }
+
+              // Priorité 3 : Vérifier par userId
+              if (patient.userId) {
+                if (seenUserIds.has(patient.userId)) {
+                  console.log('[MedicalStore] Duplicate patient by userId:', patient.userId);
+                  return; // Ignorer le doublon
+                }
+                seenUserIds.add(patient.userId);
+              }
+
+              seenPatients.set(patient.id, patient);
+            });
+
+            const cleanedPatients = Array.from(seenPatients.values());
+            if (cleanedPatients.length < state.patients.length) {
+              console.log(`[MedicalStore] Removed ${state.patients.length - cleanedPatients.length} duplicate patients`);
+              state.patients = cleanedPatients;
+            }
+
+            // Même logique pour les patients maternité
+            const seenMaternity = new Map<string, MaternityPatient>();
+            const seenMaternityEmails = new Set<string>();
+            const seenMaternityUserIds = new Set<string>();
+
+            state.maternityPatients.forEach(patient => {
+              if (seenMaternity.has(patient.id)) {
+                console.log('[MedicalStore] Duplicate maternity patient by id:', patient.id);
+                return;
+              }
+
+              if (patient.linkedEmail) {
+                if (seenMaternityEmails.has(patient.linkedEmail)) {
+                  console.log('[MedicalStore] Duplicate maternity patient by email:', patient.linkedEmail);
+                  return;
+                }
+                seenMaternityEmails.add(patient.linkedEmail);
+              }
+
+              if (patient.userId) {
+                if (seenMaternityUserIds.has(patient.userId)) {
+                  console.log('[MedicalStore] Duplicate maternity patient by userId:', patient.userId);
+                  return;
+                }
+                seenMaternityUserIds.add(patient.userId);
+              }
+
+              seenMaternity.set(patient.id, patient);
+            });
+
+            const cleanedMaternity = Array.from(seenMaternity.values());
+            if (cleanedMaternity.length < state.maternityPatients.length) {
+              console.log(`[MedicalStore] Removed ${state.maternityPatients.length - cleanedMaternity.length} duplicate maternity patients`);
+              state.maternityPatients = cleanedMaternity;
+            }
+          };
+
+          cleanDuplicates();
         }
       },
     }
