@@ -23,9 +23,10 @@ function PatientView() {
 
   // Synchroniser mon dossier maternité depuis le backend au montage
   useEffect(() => {
-    console.log('[MaternityPatientView] Syncing my maternity record from backend on mount');
-    syncMyMaternityFromBackend();
-  }, [syncMyMaternityFromBackend]);
+    if (!user?.id) return;
+    console.log('[MaternityPatientView] Syncing my maternity record from backend on mount, userId:', user.id);
+    syncMyMaternityFromBackend(user.id);
+  }, [user?.id, syncMyMaternityFromBackend]);
 
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;

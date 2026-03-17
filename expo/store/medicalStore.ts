@@ -1,4 +1,3 @@
-import { useAuthStore } from './authStore';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { zustandStorage } from './storage';
@@ -87,7 +86,7 @@ interface MedicalStore {
   isSyncing: boolean;
 
   syncPatientsFromBackend: () => Promise<void>;
-  syncMyRecordFromBackend: () => Promise<void>;
+  syncMyRecordFromBackend: (userId: string) => Promise<void>;
   addPatient: (doctorId: string, identity: Partial<PatientIdentity>, userId?: string, linkedEmail?: string) => string;
   getPatientsByDoctor: (doctorId: string) => PatientRecord[];
   getPatientById: (patientId: string) => PatientRecord | undefined;
@@ -116,7 +115,7 @@ interface MedicalStore {
 
   addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string, linkedEmail?: string) => string;
   syncMaternityPatientsFromBackend: () => Promise<void>;
-  syncMyMaternityFromBackend: () => Promise<void>;
+  syncMyMaternityFromBackend: (userId: string) => Promise<void>;
   getMaternityPatientsByDoctor: (doctorId: string) => MaternityPatient[];
   getMyMaternityData: (patientId: string) => MaternityPatient | undefined;
   getMyMaternityDataByUserId: (userId: string) => MaternityPatient | undefined;
@@ -200,9 +199,9 @@ export const useMedicalStore = create<MedicalStore>()(
         }
       },
 
-      syncMyRecordFromBackend: async () => {
+      syncMyRecordFromBackend: async (userId: string) => {
         try {
-          console.log('[MedicalStore] Syncing my record from backend...');
+          console.log('[MedicalStore] Syncing my record from backend... userId:', userId);
           const res = await dossierAPI.myRecord();
           const data = res.data?.data || res.data;
 
@@ -214,7 +213,7 @@ export const useMedicalStore = create<MedicalStore>()(
           // Mapper vers PatientRecord
           const mappedRecord: PatientRecord = {
             id: String(data.id),
-            userId: useAuthStore.getState().user?.id || undefined,
+            userId: userId,
             linkedEmail: data.email?.toLowerCase(),
             identity: {
               firstName: data.first_name || '',
@@ -242,34 +241,34 @@ export const useMedicalStore = create<MedicalStore>()(
             updatedAt: data.updated_at || new Date().toISOString(),
           };
 
-          // Fusionner avec les données locales existantes
-          // Ne pas écraser si déjà présent avec userId
+          // FLUX DE SYNCHRONISATION:
+          // 1. Le médecin crée un dossier sur Railway avec le email du patient
+          // 2. Le patient se connecte → on récupère son dossier via GET /dossiers/my-record/
+          // 3. On assigne userId au dossier récupéré
+          // 4. On cherche si ce dossier existe déjà localement (par id backend OU par userId)
+          // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
+          // 6. Si pas trouvé → Ajouter le nouveau dossier
           set((state) => {
-            const existingPatient = state.patients.find(
+            const existingIndex = state.patients.findIndex(
               (p) => p.id === mappedRecord.id || p.userId === mappedRecord.userId
             );
 
-            if (existingPatient && existingPatient.userId) {
-              console.log('[MedicalStore] My record already exists locally, skipping overwrite');
-              return state;
-            }
-
-            // Si le patient existe sans userId, on le met à jour
-            // Sinon on l'ajoute
-            if (existingPatient) {
-              return {
-                patients: state.patients.map((p) =>
-                  p.id === mappedRecord.id ? { ...mappedRecord } : p
-                ),
-              };
+            if (existingIndex !== -1) {
+              // Dossier existe → Mettre à jour avec les données du backend
+              console.log('[MedicalStore] Updating existing patient record from backend:', mappedRecord.id);
+              const updatedPatients = [...state.patients];
+              updatedPatients[existingIndex] = mappedRecord;
+              return { patients: updatedPatients };
             } else {
+              // Dossier n'existe pas → Ajouter
+              console.log('[MedicalStore] Adding new patient record from backend:', mappedRecord.id);
               return {
                 patients: [...state.patients, mappedRecord],
               };
             }
           });
 
-          console.log('[MedicalStore] My record synced from backend:', mappedRecord.id);
+          console.log('[MedicalStore] My record synced from backend:', mappedRecord.id, 'userId:', userId);
         } catch (e: any) {
           // Ignorer silencieusement les 404 (patient sans dossier)
           if (e?.response?.status !== 404) {
@@ -804,9 +803,9 @@ export const useMedicalStore = create<MedicalStore>()(
         }
       },
 
-      syncMyMaternityFromBackend: async () => {
+      syncMyMaternityFromBackend: async (userId: string) => {
         try {
-          console.log('[MedicalStore] Syncing my maternity record from backend...');
+          console.log('[MedicalStore] Syncing my maternity record from backend... userId:', userId);
           const res = await maternityAPI.myRecord();
           const data = res.data?.data || res.data;
 
@@ -825,7 +824,7 @@ export const useMedicalStore = create<MedicalStore>()(
 
           const mappedRecord: MaternityPatient = {
             id: String(data.id),
-            userId: useAuthStore.getState().user?.id || undefined,
+            userId: userId,
             linkedEmail: data.linked_email?.toLowerCase(),
             pregnancy: {
               id: pregnancyId,
@@ -852,34 +851,34 @@ export const useMedicalStore = create<MedicalStore>()(
             soignantId: data.soignant_id || data.created_by,
           };
 
-          // Fusionner avec les données locales existantes
-          // Chercher si déjà présent par id ou linked_email
+          // FLUX DE SYNCHRONISATION MATERNITÉ:
+          // 1. Le soignant crée un dossier maternité sur Railway avec le email de la patiente
+          // 2. La patiente se connecte → on récupère son dossier via GET /maternity/my-record/
+          // 3. On assigne userId au dossier récupéré
+          // 4. On cherche si ce dossier existe déjà localement (par id backend OU par userId)
+          // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
+          // 6. Si pas trouvé → Ajouter le nouveau dossier
           set((state) => {
-            const existingPatient = state.maternityPatients.find(
-              (p) => p.id === mappedRecord.id || (p.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
+            const existingIndex = state.maternityPatients.findIndex(
+              (p) => p.id === mappedRecord.id || p.userId === mappedRecord.userId
             );
 
-            if (existingPatient && existingPatient.userId) {
-              console.log('[MedicalStore] My maternity record already exists locally, skipping overwrite');
-              return state;
-            }
-
-            // Si le patient existe, on le met à jour
-            // Sinon on l'ajoute
-            if (existingPatient) {
-              return {
-                maternityPatients: state.maternityPatients.map((p) =>
-                  p.id === mappedRecord.id ? { ...mappedRecord } : p
-                ),
-              };
+            if (existingIndex !== -1) {
+              // Dossier existe → Mettre à jour avec les données du backend
+              console.log('[MedicalStore] Updating existing maternity record from backend:', mappedRecord.id);
+              const updatedPatients = [...state.maternityPatients];
+              updatedPatients[existingIndex] = mappedRecord;
+              return { maternityPatients: updatedPatients };
             } else {
+              // Dossier n'existe pas → Ajouter
+              console.log('[MedicalStore] Adding new maternity record from backend:', mappedRecord.id);
               return {
                 maternityPatients: [...state.maternityPatients, mappedRecord],
               };
             }
           });
 
-          console.log('[MedicalStore] My maternity record synced from backend:', mappedRecord.id);
+          console.log('[MedicalStore] My maternity record synced from backend:', mappedRecord.id, 'userId:', userId);
         } catch (e: any) {
           // Ignorer silencieusement les 404 (patient sans dossier maternité)
           if (e?.response?.status !== 404) {

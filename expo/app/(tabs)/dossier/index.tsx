@@ -214,9 +214,10 @@ function PatientDashboard() {
 
   // Synchroniser mon dossier depuis le backend au montage
   useEffect(() => {
-    console.log('[PatientDashboard] Syncing my record from backend on mount');
-    syncMyRecordFromBackend();
-  }, [syncMyRecordFromBackend]);
+    if (!user?.id) return;
+    console.log('[PatientDashboard] Syncing my record from backend on mount, userId:', user.id);
+    syncMyRecordFromBackend(user.id);
+  }, [user?.id, syncMyRecordFromBackend]);
 
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;
