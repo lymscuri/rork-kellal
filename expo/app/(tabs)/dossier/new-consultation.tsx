@@ -75,7 +75,7 @@ export default function NewConsultationScreen() {
 
   const addPrescriptionItem = useCallback(() => {
     if (!medName.trim()) return;
-    const allergyAlert = patient?.criticalInfo.drugAllergies?.some(
+    const allergyAlert = patient?.criticalInfo?.drugAllergies?.some(
       a => a.name.toLowerCase().includes(medName.toLowerCase())
     );
     if (allergyAlert) {

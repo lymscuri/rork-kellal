@@ -82,7 +82,7 @@ export default function PatientRecordScreen() {
 
   const toggleChronic = useCallback((disease: string) => {
     if (!patientId || !patient) return;
-    const current = patient.criticalInfo.chronicDiseases;
+    const current = patient.criticalInfo?.chronicDiseases || [];
     const updated = current.includes(disease)
       ? current.filter(d => d !== disease)
       : [...current, disease];

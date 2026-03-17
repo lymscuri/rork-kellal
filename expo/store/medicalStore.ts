@@ -169,7 +169,16 @@ export const useMedicalStore = create<MedicalStore>()(
                 commune: bp.city || bp.commune,
                 prefecture: bp.prefecture,
               },
-              criticalInfo: bp.critical_info || { drugAllergies: [], foodAllergies: [], chronicDiseases: [], permanentTreatments: [] },
+              criticalInfo: {
+                drugAllergies: bp.critical_info?.drugAllergies ||
+                  (bp.allergies ? [{ name: bp.allergies, type: 'other' as const }] : []),
+                foodAllergies: bp.critical_info?.foodAllergies || [],
+                chronicDiseases: bp.critical_info?.chronicDiseases ||
+                  (bp.chronic_conditions ? [bp.chronic_conditions] : []),
+                permanentTreatments: bp.critical_info?.permanentTreatments || [],
+                bloodGroup: bp.blood_type || bp.critical_info?.bloodGroup || '',
+                rhFactor: bp.critical_info?.rhFactor,
+              },
               personalHistory: bp.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
               familyHistory: bp.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
               lifeHabits: bp.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
@@ -228,7 +237,16 @@ export const useMedicalStore = create<MedicalStore>()(
               commune: data.city || data.commune,
               prefecture: data.prefecture,
             },
-            criticalInfo: data.critical_info || { drugAllergies: [], foodAllergies: [], chronicDiseases: [], permanentTreatments: [] },
+            criticalInfo: {
+              drugAllergies: data.critical_info?.drugAllergies ||
+                (data.allergies ? [{ name: data.allergies, type: 'other' as const }] : []),
+              foodAllergies: data.critical_info?.foodAllergies || [],
+              chronicDiseases: data.critical_info?.chronicDiseases ||
+                (data.chronic_conditions ? [data.chronic_conditions] : []),
+              permanentTreatments: data.critical_info?.permanentTreatments || [],
+              bloodGroup: data.blood_type || data.critical_info?.bloodGroup || '',
+              rhFactor: data.critical_info?.rhFactor,
+            },
             personalHistory: data.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
             familyHistory: data.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
             lifeHabits: data.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
@@ -643,19 +661,27 @@ export const useMedicalStore = create<MedicalStore>()(
           get().patients.find(p => p.identity.dossierNumber === userId || p.id === userId) ||
           get().patients.find(p => p.linkedEmail === userId);
         if (!patient) return JSON.stringify({ error: 'Patient non trouvé' });
+
+        const criticalInfo = patient.criticalInfo || {
+          drugAllergies: [],
+          foodAllergies: [],
+          chronicDiseases: [],
+          permanentTreatments: [],
+        };
+
         return JSON.stringify({
           dossierNumber: patient.identity.dossierNumber,
           firstName: patient.identity.firstName,
           lastName: patient.identity.lastName,
           birthDate: patient.identity.birthDate,
           sex: patient.identity.sex,
-          bloodGroup: patient.criticalInfo.bloodGroup,
-          rhFactor: patient.criticalInfo.rhFactor,
-          drugAllergies: patient.criticalInfo.drugAllergies.map(a => ({ name: a.name, severity: a.severity })),
-          foodAllergies: patient.criticalInfo.foodAllergies.map(a => a.name),
-          chronicDiseases: patient.criticalInfo.chronicDiseases,
-          permanentTreatments: patient.criticalInfo.permanentTreatments.map(t => t.medication),
-          emergencyContacts: patient.identity.emergencyContacts.map(c => ({
+          bloodGroup: criticalInfo.bloodGroup,
+          rhFactor: criticalInfo.rhFactor,
+          drugAllergies: (criticalInfo.drugAllergies || []).map(a => ({ name: a.name, severity: a.severity })),
+          foodAllergies: (criticalInfo.foodAllergies || []).map(a => a.name),
+          chronicDiseases: criticalInfo.chronicDiseases || [],
+          permanentTreatments: (criticalInfo.permanentTreatments || []).map(t => t.medication),
+          emergencyContacts: (patient.identity.emergencyContacts || []).map(c => ({
             name: c.fullName,
             phone: c.phoneNumber,
             relation: c.relationship,
