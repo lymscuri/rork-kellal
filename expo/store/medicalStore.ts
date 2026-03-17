@@ -1,3 +1,4 @@
+import { useAuthStore } from './authStore';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { zustandStorage } from './storage';
@@ -213,7 +214,7 @@ export const useMedicalStore = create<MedicalStore>()(
           // Mapper vers PatientRecord
           const mappedRecord: PatientRecord = {
             id: String(data.id),
-            userId: data.user_id ? String(data.user_id) : undefined,
+            userId: useAuthStore.getState().user?.id || undefined,
             linkedEmail: data.email?.toLowerCase(),
             identity: {
               firstName: data.first_name || '',
@@ -824,7 +825,7 @@ export const useMedicalStore = create<MedicalStore>()(
 
           const mappedRecord: MaternityPatient = {
             id: String(data.id),
-            userId: data.user_id ? String(data.user_id) : undefined,
+            userId: useAuthStore.getState().user?.id || undefined,
             linkedEmail: data.linked_email?.toLowerCase(),
             pregnancy: {
               id: pregnancyId,
