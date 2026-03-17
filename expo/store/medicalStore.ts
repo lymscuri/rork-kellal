@@ -115,6 +115,7 @@ interface MedicalStore {
 
   addMaternityPatient: (soignantId: string, pregnancy: Omit<Pregnancy, 'id' | 'patientId'>, userId?: string, linkedEmail?: string) => string;
   syncMaternityPatientsFromBackend: () => Promise<void>;
+  syncMyMaternityFromBackend: () => Promise<void>;
   getMaternityPatientsByDoctor: (doctorId: string) => MaternityPatient[];
   getMyMaternityData: (patientId: string) => MaternityPatient | undefined;
   getMyMaternityDataByUserId: (userId: string) => MaternityPatient | undefined;
@@ -799,6 +800,92 @@ export const useMedicalStore = create<MedicalStore>()(
           console.warn('[MedicalStore] syncMaternityPatientsFromBackend failed:', extractErrorMessage(e));
         } finally {
           set({ isSyncing: false });
+        }
+      },
+
+      syncMyMaternityFromBackend: async () => {
+        try {
+          console.log('[MedicalStore] Syncing my maternity record from backend...');
+          const res = await maternityAPI.myRecord();
+          const data = res.data?.data || res.data;
+
+          if (!data) {
+            console.log('[MedicalStore] No data returned from my-record endpoint');
+            return;
+          }
+
+          // Mapper vers MaternityPatient
+          const pregnancyId = genId();
+          const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
+            ...c,
+            id: genId(),
+            pregnancyId,
+          }));
+
+          const mappedRecord: MaternityPatient = {
+            id: String(data.id),
+            userId: data.user_id ? String(data.user_id) : undefined,
+            linkedEmail: data.linked_email?.toLowerCase(),
+            pregnancy: {
+              id: pregnancyId,
+              patientId: String(data.id),
+              firstName: data.first_name || '',
+              age: data.age || 25,
+              lastPeriodDate: data.last_period_date,
+              dueDate: data.due_date,
+              currentWeek: data.current_week || 1,
+              gravidity: data.gravidity || 1,
+              parity: data.parity || 0,
+              previousPregnancies: data.previous_pregnancies,
+              deliveryPlace: data.delivery_place,
+              referentDoctor: data.referent_doctor,
+              isActive: data.is_active !== undefined ? data.is_active : true,
+            },
+            weeklyCheckups: [],
+            prenatalConsultations: consultations,
+            prenatalExams: [],
+            children: [],
+            childGrowth: [],
+            childVaccines: [],
+            alertLevel: 'vert',
+            soignantId: data.soignant_id || data.created_by,
+          };
+
+          // Fusionner avec les données locales existantes
+          // Chercher si déjà présent par id ou linked_email
+          set((state) => {
+            const existingPatient = state.maternityPatients.find(
+              (p) => p.id === mappedRecord.id || (p.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
+            );
+
+            if (existingPatient && existingPatient.userId) {
+              console.log('[MedicalStore] My maternity record already exists locally, skipping overwrite');
+              return state;
+            }
+
+            // Si le patient existe, on le met à jour
+            // Sinon on l'ajoute
+            if (existingPatient) {
+              return {
+                maternityPatients: state.maternityPatients.map((p) =>
+                  p.id === mappedRecord.id ? { ...mappedRecord } : p
+                ),
+              };
+            } else {
+              return {
+                maternityPatients: [...state.maternityPatients, mappedRecord],
+              };
+            }
+          });
+
+          console.log('[MedicalStore] My maternity record synced from backend:', mappedRecord.id);
+        } catch (e: any) {
+          // Ignorer silencieusement les 404 (patient sans dossier maternité)
+          if (e?.response?.status !== 404) {
+            console.warn('[MedicalStore] syncMyMaternity failed:', extractErrorMessage(e));
+          } else {
+            console.log('[MedicalStore] No maternity record found for current user (404)');
+          }
         }
       },
 

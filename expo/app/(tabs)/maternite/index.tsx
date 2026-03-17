@@ -18,7 +18,14 @@ function PatientView() {
   const { maternityPatients } = useMedicalStore();
   const autoLinkMaternityByEmail = useMedicalStore((s) => s.autoLinkMaternityByEmail);
   const getMyMaternityDataByEmail = useMedicalStore((s) => s.getMyMaternityDataByEmail);
+  const syncMyMaternityFromBackend = useMedicalStore((s) => s.syncMyMaternityFromBackend);
   const hasAttemptedAutoLink = React.useRef(false);
+
+  // Synchroniser mon dossier maternité depuis le backend au montage
+  useEffect(() => {
+    console.log('[MaternityPatientView] Syncing my maternity record from backend on mount');
+    syncMyMaternityFromBackend();
+  }, [syncMyMaternityFromBackend]);
 
   useEffect(() => {
     if (!user || hasAttemptedAutoLink.current) return;
