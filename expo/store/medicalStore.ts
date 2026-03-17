@@ -186,7 +186,7 @@ export const useMedicalStore = create<MedicalStore>()(
               labResults: bp.lab_results || [],
               vaccines: bp.vaccinations || [],
               doctorIds: bp.doctor_ids || [],
-              doctorId: bp.doctor_id || bp.created_by,
+              doctorId: bp.doctor || bp.doctor_id || bp.created_by,
               createdAt: bp.created_at || new Date().toISOString(),
               updatedAt: bp.updated_at || new Date().toISOString(),
             }));
@@ -831,7 +831,7 @@ export const useMedicalStore = create<MedicalStore>()(
                 childGrowth: [],
                 childVaccines: [],
                 alertLevel: 'vert',
-                soignantId: bp.soignant_id || bp.created_by,
+                soignantId: bp.doctor || bp.soignant_id || bp.created_by,
               };
             });
 
