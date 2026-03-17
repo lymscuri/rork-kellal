@@ -393,4 +393,14 @@ export const remindersAPI = {
     apiClient.get('/reminders/stats/'),
 };
 
+export const notificationsAPI = {
+  // Envoyer une notification push à tous les utilisateurs
+  sendToAll: (data: Record<string, unknown>) =>
+    apiClient.post('/notifications/send/', data),
+
+  // Envoyer à des rôles spécifiques
+  sendToRoles: (data: Record<string, unknown>) =>
+    apiClient.post('/notifications/send/', data),
+};
+
 export default apiClient;

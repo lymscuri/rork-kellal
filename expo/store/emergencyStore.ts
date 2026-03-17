@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AppStorage } from './storage';
-import { emergencyAPI, extractErrorMessage } from './api';
+import { emergencyAPI, notificationsAPI, extractErrorMessage } from './api';
 import { sendLocalNotification } from './notificationStore';
 import type { EmergencyAlert, Secourist, AlertUrgencyLevel } from '@/types/medical';
 
@@ -77,6 +77,15 @@ export const useEmergencyStore = create<EmergencyState>()(
           description: data.description,
           urgency_level: data.urgencyLevel,
           sender_phone: data.senderPhone,
+        }).then(() => {
+          // Envoyer une notification push à tous les utilisateurs
+          notificationsAPI.sendToRoles({
+            title: '🚨 SOS — Besoin d\'aide !',
+            body: data.description || 'Une personne a besoin d\'aide près de vous',
+            roles: ['patient', 'medecin'],
+          }).catch((notifErr) => {
+            console.warn('[EmergencyStore] Failed to send push notification:', extractErrorMessage(notifErr));
+          });
         }).catch((e) => {
           const errorMsg = extractErrorMessage(e);
           console.warn('[EmergencyStore] Backend createAlert failed:', errorMsg);

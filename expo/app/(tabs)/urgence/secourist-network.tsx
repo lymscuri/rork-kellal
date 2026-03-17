@@ -6,11 +6,8 @@ import {
   Navigation,
   Phone,
   Radio,
-  Shield,
-  ShieldCheck,
   Siren,
-  Users,
-  X,
+  Clock,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -25,20 +22,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Text } from "react-native-paper";
+import { Text, ActivityIndicator } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MedicalColors } from "@/constants/colors";
-import type { AlertStatus, AlertUrgencyLevel, EmergencyAlert, Secourist } from "@/types/medical";
+import type { AlertStatus, AlertUrgencyLevel, EmergencyAlert } from "@/types/medical";
 import { useEmergencyStore } from "@/store/emergencyStore";
+import { useAuthStore } from "@/store/authStore";
 
 const DEFAULT_LAT = 9.537;
 const DEFAULT_LON = -13.6785;
 
 function getUrgencyColor(level: AlertUrgencyLevel): string {
   switch (level) {
-    case "critique": return MedicalColors.urgency;
+    case "critique": return "#DC3545";
     case "grave": return "#FF8C00";
-    case "modere": return MedicalColors.warning;
+    case "modere": return "#FFC107";
   }
 }
 
@@ -55,14 +53,6 @@ function getStatusLabel(status: AlertStatus): string {
     case "active": return "En attente";
     case "prise_en_charge": return "Prise en charge";
     case "resolue": return "Résolue";
-  }
-}
-
-function getStatusColor(status: AlertStatus): string {
-  switch (status) {
-    case "active": return MedicalColors.urgency;
-    case "prise_en_charge": return "#FF8C00";
-    case "resolue": return MedicalColors.life;
   }
 }
 
@@ -89,28 +79,26 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return `${dist.toFixed(1)} km`;
 }
 
-type ViewTab = "alertes" | "secouristes";
-
 export default function SecouristNetworkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuthStore();
 
   const alerts = useEmergencyStore((state) => state.alerts);
-  const secourists = useEmergencyStore((state) => state.secourists);
   const createEmergencyAlert = useEmergencyStore((state) => state.createEmergencyAlert);
   const syncAlertsFromBackend = useEmergencyStore((state) => state.syncAlertsFromBackend);
-  const syncSecouristsFromBackend = useEmergencyStore((state) => state.syncSecouristsFromBackend);
   const takeAlert = useEmergencyStore((state) => state.takeAlert);
 
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [activeTab, setActiveTab] = useState<ViewTab>("alertes");
   const [selectedAlert, setSelectedAlert] = useState<EmergencyAlert | null>(null);
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [sosDescription, setSosDescription] = useState("");
   const [sosUrgency, setSosUrgency] = useState<AlertUrgencyLevel>("grave");
+  const [isLoadingLocation, setIsLoadingLocation] = useState(true);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // Animation pulsante du bouton SOS
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -120,16 +108,24 @@ export default function SecouristNetworkScreen() {
     ).start();
   }, [pulseAnim]);
 
+  // Récupération de la position GPS
   useEffect(() => {
     if (Platform.OS === "web") {
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
-          (pos) => setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-          () => setUserLocation({ latitude: DEFAULT_LAT, longitude: DEFAULT_LON }),
+          (pos) => {
+            setUserLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+            setIsLoadingLocation(false);
+          },
+          () => {
+            setUserLocation({ latitude: DEFAULT_LAT, longitude: DEFAULT_LON });
+            setIsLoadingLocation(false);
+          },
           { timeout: 10000 }
         );
       } else {
         setUserLocation({ latitude: DEFAULT_LAT, longitude: DEFAULT_LON });
+        setIsLoadingLocation(false);
       }
     } else {
       void (async () => {
@@ -144,45 +140,52 @@ export default function SecouristNetworkScreen() {
           }
         } catch {
           setUserLocation({ latitude: DEFAULT_LAT, longitude: DEFAULT_LON });
+        } finally {
+          setIsLoadingLocation(false);
         }
       })();
     }
   }, []);
 
-  // Synchroniser les alertes et secouristes depuis le backend au montage
+  // Synchroniser les alertes depuis le backend au montage
   useEffect(() => {
-    console.log('[SecouristNetwork] Syncing alerts and secourists from backend on mount');
+    console.log('[SecouristNetwork] Syncing alerts from backend on mount');
     syncAlertsFromBackend();
-    syncSecouristsFromBackend();
-  }, [syncAlertsFromBackend, syncSecouristsFromBackend]);
+  }, [syncAlertsFromBackend]);
 
-  const activeAlerts = useMemo(() => alerts.filter((a) => a.status !== "resolue"), [alerts]);
-  const availableSecourists = useMemo(() => secourists.filter((s) => s.isAvailable), [secourists]);
+  // Filtrer uniquement les alertes actives
+  const activeAlerts = useMemo(() =>
+    alerts.filter((a) => a.status === "active" || a.status === "prise_en_charge")
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [alerts]
+  );
 
   const handleTakeCharge = useCallback((alertId: string) => {
     Alert.alert(
-      "Prendre en charge",
-      "Voulez-vous prendre en charge cette alerte et vous rendre sur place ?",
+      "Je vais aider",
+      "Confirmez-vous que vous allez vous rendre sur place pour aider cette personne ?",
       [
         { text: "Annuler", style: "cancel" },
         {
           text: "Confirmer",
           style: "default",
           onPress: () => {
-            takeAlert(alertId, "Vous");
+            const responderName = user ? `${user.firstName} ${user.lastName}` : "Vous";
+            takeAlert(alertId, responderName);
             setSelectedAlert(null);
+            Alert.alert("Merci !", "La personne en détresse sera notifiée de votre intervention.");
             console.log("[SecouristNetwork] Alert taken:", alertId);
           },
         },
       ]
     );
-  }, [takeAlert]);
+  }, [takeAlert, user]);
 
   const handleNavigateToAlert = useCallback((alert: EmergencyAlert) => {
     const url = Platform.select({
       ios: `maps:0,0?q=${alert.latitude},${alert.longitude}(${encodeURIComponent(alert.senderName)})`,
       android: `geo:${alert.latitude},${alert.longitude}?q=${alert.latitude},${alert.longitude}(${encodeURIComponent(alert.senderName)})`,
-      default: `https://www.openstreetmap.org/?mlat=${alert.latitude}&mlon=${alert.longitude}#map=17/${alert.latitude}/${alert.longitude}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${alert.latitude},${alert.longitude}`,
     });
     void Linking.openURL(url);
   }, []);
@@ -206,230 +209,202 @@ export default function SecouristNetworkScreen() {
       Alert.alert("Erreur", "Décrivez la situation d'urgence");
       return;
     }
+
     const loc = userLocation ?? { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
+    const senderName = user ? `${user.firstName} ${user.lastName}` : "Anonyme";
+    const senderPhone = user?.phone;
+
     const alertId = createEmergencyAlert({
       latitude: loc.latitude,
       longitude: loc.longitude,
       description: sosDescription.trim(),
       urgencyLevel: sosUrgency,
-      senderName: "Vous",
+      senderName,
+      senderPhone,
     });
+
     setShowSOSModal(false);
     setSosDescription("");
-    Alert.alert("Alerte envoyée", "Les secouristes proches ont été notifiés de votre position.");
+    setSosUrgency("grave");
+    Alert.alert(
+      "🚨 SOS envoyé",
+      "Votre alerte a été envoyée à tous les utilisateurs de Kendeya. De l'aide arrive bientôt.",
+      [{ text: "OK" }]
+    );
     console.log("[SecouristNetwork] SOS sent:", alertId);
-  }, [sosDescription, sosUrgency, userLocation, createEmergencyAlert]);
-
-  const handleViewOnMap = useCallback(() => {
-    router.push("/(tabs)/urgence/map");
-  }, [router]);
+  }, [sosDescription, sosUrgency, userLocation, createEmergencyAlert, user]);
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} testID="back-btn">
           <ChevronLeft size={24} color={MedicalColors.white} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Réseau de Secouristes</Text>
-          <View style={styles.headerStats}>
-            <View style={styles.headerStatPill}>
-              <View style={[styles.statusDot, { backgroundColor: MedicalColors.urgency }]} />
-              <Text style={styles.headerStatText}>{activeAlerts.length} alertes</Text>
+          <Text style={styles.headerTitle}>Réseau de Secours</Text>
+          {activeAlerts.length > 0 && (
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>{activeAlerts.length} alerte{activeAlerts.length > 1 ? 's' : ''} active{activeAlerts.length > 1 ? 's' : ''}</Text>
             </View>
-            <View style={styles.headerStatPill}>
-              <View style={[styles.statusDot, { backgroundColor: MedicalColors.life }]} />
-              <Text style={styles.headerStatText}>{availableSecourists.length} dispo.</Text>
-            </View>
-          </View>
+          )}
         </View>
         <View style={styles.backBtn} />
       </View>
 
-      <View style={styles.tabBar}>
-        {(["alertes", "secouristes"] as ViewTab[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            {tab === "alertes" && <Siren size={14} color={activeTab === tab ? MedicalColors.white : MedicalColors.textSecondary} />}
-            {tab === "secouristes" && <Users size={14} color={activeTab === tab ? MedicalColors.white : MedicalColors.textSecondary} />}
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === "alertes" ? "Alertes" : "Secouristes"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity
-          style={styles.mapTabButton}
-          onPress={handleViewOnMap}
-          testID="view-map-btn"
-        >
-          <MapPin size={14} color={MedicalColors.medical} />
-          <Text style={styles.mapTabButtonText}>Carte</Text>
-        </TouchableOpacity>
-      </View>
-
-      {activeTab === "alertes" && (
-        <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-          {activeAlerts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <ShieldCheck size={56} color={MedicalColors.life} />
-              <Text style={styles.emptyTitle}>Aucune alerte active</Text>
-              <Text style={styles.emptySubtitle}>La zone est sécurisée pour le moment</Text>
+      {/* Liste des alertes */}
+      <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+        {isLoadingLocation ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={MedicalColors.urgency} />
+            <Text style={styles.loadingText}>Localisation en cours...</Text>
+          </View>
+        ) : activeAlerts.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Siren size={56} color={MedicalColors.life} />
             </View>
-          ) : (
-            activeAlerts.map((alert) => (
+            <Text style={styles.emptyTitle}>Aucune urgence en cours</Text>
+            <Text style={styles.emptySubtitle}>
+              Tous les utilisateurs de Kendeya sont des secouristes potentiels.
+              {'\n'}En cas d'urgence, appuyez sur le bouton SOS.
+            </Text>
+          </View>
+        ) : (
+          activeAlerts.map((alert) => {
+            const urgencyColor = getUrgencyColor(alert.urgencyLevel);
+            const distance = userLocation
+              ? haversineDistance(userLocation.latitude, userLocation.longitude, alert.latitude, alert.longitude)
+              : null;
+
+            return (
               <TouchableOpacity
                 key={alert.id}
-                style={styles.alertListItem}
+                style={[styles.alertCard, { borderLeftColor: urgencyColor }]}
                 onPress={() => setSelectedAlert(alert)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.alertListBadge, { backgroundColor: getUrgencyColor(alert.urgencyLevel) }]}>
-                  <AlertTriangle size={18} color={MedicalColors.white} />
+                <View style={[styles.alertUrgencyBadge, { backgroundColor: urgencyColor }]}>
+                  <AlertTriangle size={20} color={MedicalColors.white} />
                 </View>
-                <View style={styles.alertListContent}>
-                  <View style={styles.alertListTop}>
-                    <Text style={styles.alertListName}>{alert.senderName}</Text>
-                    <Text style={styles.alertListTime}>{getTimeSince(alert.createdAt)}</Text>
+
+                <View style={styles.alertContent}>
+                  <View style={styles.alertHeader}>
+                    <Text style={styles.alertSender}>{alert.senderName}</Text>
+                    <Text style={styles.alertTime}>{getTimeSince(alert.createdAt)}</Text>
                   </View>
-                  <Text style={styles.alertListDesc} numberOfLines={2}>{alert.description}</Text>
-                  <View style={styles.alertListMeta}>
-                    <View style={[styles.miniStatusBadge, { backgroundColor: getStatusColor(alert.status) + "20" }]}>
-                      <Text style={[styles.miniStatusText, { color: getStatusColor(alert.status) }]}>
-                        {getStatusLabel(alert.status)}
+
+                  <Text style={styles.alertDescription} numberOfLines={2}>
+                    {alert.description}
+                  </Text>
+
+                  <View style={styles.alertFooter}>
+                    <View style={[styles.urgencyPill, { backgroundColor: urgencyColor + "20" }]}>
+                      <Text style={[styles.urgencyPillText, { color: urgencyColor }]}>
+                        {getUrgencyLabel(alert.urgencyLevel)}
                       </Text>
                     </View>
-                    {userLocation && (
+
+                    {distance && (
                       <View style={styles.distancePill}>
-                        <MapPin size={10} color={MedicalColors.textSecondary} />
-                        <Text style={styles.distanceText}>
-                          {haversineDistance(userLocation.latitude, userLocation.longitude, alert.latitude, alert.longitude)}
-                        </Text>
+                        <MapPin size={12} color={MedicalColors.textSecondary} />
+                        <Text style={styles.distanceText}>{distance}</Text>
                       </View>
                     )}
-                    {alert.responderName && (
-                      <View style={styles.responderPill}>
-                        <ShieldCheck size={10} color={MedicalColors.life} />
-                        <Text style={styles.responderPillText}>{alert.responderName}</Text>
+
+                    {alert.status === "prise_en_charge" && alert.responderName && (
+                      <View style={styles.takenPill}>
+                        <Text style={styles.takenPillText}>✓ Pris en charge</Text>
                       </View>
                     )}
                   </View>
                 </View>
               </TouchableOpacity>
-            ))
-          )}
-          <View style={{ height: 100 }} />
-        </ScrollView>
-      )}
+            );
+          })
+        )}
+        <View style={{ height: 120 }} />
+      </ScrollView>
 
-      {activeTab === "secouristes" && (
-        <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-          <View style={styles.secouristSectionHeader}>
-            <Text style={styles.secouristSectionTitle}>Disponibles ({availableSecourists.length})</Text>
-          </View>
-          {secourists.map((sec) => (
-            <View
-              key={sec.id}
-              style={[styles.secouristCard, !sec.isAvailable && styles.secouristCardInactive]}
-            >
-              <View style={styles.secouristCardLeft}>
-                <View style={[styles.secouristAvatar, { backgroundColor: sec.isAvailable ? MedicalColors.life : MedicalColors.textSecondary }]}>
-                  <Shield size={20} color={MedicalColors.white} />
-                </View>
-                <View style={[styles.availabilityDot, { backgroundColor: sec.isAvailable ? MedicalColors.life : MedicalColors.textSecondary }]} />
-              </View>
-              <View style={styles.secouristInfo}>
-                <Text style={styles.secouristName}>{sec.name}</Text>
-                <Text style={styles.secouristSpecialty}>{sec.specialty}</Text>
-                <View style={styles.secouristMeta}>
-                  <Text style={[styles.secouristStatus, { color: sec.isAvailable ? MedicalColors.life : MedicalColors.textSecondary }]}>
-                    {sec.isAvailable ? "Disponible" : "Occupé"}
-                  </Text>
-                  {userLocation && (
-                    <Text style={styles.secouristDistance}>
-                      {haversineDistance(userLocation.latitude, userLocation.longitude, sec.latitude, sec.longitude)}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              <TouchableOpacity
-                style={[styles.secouristCallBtn, !sec.isAvailable && styles.secouristCallBtnInactive]}
-                onPress={() => handleCallPerson(sec.phone)}
-              >
-                <Phone size={18} color={sec.isAvailable ? MedicalColors.white : MedicalColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          ))}
-          <View style={{ height: 100 }} />
-        </ScrollView>
-      )}
-
+      {/* Modal détails d'une alerte */}
       {selectedAlert && (
         <Modal visible={true} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={[styles.alertDetailModal, { paddingBottom: Math.max(insets.bottom, 20) }]}>
               <View style={styles.modalHandle} />
-              <TouchableOpacity style={styles.alertCardClose} onPress={() => setSelectedAlert(null)}>
-                <X size={18} color={MedicalColors.textSecondary} />
-              </TouchableOpacity>
-              <View style={styles.alertCardHeader}>
-                <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(selectedAlert.urgencyLevel) }]}>
-                  <AlertTriangle size={12} color={MedicalColors.white} />
-                  <Text style={styles.urgencyBadgeText}>{getUrgencyLabel(selectedAlert.urgencyLevel)}</Text>
+
+              <View style={[styles.urgencyHeader, { backgroundColor: getUrgencyColor(selectedAlert.urgencyLevel) }]}>
+                <AlertTriangle size={28} color={MedicalColors.white} />
+                <Text style={styles.urgencyHeaderText}>{getUrgencyLabel(selectedAlert.urgencyLevel)}</Text>
+              </View>
+
+              <Text style={styles.modalSender}>{selectedAlert.senderName}</Text>
+              <Text style={styles.modalDescription}>{selectedAlert.description}</Text>
+
+              <View style={styles.modalMeta}>
+                <View style={styles.modalMetaItem}>
+                  <Clock size={16} color={MedicalColors.textSecondary} />
+                  <Text style={styles.modalMetaText}>{getTimeSince(selectedAlert.createdAt)}</Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedAlert.status) + "20" }]}>
-                  <Text style={[styles.statusBadgeText, { color: getStatusColor(selectedAlert.status) }]}>
-                    {getStatusLabel(selectedAlert.status)}
+                {userLocation && (
+                  <View style={styles.modalMetaItem}>
+                    <MapPin size={16} color={MedicalColors.medical} />
+                    <Text style={[styles.modalMetaText, { color: MedicalColors.medical, fontWeight: '600' }]}>
+                      {haversineDistance(userLocation.latitude, userLocation.longitude, selectedAlert.latitude, selectedAlert.longitude)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {selectedAlert.responderName && (
+                <View style={styles.takenInfo}>
+                  <Text style={styles.takenInfoText}>
+                    ✓ Pris en charge par {selectedAlert.responderName}
                   </Text>
                 </View>
-              </View>
-              <Text style={styles.alertCardName}>{selectedAlert.senderName}</Text>
-              <Text style={styles.alertCardDesc}>{selectedAlert.description}</Text>
-              <Text style={styles.alertCardTime}>{getTimeSince(selectedAlert.createdAt)}</Text>
-              {userLocation && (
-                <Text style={styles.alertCardDistance}>
-                  {haversineDistance(userLocation.latitude, userLocation.longitude, selectedAlert.latitude, selectedAlert.longitude)}
-                </Text>
               )}
-              {selectedAlert.responderId && (
-                <View style={styles.responderInfo}>
-                  <ShieldCheck size={14} color={MedicalColors.life} />
-                  <Text style={styles.responderText}>Pris en charge par {selectedAlert.responderName}</Text>
-                </View>
-              )}
-              <View style={styles.alertCardActions}>
+
+              <View style={styles.modalActions}>
                 {selectedAlert.status === "active" && (
                   <TouchableOpacity
-                    style={styles.takeChargeBtn}
+                    style={styles.helpBtn}
                     onPress={() => handleTakeCharge(selectedAlert.id)}
                   >
-                    <Shield size={16} color={MedicalColors.white} />
-                    <Text style={styles.takeChargeBtnText}>Prendre en charge</Text>
+                    <Text style={styles.helpBtnText}>Je vais aider</Text>
                   </TouchableOpacity>
                 )}
+
                 <TouchableOpacity
-                  style={styles.navigateBtn}
+                  style={styles.navBtn}
                   onPress={() => handleNavigateToAlert(selectedAlert)}
                 >
-                  <Navigation size={16} color={MedicalColors.medical} />
-                  <Text style={styles.navigateBtnText}>Itinéraire</Text>
+                  <Navigation size={18} color={MedicalColors.white} />
+                  <Text style={styles.navBtnText}>Itinéraire</Text>
                 </TouchableOpacity>
+
                 {selectedAlert.senderPhone && (
                   <TouchableOpacity
-                    style={styles.callBtn}
+                    style={styles.callBtnModal}
                     onPress={() => handleCallPerson(selectedAlert.senderPhone)}
                   >
-                    <Phone size={16} color={MedicalColors.white} />
+                    <Phone size={18} color={MedicalColors.white} />
+                    <Text style={styles.callBtnText}>Appeler</Text>
                   </TouchableOpacity>
                 )}
               </View>
+
+              <TouchableOpacity
+                style={styles.closeModalBtn}
+                onPress={() => setSelectedAlert(null)}
+              >
+                <Text style={styles.closeModalBtnText}>Fermer</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
       )}
 
+      {/* Bouton SOS flottant */}
       <Animated.View style={[styles.sosFab, { transform: [{ scale: pulseAnim }] }]}>
         <TouchableOpacity
           style={styles.sosFabInner}
@@ -437,25 +412,29 @@ export default function SecouristNetworkScreen() {
           activeOpacity={0.8}
           testID="sos-btn"
         >
-          <Radio size={28} color={MedicalColors.white} />
+          <Radio size={32} color={MedicalColors.white} />
           <Text style={styles.sosFabText}>SOS</Text>
         </TouchableOpacity>
       </Animated.View>
 
+      {/* Modal création SOS */}
       <Modal visible={showSOSModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          <View style={[styles.sosModalContent, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <Siren size={28} color={MedicalColors.urgency} />
-              <Text style={styles.modalTitle}>Envoyer une alerte SOS</Text>
-              <Text style={styles.modalSubtitle}>Les secouristes proches seront notifiés</Text>
+
+            <View style={styles.sosModalHeader}>
+              <Siren size={32} color={MedicalColors.urgency} />
+              <Text style={styles.sosModalTitle}>🚨 Envoyer un SOS</Text>
+              <Text style={styles.sosModalSubtitle}>
+                Tous les utilisateurs de Kendeya seront alertés
+              </Text>
             </View>
 
-            <Text style={styles.inputLabel}>Décrivez la situation</Text>
+            <Text style={styles.inputLabel}>Décrivez l'urgence</Text>
             <TextInput
               style={styles.sosInput}
-              placeholder="Ex: Accident de la route, personne inconsciente..."
+              placeholder="Ex: Accident de la route, blessé grave..."
               placeholderTextColor={MedicalColors.textSecondary}
               value={sosDescription}
               onChangeText={setSosDescription}
@@ -466,43 +445,50 @@ export default function SecouristNetworkScreen() {
 
             <Text style={styles.inputLabel}>Niveau d'urgence</Text>
             <View style={styles.urgencyOptions}>
-              {(["critique", "grave", "modere"] as AlertUrgencyLevel[]).map((level) => (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.urgencyOption,
-                    sosUrgency === level && { backgroundColor: getUrgencyColor(level), borderColor: getUrgencyColor(level) },
-                  ]}
-                  onPress={() => setSosUrgency(level)}
-                >
-                  <Text
+              {(["critique", "grave", "modere"] as AlertUrgencyLevel[]).map((level) => {
+                const isSelected = sosUrgency === level;
+                const color = getUrgencyColor(level);
+
+                return (
+                  <TouchableOpacity
+                    key={level}
                     style={[
-                      styles.urgencyOptionText,
-                      sosUrgency === level && { color: MedicalColors.white },
+                      styles.urgencyOption,
+                      isSelected && { backgroundColor: color, borderColor: color },
                     ]}
+                    onPress={() => setSosUrgency(level)}
                   >
-                    {getUrgencyLabel(level)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.urgencyOptionText, isSelected && { color: MedicalColors.white }]}>
+                      {getUrgencyLabel(level)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {userLocation && (
               <View style={styles.locationInfo}>
                 <MapPin size={14} color={MedicalColors.medical} />
                 <Text style={styles.locationText}>
-                  Position: {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
+                  Votre position sera partagée : {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
                 </Text>
               </View>
             )}
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowSOSModal(false)}>
+            <View style={styles.sosModalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  setShowSOSModal(false);
+                  setSosDescription("");
+                  setSosUrgency("grave");
+                }}
+              >
                 <Text style={styles.cancelBtnText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.sendSOSBtn} onPress={handleSendSOS}>
-                <Radio size={18} color={MedicalColors.white} />
-                <Text style={styles.sendSOSBtnText}>Envoyer l'alerte</Text>
+                <Radio size={20} color={MedicalColors.white} />
+                <Text style={styles.sendSOSBtnText}>Envoyer SOS</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -515,7 +501,7 @@ export default function SecouristNetworkScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F1F3F5",
+    backgroundColor: "#0A0E1A",
   },
   header: {
     flexDirection: "row",
@@ -535,389 +521,143 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: "700" as const,
+    fontSize: 18,
+    fontWeight: "700",
     color: MedicalColors.white,
   },
-  headerStats: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
-  },
-  headerStatPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  headerStatText: {
-    fontSize: 11,
-    color: MedicalColors.white,
-    fontWeight: "600" as const,
-  },
-  tabBar: {
-    flexDirection: "row",
-    backgroundColor: MedicalColors.white,
+  headerBadge: {
+    backgroundColor: "rgba(255,255,255,0.25)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: MedicalColors.border,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: MedicalColors.background,
-    gap: 5,
-  },
-  tabActive: {
-    backgroundColor: MedicalColors.urgency,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: "600" as const,
-    color: MedicalColors.textSecondary,
-  },
-  tabTextActive: {
-    color: MedicalColors.white,
-  },
-  mapTabButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: MedicalColors.medicalLight,
-    gap: 5,
-  },
-  mapTabButtonText: {
-    fontSize: 13,
-    fontWeight: "600" as const,
-    color: MedicalColors.medical,
-  },
-  alertDetailModal: {
-    backgroundColor: MedicalColors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingTop: 12,
-  },
-  alertCardClose: {
-    position: "absolute",
-    top: 10,
-    right: 12,
-    zIndex: 10,
-    padding: 4,
-  },
-  alertCardHeader: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 8,
-  },
-  urgencyBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  urgencyBadgeText: {
-    fontSize: 11,
-    fontWeight: "700" as const,
-    color: MedicalColors.white,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: "600" as const,
-  },
-  alertCardName: {
-    fontSize: 16,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-  },
-  alertCardDesc: {
-    fontSize: 13,
-    color: MedicalColors.textSecondary,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  alertCardTime: {
-    fontSize: 11,
-    color: MedicalColors.textSecondary,
+    borderRadius: 12,
     marginTop: 6,
   },
-  alertCardDistance: {
+  headerBadgeText: {
     fontSize: 12,
-    fontWeight: "600" as const,
-    color: MedicalColors.medical,
-    marginTop: 2,
-  },
-  responderInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-    backgroundColor: MedicalColors.lifeLight,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  responderText: {
-    fontSize: 12,
-    color: MedicalColors.lifeDark,
-    fontWeight: "500" as const,
-  },
-  alertCardActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  takeChargeBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    backgroundColor: MedicalColors.urgency,
-    borderRadius: 10,
-    gap: 6,
-  },
-  takeChargeBtnText: {
     color: MedicalColors.white,
-    fontWeight: "700" as const,
-    fontSize: 13,
-  },
-  navigateBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    backgroundColor: MedicalColors.medicalLight,
-    borderRadius: 10,
-    gap: 6,
-  },
-  navigateBtnText: {
-    color: MedicalColors.medical,
-    fontWeight: "600" as const,
-    fontSize: 13,
-  },
-  callBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: MedicalColors.life,
-    justifyContent: "center",
-    alignItems: "center",
+    fontWeight: "600",
   },
   listContainer: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 16,
+  },
+  loadingContainer: {
+    alignItems: "center",
+    paddingVertical: 80,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: MedicalColors.textSecondary,
+    marginTop: 12,
   },
   emptyState: {
     alignItems: "center",
-    paddingVertical: 60,
+    paddingVertical: 80,
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(76,175,80,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-    marginTop: 16,
+    fontSize: 20,
+    fontWeight: "700",
+    color: MedicalColors.white,
+    marginBottom: 8,
+    textAlign: "center",
   },
   emptySubtitle: {
     fontSize: 14,
     color: MedicalColors.textSecondary,
-    marginTop: 4,
+    textAlign: "center",
+    lineHeight: 20,
   },
-  alertListItem: {
+  alertCard: {
     flexDirection: "row",
-    backgroundColor: MedicalColors.white,
-    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16,
     padding: 14,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  alertListBadge: {
-    width: 42,
-    height: 42,
+  alertUrgencyBadge: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
-  alertListContent: {
+  alertContent: {
     flex: 1,
   },
-  alertListTop: {
+  alertHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 6,
   },
-  alertListName: {
-    fontSize: 15,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
+  alertSender: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: MedicalColors.white,
   },
-  alertListTime: {
+  alertTime: {
     fontSize: 11,
     color: MedicalColors.textSecondary,
   },
-  alertListDesc: {
+  alertDescription: {
     fontSize: 13,
-    color: MedicalColors.textSecondary,
-    marginTop: 4,
-    lineHeight: 17,
+    color: "rgba(255,255,255,0.8)",
+    marginBottom: 10,
+    lineHeight: 18,
   },
-  alertListMeta: {
+  alertFooter: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 8,
     flexWrap: "wrap",
   },
-  miniStatusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  urgencyPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  miniStatusText: {
-    fontSize: 10,
-    fontWeight: "600" as const,
+  urgencyPillText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
   distancePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    backgroundColor: MedicalColors.background,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 8,
   },
   distanceText: {
-    fontSize: 10,
-    color: MedicalColors.textSecondary,
-    fontWeight: "500" as const,
-  },
-  responderPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: MedicalColors.lifeLight,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  responderPillText: {
-    fontSize: 10,
-    color: MedicalColors.lifeDark,
-    fontWeight: "500" as const,
-  },
-  secouristSectionHeader: {
-    marginBottom: 10,
-  },
-  secouristSectionTitle: {
-    fontSize: 15,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-  },
-  secouristCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: MedicalColors.white,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  secouristCardInactive: {
-    opacity: 0.6,
-  },
-  secouristCardLeft: {
-    position: "relative",
-    marginRight: 12,
-  },
-  secouristAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  availabilityDot: {
-    position: "absolute",
-    bottom: -1,
-    right: -1,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: MedicalColors.white,
-  },
-  secouristInfo: {
-    flex: 1,
-  },
-  secouristName: {
-    fontSize: 15,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-  },
-  secouristSpecialty: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 2,
-  },
-  secouristMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
-  },
-  secouristStatus: {
     fontSize: 11,
-    fontWeight: "600" as const,
+    color: MedicalColors.textSecondary,
+    fontWeight: "600",
   },
-  secouristDistance: {
+  takenPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: "rgba(76,175,80,0.2)",
+    borderRadius: 8,
+  },
+  takenPillText: {
     fontSize: 11,
-    color: MedicalColors.medical,
-    fontWeight: "500" as const,
-  },
-  secouristCallBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: MedicalColors.life,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  secouristCallBtnInactive: {
-    backgroundColor: MedicalColors.background,
+    color: MedicalColors.life,
+    fontWeight: "600",
   },
   sosFab: {
     position: "absolute",
@@ -925,35 +665,29 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   sosFabInner: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: MedicalColors.urgency,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: MedicalColors.urgency,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    elevation: 12,
   },
   sosFabText: {
     color: MedicalColors.white,
-    fontSize: 12,
-    fontWeight: "800" as const,
-    marginTop: 1,
+    fontSize: 14,
+    fontWeight: "900",
+    marginTop: 2,
+    letterSpacing: 1,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: MedicalColors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
   },
   modalHandle: {
     width: 40,
@@ -963,85 +697,213 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 16,
   },
-  modalHeader: {
+  alertDetailModal: {
+    backgroundColor: "#0A0E1A",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  urgencyHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 16,
   },
-  modalTitle: {
+  urgencyHeaderText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: MedicalColors.white,
+    textTransform: "uppercase",
+  },
+  modalSender: {
     fontSize: 20,
-    fontWeight: "800" as const,
-    color: MedicalColors.text,
-    marginTop: 10,
+    fontWeight: "700",
+    color: MedicalColors.white,
+    marginBottom: 8,
   },
-  modalSubtitle: {
+  modalDescription: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  modalMeta: {
+    flexDirection: "row",
+    gap: 16,
+    marginBottom: 16,
+  },
+  modalMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  modalMetaText: {
     fontSize: 13,
     color: MedicalColors.textSecondary,
-    marginTop: 4,
+  },
+  takenInfo: {
+    backgroundColor: "rgba(76,175,80,0.15)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  takenInfoText: {
+    fontSize: 13,
+    color: MedicalColors.life,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  modalActions: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  helpBtn: {
+    backgroundColor: MedicalColors.urgency,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  helpBtnText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: MedicalColors.white,
+  },
+  navBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: MedicalColors.medical,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  navBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: MedicalColors.white,
+  },
+  callBtnModal: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: MedicalColors.life,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  callBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: MedicalColors.white,
+  },
+  closeModalBtn: {
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  closeModalBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: MedicalColors.textSecondary,
+  },
+  sosModalContent: {
+    backgroundColor: "#0A0E1A",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  sosModalHeader: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  sosModalTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: MedicalColors.white,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  sosModalSubtitle: {
+    fontSize: 13,
+    color: MedicalColors.textSecondary,
+    textAlign: "center",
   },
   inputLabel: {
     fontSize: 13,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
+    fontWeight: "600",
+    color: MedicalColors.white,
     marginBottom: 8,
   },
   sosInput: {
-    backgroundColor: MedicalColors.background,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 12,
     padding: 14,
     fontSize: 14,
-    minHeight: 90,
+    minHeight: 100,
     borderWidth: 1,
-    borderColor: MedicalColors.border,
-    marginBottom: 16,
-    color: MedicalColors.text,
+    borderColor: "rgba(255,255,255,0.1)",
+    marginBottom: 20,
+    color: MedicalColors.white,
   },
   urgencyOptions: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 20,
   },
   urgencyOption: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: "center",
     borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: MedicalColors.border,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   urgencyOptionText: {
     fontSize: 13,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
+    fontWeight: "700",
+    color: MedicalColors.white,
   },
   locationInfo: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: MedicalColors.medicalLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: "rgba(13,110,253,0.1)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 10,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   locationText: {
-    fontSize: 12,
+    flex: 1,
+    fontSize: 11,
     color: MedicalColors.medical,
-    fontWeight: "500" as const,
+    fontWeight: "500",
   },
-  modalActions: {
+  sosModalActions: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
   },
   cancelBtn: {
     flex: 1,
     paddingVertical: 14,
     alignItems: "center",
     borderRadius: 12,
-    backgroundColor: MedicalColors.background,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   cancelBtnText: {
     fontSize: 15,
-    fontWeight: "600" as const,
+    fontWeight: "600",
     color: MedicalColors.textSecondary,
   },
   sendSOSBtn: {
@@ -1055,8 +917,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sendSOSBtnText: {
-    fontSize: 15,
-    fontWeight: "700" as const,
+    fontSize: 16,
+    fontWeight: "900",
     color: MedicalColors.white,
   },
 });
