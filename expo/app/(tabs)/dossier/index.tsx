@@ -58,7 +58,7 @@ function DoctorDashboard() {
   const getAlertLevel = useCallback((patient: PatientRecord) => {
     if (patient.consultations?.length === 0) return 'none';
     const last = patient.consultations[0];
-    if (last.vitalSigns.systolicBP && last.vitalSigns.systolicBP >= 140) return 'red';
+    if (last.vitalSigns?.systolicBP && last.vitalSigns?.systolicBP >= 140) return 'red';
     const lastDate = new Date(last.date);
     const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysSince > 90) return 'yellow';
