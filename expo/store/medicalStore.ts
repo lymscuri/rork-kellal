@@ -185,8 +185,8 @@ export const useMedicalStore = create<MedicalStore>()(
               consultations: bp.consultations || [],
               labResults: bp.lab_results || [],
               vaccines: bp.vaccinations || [],
-              doctorIds: bp.doctor_ids || [],
-              doctorId: bp.doctor || bp.doctor_id || bp.created_by,
+              doctorIds: bp.doctor_ids || (bp.doctor ? [String(bp.doctor)] : []),
+              doctorId: String(bp.doctor || bp.doctor_id || bp.created_by),
               createdAt: bp.created_at || new Date().toISOString(),
               updatedAt: bp.updated_at || new Date().toISOString(),
             }));
@@ -273,8 +273,8 @@ export const useMedicalStore = create<MedicalStore>()(
             consultations: data.consultations || [],
             labResults: data.lab_results || [],
             vaccines: data.vaccinations || [],
-            doctorIds: data.doctor_ids || [],
-            doctorId: data.doctor_id || data.created_by,
+            doctorIds: data.doctor_ids || (data.doctor_id ? [String(data.doctor_id)] : []),
+            doctorId: String(data.doctor_id || data.doctor || data.created_by),
             createdAt: data.created_at || new Date().toISOString(),
             updatedAt: data.updated_at || new Date().toISOString(),
           };
@@ -515,23 +515,18 @@ export const useMedicalStore = create<MedicalStore>()(
 
       addConsultation: async (patientId, consultation) => {
         try {
+          // Mapper les champs frontend vers backend
           const res = await dossierAPI.createConsultation(patientId, {
             patient: patientId,
-            doctor_name: consultation.doctorName,
             date: consultation.date,
-            time: consultation.time,
             reason: consultation.reason,
             vital_signs: consultation.vitalSigns,
-            clinical_exams: consultation.clinicalExams,
-            main_diagnosis: consultation.mainDiagnosis,
-            differential_diagnosis: consultation.differentialDiagnosis,
-            treatment: consultation.treatment,
-            prescriptions: consultation.prescriptions,
-            requested_exams: consultation.requestedExams,
-            next_appointment: consultation.nextAppointment,
-            referral: consultation.referral,
-            referral_structure: consultation.referralStructure,
-            observations: consultation.observations,
+            symptoms: consultation.clinicalExams
+              ?.map(exam => `${exam.system}: ${exam.observation || (exam.checked ? 'Normal' : 'Non examiné')}`)
+              .join('\n') || '',
+            diagnosis: consultation.mainDiagnosis || '',
+            treatment: consultation.treatment || '',
+            notes: consultation.observations || '',
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
@@ -573,17 +568,20 @@ export const useMedicalStore = create<MedicalStore>()(
 
       addVaccine: async (patientId, vaccine) => {
         try {
+          // Mapper les champs frontend vers backend
           const res = await dossierAPI.addVaccination(patientId, {
             patient: patientId,
             vaccine_name: vaccine.name,
-            vaccine_type: vaccine.name,        // utilise le nom comme type par défaut
-            date_administered: vaccine.date 
+            vaccine_type: vaccine.name,
+            dose_number: 1,
+            date_administered: vaccine.date
               ? new Date(vaccine.date).toISOString().split('T')[0]
               : new Date().toISOString().split('T')[0],
-            facility: vaccine.facility || '',
-            administered_by: vaccine.doctor || '',
+            site: vaccine.facility || '',  // facility → site
+            batch_number: '',
+            manufacturer: '',
             next_dose_date: vaccine.nextReminder || null,
-            notes: '',
+            notes: vaccine.doctor ? `Administré par: ${vaccine.doctor}` : '',
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
