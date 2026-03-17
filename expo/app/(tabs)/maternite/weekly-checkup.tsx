@@ -22,7 +22,17 @@ export default function WeeklyCheckupScreen() {
     if (!user) return null;
     return maternityPatients.find(p => p.userId === user.id) || null;
   }, [maternityPatients, user]);
-  const currentWeek = myData?.pregnancy?.currentWeek || 0;
+
+  const currentWeek = useMemo(() => {
+    if (!myData?.pregnancy?.lastPeriodDate)
+      return myData?.pregnancy?.currentWeek || 0;
+    const lastPeriod = new Date(myData.pregnancy.lastPeriodDate);
+    const today = new Date();
+    const diffDays = Math.floor(
+      (today.getTime() - lastPeriod.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return Math.min(Math.floor(diffDays / 7), 40);
+  }, [myData?.pregnancy?.lastPeriodDate, myData?.pregnancy?.currentWeek]);
 
   const [weight, setWeight] = useState('');
   const [systolic, setSystolic] = useState('');

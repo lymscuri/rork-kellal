@@ -824,7 +824,18 @@ export const useMedicalStore = create<MedicalStore>()(
                   referentDoctor: bp.referent_doctor,
                   isActive: bp.is_active !== undefined ? bp.is_active : true,
                 },
-                weeklyCheckups: [],
+                weeklyCheckups: (bp.weekly_checkups || bp.checkups || []).map((wc: any) => ({
+                  id: String(wc.id || genId()),
+                  pregnancyId: pregnancyId,
+                  date: wc.date,
+                  week: wc.week,
+                  weight: wc.weight,
+                  systolicBP: wc.systolic_bp,
+                  diastolicBP: wc.diastolic_bp,
+                  fetalMovements: wc.fetal_movements,
+                  symptoms: wc.symptoms || [],
+                  mood: wc.mood,
+                })),
                 prenatalConsultations: consultations,
                 prenatalExams: [],
                 children: [],
@@ -910,7 +921,18 @@ export const useMedicalStore = create<MedicalStore>()(
               referentDoctor: data.referent_doctor,
               isActive: data.is_active !== undefined ? data.is_active : true,
             },
-            weeklyCheckups: [],
+            weeklyCheckups: (data.weekly_checkups || data.checkups || []).map((wc: any) => ({
+              id: String(wc.id || genId()),
+              pregnancyId: pregnancyId,
+              date: wc.date,
+              week: wc.week,
+              weight: wc.weight,
+              systolicBP: wc.systolic_bp,
+              diastolicBP: wc.diastolic_bp,
+              fetalMovements: wc.fetal_movements,
+              symptoms: wc.symptoms || [],
+              mood: wc.mood,
+            })),
             prenatalConsultations: consultations,
             prenatalExams: [],
             children: [],
@@ -1039,6 +1061,10 @@ export const useMedicalStore = create<MedicalStore>()(
           fetal_movements: checkup.fetalMovements,
           symptoms: checkup.symptoms,
           mood: checkup.mood,
+        }).then(() => {
+          console.log('[MedicalStore] Weekly checkup saved, syncing maternity patients from backend');
+          // Forcer la synchronisation pour que le médecin voit le nouveau checkup
+          get().syncMaternityPatientsFromBackend();
         }).catch((e) => {
           const errorMsg = extractErrorMessage(e);
           console.warn('[MedicalStore] Backend createWeeklyCheckup failed:', errorMsg);

@@ -22,7 +22,11 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.jm6yof5nlybu0vv1hh0ta"
+      "package": "app.rork.jm6yof5nlybu0vv1hh0ta",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -51,8 +55,9 @@
         "origin": "https://rork.com/"
       },
       "eas": {
-        "projectId": "3f744e39-da6c-4aca-b401-9cf1926cdde6"
+        "projectId": "be72e9f9-73f2-48ad-a9ba-e29faf189299"
       }
-    }
+    },
+    "owner": "lyms"
   }
 }
