@@ -320,6 +320,10 @@ export const maternityAPI = {
 
   myRecord: () => apiClient.get('/maternity/my-record/'),
 
+  // Grossesses
+  createPregnancy: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/pregnancies/`, data),
+
   // Suivis hebdomadaires
   createWeeklyCheckup: (patientId: string, data: Record<string, unknown>) =>
     apiClient.post(`/maternity/patients/${patientId}/weekly-checkups/`, data),

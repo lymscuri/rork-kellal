@@ -757,6 +757,15 @@ export const useMedicalStore = create<MedicalStore>()(
           const pregnancyId = genId();
           console.log('[MedicalStore] Backend maternity patient created with ID:', backendId);
 
+          // Créer la grossesse associée
+          await maternityAPI.createPregnancy(backendId, {
+            last_menstrual_period: pregnancy.lastPeriodDate,
+            expected_delivery_date: pregnancy.dueDate,
+            weeks_of_gestation: pregnancy.currentWeek,
+            pregnancy_number: pregnancy.gravidity || 1,
+            status: 'ongoing',
+          }).catch(e => console.warn('[MedicalStore] Failed to create pregnancy:', e));
+
           const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
             ...c,
             id: genId(),
