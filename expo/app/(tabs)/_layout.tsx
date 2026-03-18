@@ -2,8 +2,13 @@ import { Tabs } from "expo-router";
 import { AlertCircle, Baby, FileText, User } from "lucide-react-native";
 import React from "react";
 import { MedicalColors } from "@/constants/colors";
+import { useSyncEngine } from "@/store/syncEngine";
 
 export default function TabLayout() {
+  // SyncEngine définitif : synchronisation médecin↔patient
+  // S'active automatiquement pour tous les écrans (tabs)
+  const { isSyncing } = useSyncEngine();
+
   return (
     <Tabs
       screenOptions={{

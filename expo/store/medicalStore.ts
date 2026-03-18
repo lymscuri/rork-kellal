@@ -30,6 +30,105 @@ function genId(): string {
 }
 
 /**
+ * Helper: Parse backend string/array to drugAllergies array
+ */
+function parseDrugAllergies(value: unknown): Array<{id: string; name: string; type: 'medicament' | 'alimentaire' | 'autre'; severity: 'legere' | 'severe' | 'anaphylaxie'}> {
+  if (!value) return [];
+
+  // Si déjà un array bien formaté (from critical_info)
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [];
+    // Vérifier si déjà formaté avec {id, name, type, severity}
+    if (value[0]?.name && value[0]?.type) {
+      return value.map(item => ({
+        id: item.id || genId(),
+        name: item.name,
+        type: item.type,
+        severity: item.severity || 'legere',
+      }));
+    }
+    // Si array de strings, mapper
+    return value.map(item => ({
+      id: genId(),
+      name: String(item),
+      type: 'autre' as const,
+      severity: 'legere' as const,
+    }));
+  }
+
+  // Si string, split et mapper
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map(name => ({
+      id: genId(),
+      name: name.trim(),
+      type: 'autre' as const,
+      severity: 'legere' as const,
+    }));
+  }
+
+  return [];
+}
+
+/**
+ * Helper: Parse backend string/array to chronicDiseases array
+ */
+function parseChronicDiseases(value: unknown): string[] {
+  if (!value) return [];
+
+  // Si déjà un array
+  if (Array.isArray(value)) {
+    return value.map(item => String(item));
+  }
+
+  // Si string, split
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map(item => item.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
+/**
+ * Helper: Parse backend string/array to permanentTreatments array
+ */
+function parsePermanentTreatments(value: unknown): Array<{id: string; medication: string; dosage: string; frequency: string}> {
+  if (!value) return [];
+
+  // Si déjà un array bien formaté (from critical_info)
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [];
+    // Vérifier si déjà formaté avec {id, medication, dosage, frequency}
+    if (value[0]?.medication && value[0]?.dosage) {
+      return value.map(item => ({
+        id: item.id || genId(),
+        medication: item.medication,
+        dosage: item.dosage,
+        frequency: item.frequency,
+      }));
+    }
+    // Si array de strings, mapper
+    return value.map(item => ({
+      id: genId(),
+      medication: String(item),
+      dosage: '',
+      frequency: '',
+    }));
+  }
+
+  // Si string, split et mapper
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map(item => ({
+      id: genId(),
+      medication: item.trim(),
+      dosage: '',
+      frequency: '',
+    }));
+  }
+
+  return [];
+}
+
+/**
  * Mapping convention: Backend uses snake_case, Frontend uses camelCase
  * Backend → Frontend examples:
  * - first_name → firstName
@@ -207,13 +306,17 @@ export const useMedicalStore = create<MedicalStore>()(
                 prefecture: bp.prefecture,
               },
               criticalInfo: {
-                drugAllergies: bp.critical_info?.drugAllergies ||
-                  (bp.allergies ? [{ name: bp.allergies, type: 'other' as const }] : []),
+                drugAllergies: bp.critical_info?.drugAllergies
+                  ? parseDrugAllergies(bp.critical_info.drugAllergies)
+                  : parseDrugAllergies(bp.allergies),
                 foodAllergies: bp.critical_info?.foodAllergies || [],
-                chronicDiseases: bp.critical_info?.chronicDiseases ||
-                  (bp.chronic_conditions ? [bp.chronic_conditions] : []),
-                permanentTreatments: bp.critical_info?.permanentTreatments || [],
-                bloodGroup: bp.blood_type || bp.critical_info?.bloodGroup || '',
+                chronicDiseases: bp.critical_info?.chronicDiseases
+                  ? parseChronicDiseases(bp.critical_info.chronicDiseases)
+                  : parseChronicDiseases(bp.chronic_diseases || bp.chronic_conditions),
+                permanentTreatments: bp.critical_info?.permanentTreatments
+                  ? parsePermanentTreatments(bp.critical_info.permanentTreatments)
+                  : parsePermanentTreatments(bp.permanent_treatments),
+                bloodGroup: bp.critical_info?.blood_type || bp.blood_type || bp.critical_info?.bloodGroup || '',
                 rhFactor: bp.critical_info?.rhFactor,
               },
               personalHistory: bp.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
@@ -295,13 +398,17 @@ export const useMedicalStore = create<MedicalStore>()(
               prefecture: data.prefecture,
             },
             criticalInfo: {
-              drugAllergies: data.critical_info?.drugAllergies ||
-                (data.allergies ? [{ name: data.allergies, type: 'other' as const }] : []),
+              drugAllergies: data.critical_info?.drugAllergies
+                ? parseDrugAllergies(data.critical_info.drugAllergies)
+                : parseDrugAllergies(data.allergies),
               foodAllergies: data.critical_info?.foodAllergies || [],
-              chronicDiseases: data.critical_info?.chronicDiseases ||
-                (data.chronic_conditions ? [data.chronic_conditions] : []),
-              permanentTreatments: data.critical_info?.permanentTreatments || [],
-              bloodGroup: data.blood_type || data.critical_info?.bloodGroup || '',
+              chronicDiseases: data.critical_info?.chronicDiseases
+                ? parseChronicDiseases(data.critical_info.chronicDiseases)
+                : parseChronicDiseases(data.chronic_diseases || data.chronic_conditions),
+              permanentTreatments: data.critical_info?.permanentTreatments
+                ? parsePermanentTreatments(data.critical_info.permanentTreatments)
+                : parsePermanentTreatments(data.permanent_treatments),
+              bloodGroup: data.critical_info?.blood_type || data.blood_type || data.critical_info?.bloodGroup || '',
               rhFactor: data.critical_info?.rhFactor,
             },
             personalHistory: data.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
@@ -842,31 +949,59 @@ export const useMedicalStore = create<MedicalStore>()(
 
           if (Array.isArray(backendPatients) && backendPatients.length > 0) {
             const mappedPatients: MaternityPatient[] = backendPatients.map(bp => {
-              const pregnancyId = genId();
-              const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
-                ...c,
-                id: genId(),
-                pregnancyId,
-              }));
+              // PRIORITÉ : utiliser bp.pregnancy si disponible (backend enrichi), sinon construire depuis champs plats
+              const pregnancyId = bp.pregnancy?.id || genId();
+
+              // PRIORITÉ : utiliser bp.prenatal_consultations si disponible (backend enrichi)
+              const consultations: PrenatalConsultation[] = bp.prenatal_consultations && Array.isArray(bp.prenatal_consultations)
+                ? bp.prenatal_consultations.map((pc: any) => ({
+                    id: String(pc.id || genId()),
+                    pregnancyId: pregnancyId,
+                    weekTarget: pc.week_target || pc.weekTarget,
+                    description: pc.description,
+                    status: pc.status || 'a_venir',
+                    scheduledDate: pc.scheduled_date || pc.scheduledDate,
+                    actualDate: pc.actual_date || pc.actualDate,
+                    notes: pc.notes,
+                  }))
+                : DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
+                    ...c,
+                    id: genId(),
+                    pregnancyId,
+                  }));
 
               return {
                 id: String(bp.id),
                 userId: bp.user_id ? String(bp.user_id) : undefined,
                 linkedEmail: bp.linked_email?.toLowerCase(),
-                pregnancy: {
-                  id: bp.pregnancy?.id || pregnancyId,
+                pregnancy: bp.pregnancy ? {
+                  id: pregnancyId,
+                  patientId: String(bp.id),
+                  firstName: bp.pregnancy.first_name || bp.first_name || '',
+                  age: bp.pregnancy.age || bp.age || 25,
+                  lastPeriodDate: bp.pregnancy.last_period_date || bp.last_period_date,
+                  dueDate: bp.pregnancy.due_date || bp.due_date,
+                  currentWeek: bp.pregnancy.current_week || bp.current_week || 1,
+                  gravidity: bp.pregnancy.gravidity || bp.gravidity || 1,
+                  parity: bp.pregnancy.parity || bp.parity || 0,
+                  previousPregnancies: bp.pregnancy.previous_pregnancies || bp.previous_pregnancies || [],
+                  deliveryPlace: bp.pregnancy.delivery_place || bp.delivery_place,
+                  referentDoctor: bp.pregnancy.referent_doctor || bp.referent_doctor,
+                  isActive: bp.pregnancy.is_active !== undefined ? bp.pregnancy.is_active : true,
+                } : {
+                  id: pregnancyId,
                   patientId: String(bp.id),
                   firstName: bp.first_name || '',
                   age: bp.age || 25,
-                  lastPeriodDate: bp.pregnancy?.last_period_date || bp.last_period_date,
-                  dueDate: bp.pregnancy?.due_date || bp.due_date,
-                  currentWeek: bp.pregnancy?.current_week || bp.current_week || 1,
-                  gravidity: bp.pregnancy?.gravidity || bp.gravidity || 1,
-                  parity: bp.pregnancy?.parity || bp.parity || 0,
-                  previousPregnancies: bp.previous_pregnancies,
+                  lastPeriodDate: bp.last_period_date,
+                  dueDate: bp.due_date,
+                  currentWeek: bp.current_week || 1,
+                  gravidity: bp.gravidity || 1,
+                  parity: bp.parity || 0,
+                  previousPregnancies: bp.previous_pregnancies || [],
                   deliveryPlace: bp.delivery_place,
                   referentDoctor: bp.referent_doctor,
-                  isActive: bp.pregnancy?.is_active !== undefined ? bp.pregnancy.is_active : true,
+                  isActive: true,
                 },
                 weeklyCheckups: (bp.weekly_checkups || bp.checkups || []).map((wc: any) => ({
                   id: String(wc.id || genId()),
@@ -939,18 +1074,46 @@ export const useMedicalStore = create<MedicalStore>()(
           }
 
           // Mapper vers MaternityPatient
-          const pregnancyId = genId();
-          const consultations: PrenatalConsultation[] = DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
-            ...c,
-            id: genId(),
-            pregnancyId,
-          }));
+          // PRIORITÉ : utiliser data.pregnancy si disponible (backend enrichi), sinon construire depuis champs plats
+          const pregnancyId = data.pregnancy?.id || genId();
+
+          // PRIORITÉ : utiliser data.prenatal_consultations si disponible (backend enrichi)
+          const consultations: PrenatalConsultation[] = data.prenatal_consultations && Array.isArray(data.prenatal_consultations)
+            ? data.prenatal_consultations.map((pc: any) => ({
+                id: String(pc.id || genId()),
+                pregnancyId: pregnancyId,
+                weekTarget: pc.week_target || pc.weekTarget,
+                description: pc.description,
+                status: pc.status || 'a_venir',
+                scheduledDate: pc.scheduled_date || pc.scheduledDate,
+                actualDate: pc.actual_date || pc.actualDate,
+                notes: pc.notes,
+              }))
+            : DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
+                ...c,
+                id: genId(),
+                pregnancyId,
+              }));
 
           const mappedRecord: MaternityPatient = {
             id: String(data.id),
             userId: userId,
             linkedEmail: data.email?.toLowerCase() || data.linked_email?.toLowerCase(),
-            pregnancy: {
+            pregnancy: data.pregnancy ? {
+              id: pregnancyId,
+              patientId: String(data.id),
+              firstName: data.pregnancy.first_name || data.first_name || '',
+              age: data.pregnancy.age || data.age || 25,
+              lastPeriodDate: data.pregnancy.last_period_date || data.last_period_date,
+              dueDate: data.pregnancy.due_date || data.due_date,
+              currentWeek: data.pregnancy.current_week || data.current_week || 1,
+              gravidity: data.pregnancy.gravidity || data.gravidity || 1,
+              parity: data.pregnancy.parity || data.parity || 0,
+              previousPregnancies: data.pregnancy.previous_pregnancies || data.previous_pregnancies || [],
+              deliveryPlace: data.pregnancy.delivery_place || data.delivery_place,
+              referentDoctor: data.pregnancy.referent_doctor || data.referent_doctor,
+              isActive: data.pregnancy.is_active !== undefined ? data.pregnancy.is_active : (data.is_active !== undefined ? data.is_active : true),
+            } : {
               id: pregnancyId,
               patientId: String(data.id),
               firstName: data.first_name || '',
@@ -960,7 +1123,7 @@ export const useMedicalStore = create<MedicalStore>()(
               currentWeek: data.current_week || 1,
               gravidity: data.gravidity || 1,
               parity: data.parity || 0,
-              previousPregnancies: data.previous_pregnancies,
+              previousPregnancies: data.previous_pregnancies || [],
               deliveryPlace: data.delivery_place,
               referentDoctor: data.referent_doctor,
               isActive: data.is_active !== undefined ? data.is_active : true,
