@@ -70,12 +70,49 @@ const GUINEA_PEV_VACCINES: Omit<PEVVaccine, 'id' | 'childId'>[] = [
 ];
 
 function syncToBackendUpdatePatient(patientId: string, data: Record<string, unknown>) {
-  dossierAPI.updatePatient(patientId, data).then(() => {
+  // Mapper les champs frontend vers les champs backend
+  const mappedData: Record<string, unknown> = {};
+  
+  // Identité
+  if (data.first_name !== undefined) mappedData.first_name = data.first_name;
+  if (data.last_name !== undefined) mappedData.last_name = data.last_name;
+  if (data.date_of_birth !== undefined) mappedData.date_of_birth = data.date_of_birth;
+  if (data.gender !== undefined) mappedData.gender = data.gender;
+  if (data.sex !== undefined) mappedData.gender = data.sex;
+  if (data.phone !== undefined) mappedData.phone = data.phone;
+  if (data.address !== undefined) mappedData.address = data.address;
+  if (data.commune !== undefined) mappedData.city = data.commune;
+  
+  // Infos critiques → champs backend
+  if (data.critical_info) {
+    const ci = data.critical_info as Record<string, unknown>;
+    if (ci.bloodGroup !== undefined) mappedData.blood_type = ci.bloodGroup;
+    if (ci.drugAllergies) {
+      const allergies = ci.drugAllergies as Array<{name: string}>;
+      mappedData.allergies = Array.isArray(allergies) 
+        ? allergies.map((a: {name: string}) => a.name).join(', ')
+        : String(allergies);
+    }
+    if (ci.chronicDiseases) {
+      const diseases = ci.chronicDiseases as string[];
+      mappedData.chronic_conditions = Array.isArray(diseases)
+        ? diseases.join(', ')
+        : String(diseases);
+    }
+    // Envoyer aussi critical_info complet
+    mappedData.critical_info = data.critical_info;
+  }
+
+  // Antécédents et habitudes → nouveaux champs backend
+  if (data.personal_history !== undefined) mappedData.personal_history = data.personal_history;
+  if (data.family_history !== undefined) mappedData.family_history = data.family_history;
+  if (data.life_habits !== undefined) mappedData.life_habits = data.life_habits;
+
+  dossierAPI.updatePatient(patientId, mappedData).then(() => {
     console.log('[MedicalStore] Backend patient updated:', patientId);
   }).catch((e) => {
     const errorMsg = extractErrorMessage(e);
     console.error('[MedicalStore] Backend updatePatient failed:', errorMsg);
-    // Note: Erreur de synchronisation backend — les données locales sont conservées
   });
 }
 
