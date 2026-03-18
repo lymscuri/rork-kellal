@@ -246,7 +246,7 @@ export default function PatientRecordScreen() {
 
         <Text style={styles.subLabel}>Maladies passées</Text>
         {isReadOnly ? (
-          <Text style={styles.readValue}>{patient.personalHistory.pastIllnesses || 'Aucune'}</Text>
+          <Text style={styles.readValue}>{patient.personalHistory?.pastIllnesses || 'Aucune'}</Text>
         ) : (
           <View style={styles.editRow}>
             <TextInput
@@ -267,24 +267,24 @@ export default function PatientRecordScreen() {
 
         <Text style={[styles.subLabel, { marginTop: 12 }]}>Transfusion sanguine</Text>
         {isReadOnly ? (
-          <Text style={styles.readValue}>{patient.personalHistory.bloodTransfusion ? `Oui${patient.personalHistory.bloodTransfusionDate ? ` (${patient.personalHistory.bloodTransfusionDate})` : ''}` : 'Non'}</Text>
+          <Text style={styles.readValue}>{patient.personalHistory?.bloodTransfusion ? `Oui${patient.personalHistory?.bloodTransfusionDate ? ` (${patient.personalHistory?.bloodTransfusionDate})` : ''}` : 'Non'}</Text>
         ) : (
           <View>
             <View style={styles.chipRow}>
               <Chip
-                selected={patient.personalHistory.bloodTransfusion}
+                selected={patient.personalHistory?.bloodTransfusion}
                 onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: true })}
-                style={[styles.chip, patient.personalHistory.bloodTransfusion && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.personalHistory.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, patient.personalHistory?.bloodTransfusion && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.personalHistory?.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
               >Oui</Chip>
               <Chip
-                selected={!patient.personalHistory.bloodTransfusion}
+                selected={!patient.personalHistory?.bloodTransfusion}
                 onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: false, bloodTransfusionDate: undefined })}
-                style={[styles.chip, !patient.personalHistory.bloodTransfusion && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.personalHistory.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, !patient.personalHistory?.bloodTransfusion && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.personalHistory?.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
               >Non</Chip>
             </View>
-            {patient.personalHistory.bloodTransfusion && (
+            {patient.personalHistory?.bloodTransfusion && (
               <TextInput
                 label="Date de transfusion"
                 value={transfusionDate}
@@ -304,13 +304,13 @@ export default function PatientRecordScreen() {
         )}
 
         <Text style={[styles.subLabel, { marginTop: 14 }]}>Chirurgies</Text>
-        {patient.personalHistory.surgeries.map(s => (
+        {patient.personalHistory?.surgeries?.map(s => (
           <View key={s.id} style={styles.historyItem}>
             <Text style={styles.historyItemTitle}>{s.name}</Text>
             <Text style={styles.historyItemSub}>{s.date}{s.hospital ? ` — ${s.hospital}` : ''}</Text>
           </View>
         ))}
-        {patient.personalHistory.surgeries.length === 0 && <Text style={styles.readValue}>Aucune</Text>}
+        {patient.personalHistory?.surgeries?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
         {!isReadOnly && (
           <View style={styles.addHistoryForm}>
             <TextInput label="Nom chirurgie" value={surgeryName} onChangeText={setSurgeryName} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
@@ -325,13 +325,13 @@ export default function PatientRecordScreen() {
         )}
 
         <Text style={[styles.subLabel, { marginTop: 14 }]}>Hospitalisations</Text>
-        {patient.personalHistory.hospitalizations.map(h => (
+        {patient.personalHistory?.hospitalizations?.map(h => (
           <View key={h.id} style={styles.historyItem}>
             <Text style={styles.historyItemTitle}>{h.reason}</Text>
             <Text style={styles.historyItemSub}>{h.date}{h.hospital ? ` — ${h.hospital}` : ''}{h.duration ? ` (${h.duration})` : ''}</Text>
           </View>
         ))}
-        {patient.personalHistory.hospitalizations.length === 0 && <Text style={styles.readValue}>Aucune</Text>}
+        {patient.personalHistory?.hospitalizations?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
         {!isReadOnly && (
           <View style={styles.addHistoryForm}>
             <TextInput label="Motif" value={hospReason} onChangeText={setHospReason} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
@@ -351,12 +351,12 @@ export default function PatientRecordScreen() {
         <Text style={styles.subSectionTitle}>Antécédents familiaux</Text>
         {isReadOnly ? (
           <View style={styles.chipRow}>
-            {patient.familyHistory.diabetes && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Diabète</Chip>}
-            {patient.familyHistory.hypertension && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Hypertension</Chip>}
-            {patient.familyHistory.cancer && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Cancer</Chip>}
-            {patient.familyHistory.sickleCell && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Drépanocytose</Chip>}
-            {patient.familyHistory.hereditary && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Maladies héréditaires</Chip>}
-            {!patient.familyHistory.diabetes && !patient.familyHistory.hypertension && !patient.familyHistory.cancer && !patient.familyHistory.sickleCell && !patient.familyHistory.hereditary && <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>}
+            {patient.familyHistory?.diabetes && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Diabète</Chip>}
+            {patient.familyHistory?.hypertension && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Hypertension</Chip>}
+            {patient.familyHistory?.cancer && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Cancer</Chip>}
+            {patient.familyHistory?.sickleCell && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Drépanocytose</Chip>}
+            {patient.familyHistory?.hereditary && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Maladies héréditaires</Chip>}
+            {!patient.familyHistory?.diabetes && !patient.familyHistory?.hypertension && !patient.familyHistory?.cancer && !patient.familyHistory?.sickleCell && !patient.familyHistory?.hereditary && <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>}
           </View>
         ) : (
           <View style={styles.chipRow}>
@@ -379,29 +379,29 @@ export default function PatientRecordScreen() {
         <Text style={styles.subSectionTitle}>Habitudes de vie</Text>
         {isReadOnly ? (
           <>
-            <InfoRow label="Tabac" value={patient.lifeHabits.tobacco ? `Oui${patient.lifeHabits.tobaccoQuantity ? ` (${patient.lifeHabits.tobaccoQuantity})` : ''}` : 'Non'} />
-            <InfoRow label="Alcool" value={patient.lifeHabits.alcohol ? 'Oui' : 'Non'} />
-            <InfoRow label="Activité physique" value={patient.lifeHabits.physicalActivity === 'sedentaire' ? 'Sédentaire' : patient.lifeHabits.physicalActivity === 'moderee' ? 'Modérée' : 'Active'} />
-            {patient.lifeHabits.specialDiet && <InfoRow label="Régime spécial" value={patient.lifeHabits.specialDiet} />}
+            <InfoRow label="Tabac" value={patient.lifeHabits?.tobacco ? `Oui${patient.lifeHabits?.tobaccoQuantity ? ` (${patient.lifeHabits?.tobaccoQuantity})` : ''}` : 'Non'} />
+            <InfoRow label="Alcool" value={patient.lifeHabits?.alcohol ? 'Oui' : 'Non'} />
+            <InfoRow label="Activité physique" value={patient.lifeHabits?.physicalActivity === 'sedentaire' ? 'Sédentaire' : patient.lifeHabits?.physicalActivity === 'moderee' ? 'Modérée' : 'Active'} />
+            {patient.lifeHabits?.specialDiet && <InfoRow label="Régime spécial" value={patient.lifeHabits?.specialDiet} />}
           </>
         ) : (
           <>
             <Text style={styles.subLabel}>Tabac</Text>
             <View style={styles.chipRow}>
               <Chip
-                selected={patient.lifeHabits.tobacco}
+                selected={patient.lifeHabits?.tobacco}
                 onPress={() => store.updateLifeHabits(patientId!, { tobacco: true })}
-                style={[styles.chip, patient.lifeHabits.tobacco && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.lifeHabits.tobacco ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, patient.lifeHabits?.tobacco && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.lifeHabits?.tobacco ? MedicalColors.white : MedicalColors.text }}
               >Oui</Chip>
               <Chip
-                selected={!patient.lifeHabits.tobacco}
+                selected={!patient.lifeHabits?.tobacco}
                 onPress={() => store.updateLifeHabits(patientId!, { tobacco: false, tobaccoQuantity: undefined })}
-                style={[styles.chip, !patient.lifeHabits.tobacco && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.lifeHabits.tobacco ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, !patient.lifeHabits?.tobacco && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.lifeHabits?.tobacco ? MedicalColors.white : MedicalColors.text }}
               >Non</Chip>
             </View>
-            {patient.lifeHabits.tobacco && (
+            {patient.lifeHabits?.tobacco && (
               <TextInput
                 label="Quantité"
                 value={tobaccoQty}
@@ -421,16 +421,16 @@ export default function PatientRecordScreen() {
             <Text style={[styles.subLabel, { marginTop: 12 }]}>Alcool</Text>
             <View style={styles.chipRow}>
               <Chip
-                selected={patient.lifeHabits.alcohol}
+                selected={patient.lifeHabits?.alcohol}
                 onPress={() => store.updateLifeHabits(patientId!, { alcohol: true })}
-                style={[styles.chip, patient.lifeHabits.alcohol && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.lifeHabits.alcohol ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, patient.lifeHabits?.alcohol && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.lifeHabits?.alcohol ? MedicalColors.white : MedicalColors.text }}
               >Oui</Chip>
               <Chip
-                selected={!patient.lifeHabits.alcohol}
+                selected={!patient.lifeHabits?.alcohol}
                 onPress={() => store.updateLifeHabits(patientId!, { alcohol: false })}
-                style={[styles.chip, !patient.lifeHabits.alcohol && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.lifeHabits.alcohol ? MedicalColors.white : MedicalColors.text }}
+                style={[styles.chip, !patient.lifeHabits?.alcohol && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: !patient.lifeHabits?.alcohol ? MedicalColors.white : MedicalColors.text }}
               >Non</Chip>
             </View>
 
@@ -439,10 +439,10 @@ export default function PatientRecordScreen() {
               {(['sedentaire', 'moderee', 'active'] as const).map(level => (
                 <Chip
                   key={level}
-                  selected={patient.lifeHabits.physicalActivity === level}
+                  selected={patient.lifeHabits?.physicalActivity === level}
                   onPress={() => store.updateLifeHabits(patientId!, { physicalActivity: level })}
-                  style={[styles.chip, patient.lifeHabits.physicalActivity === level && styles.chipSelected]}
-                  textStyle={{ fontSize: 12, color: patient.lifeHabits.physicalActivity === level ? MedicalColors.white : MedicalColors.text }}
+                  style={[styles.chip, patient.lifeHabits?.physicalActivity === level && styles.chipSelected]}
+                  textStyle={{ fontSize: 12, color: patient.lifeHabits?.physicalActivity === level ? MedicalColors.white : MedicalColors.text }}
                 >
                   {level === 'sedentaire' ? 'Sédentaire' : level === 'moderee' ? 'Modérée' : 'Active'}
                 </Chip>
