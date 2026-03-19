@@ -23,6 +23,8 @@ import type {
   PEVVaccine,
   SmsReminder,
   DoctorStats,
+  Surgery,
+  Hospitalization,
 } from '@/types/medical';
 
 function genId(): string {
@@ -238,6 +240,8 @@ interface MedicalStore {
   addConsultation: (patientId: string, consultation: Omit<ConsultationRecord, 'id' | 'patientId'>) => void;
   addLabResult: (patientId: string, result: Omit<LabResult, 'id' | 'patientId'>) => void;
   addVaccine: (patientId: string, vaccine: Omit<VaccineRecord, 'id' | 'patientId'>) => void;
+  addSurgery: (patientId: string, surgery: Omit<Surgery, 'id'>) => Promise<string>;
+  addHospitalisation: (patientId: string, hosp: Omit<Hospitalization, 'id'>) => Promise<string>;
   getDoctorStats: (doctorId: string) => DoctorStats;
   linkPatientToDoctor: (patientDossierNumber: string, doctorId: string) => boolean;
   linkPatientToUser: (patientId: string, userId: string) => void;
@@ -319,7 +323,24 @@ export const useMedicalStore = create<MedicalStore>()(
                 bloodGroup: bp.critical_info?.blood_type || bp.blood_type || bp.critical_info?.bloodGroup || '',
                 rhFactor: bp.critical_info?.rhFactor,
               },
-              personalHistory: bp.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
+              personalHistory: {
+                pastIllnesses: bp.personal_history?.pastIllnesses || bp.personal_history?.past_illnesses,
+                surgeries: (bp.surgeries || bp.chirurgies || bp.personal_history?.surgeries || []).map((s: any) => ({
+                  id: String(s.id || genId()),
+                  name: s.nom || s.name || '',
+                  date: s.date || '',
+                  hospital: s.hopital || s.hospital || '',
+                })),
+                hospitalizations: (bp.hospitalisations || bp.hospitalisations || bp.personal_history?.hospitalizations || []).map((h: any) => ({
+                  id: String(h.id || genId()),
+                  reason: h.motif || h.reason || '',
+                  date: h.date_entree || h.date || '',
+                  duration: h.duree || h.duration || '',
+                  hospital: h.hopital || h.hospital || '',
+                })),
+                bloodTransfusion: bp.personal_history?.bloodTransfusion || bp.personal_history?.blood_transfusion || false,
+                bloodTransfusionDate: bp.personal_history?.bloodTransfusionDate || bp.personal_history?.blood_transfusion_date,
+              },
               familyHistory: bp.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
               lifeHabits: bp.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
               consultations: bp.consultations || [],
@@ -411,7 +432,24 @@ export const useMedicalStore = create<MedicalStore>()(
               bloodGroup: data.critical_info?.blood_type || data.blood_type || data.critical_info?.bloodGroup || '',
               rhFactor: data.critical_info?.rhFactor,
             },
-            personalHistory: data.personal_history || { surgeries: [], hospitalizations: [], bloodTransfusion: false },
+            personalHistory: {
+              pastIllnesses: data.personal_history?.pastIllnesses || data.personal_history?.past_illnesses,
+              surgeries: (data.surgeries || data.chirurgies || data.personal_history?.surgeries || []).map((s: any) => ({
+                id: String(s.id || genId()),
+                name: s.nom || s.name || '',
+                date: s.date || '',
+                hospital: s.hopital || s.hospital || '',
+              })),
+              hospitalizations: (data.hospitalisations || data.hospitalisations || data.personal_history?.hospitalizations || []).map((h: any) => ({
+                id: String(h.id || genId()),
+                reason: h.motif || h.reason || '',
+                date: h.date_entree || h.date || '',
+                duration: h.duree || h.duration || '',
+                hospital: h.hopital || h.hospital || '',
+              })),
+              bloodTransfusion: data.personal_history?.bloodTransfusion || data.personal_history?.blood_transfusion || false,
+              bloodTransfusionDate: data.personal_history?.bloodTransfusionDate || data.personal_history?.blood_transfusion_date,
+            },
             familyHistory: data.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
             lifeHabits: data.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
             consultations: data.consultations || [],
@@ -747,6 +785,123 @@ export const useMedicalStore = create<MedicalStore>()(
         } catch (error) {
           console.error('[MedicalStore] Failed to add vaccination:', extractErrorMessage(error));
           throw error;
+        }
+      },
+
+      addSurgery: async (patientId, surgery) => {
+        try {
+          const res = await dossierAPI.createSurgery(patientId, {
+            nom: surgery.name || '',
+            date: surgery.date || null,
+            hopital: surgery.hospital || '',
+          });
+          const backendData = res.data?.data || res.data;
+          const newSurgery = {
+            id: String(backendData?.id || genId()),
+            name: backendData?.nom || surgery.name || '',
+            date: backendData?.date || surgery.date || '',
+            hospital: backendData?.hopital || surgery.hospital || '',
+          };
+          set((state) => ({
+            patients: state.patients.map((p) =>
+              p.id === patientId
+                ? {
+                    ...p,
+                    personalHistory: {
+                      ...p.personalHistory,
+                      surgeries: [...(p.personalHistory.surgeries || []), newSurgery]
+                    },
+                    updatedAt: new Date().toISOString(),
+                  }
+                : p
+            ),
+          }));
+          console.log('[MedicalStore] Backend surgery created with ID:', newSurgery.id);
+          return newSurgery.id;
+        } catch (e: any) {
+          console.warn('[MedicalStore] addSurgery failed:', e?.message);
+          // Fallback local si backend échoue
+          const localSurgery = {
+            id: genId(),
+            name: surgery.name || '',
+            date: surgery.date || '',
+            hospital: surgery.hospital || '',
+          };
+          set((state) => ({
+            patients: state.patients.map((p) =>
+              p.id === patientId
+                ? {
+                    ...p,
+                    personalHistory: {
+                      ...p.personalHistory,
+                      surgeries: [...(p.personalHistory.surgeries || []), localSurgery]
+                    },
+                    updatedAt: new Date().toISOString(),
+                  }
+                : p
+            ),
+          }));
+          return localSurgery.id;
+        }
+      },
+
+      addHospitalisation: async (patientId, hosp) => {
+        try {
+          const res = await dossierAPI.createHospitalisation(patientId, {
+            motif: hosp.reason || '',
+            date_entree: hosp.date || null,
+            duree: hosp.duration || '',
+            hopital: hosp.hospital || '',
+          });
+          const backendData = res.data?.data || res.data;
+          const newHosp = {
+            id: String(backendData?.id || genId()),
+            reason: backendData?.motif || hosp.reason || '',
+            date: backendData?.date_entree || hosp.date || '',
+            duration: backendData?.duree || hosp.duration || '',
+            hospital: backendData?.hopital || hosp.hospital || '',
+          };
+          set((state) => ({
+            patients: state.patients.map((p) =>
+              p.id === patientId
+                ? {
+                    ...p,
+                    personalHistory: {
+                      ...p.personalHistory,
+                      hospitalizations: [...(p.personalHistory.hospitalizations || []), newHosp]
+                    },
+                    updatedAt: new Date().toISOString(),
+                  }
+                : p
+            ),
+          }));
+          console.log('[MedicalStore] Backend hospitalisation created with ID:', newHosp.id);
+          return newHosp.id;
+        } catch (e: any) {
+          console.warn('[MedicalStore] addHospitalisation failed:', e?.message);
+          // Fallback local si backend échoue
+          const localHosp = {
+            id: genId(),
+            reason: hosp.reason || '',
+            date: hosp.date || '',
+            duration: hosp.duration || '',
+            hospital: hosp.hospital || '',
+          };
+          set((state) => ({
+            patients: state.patients.map((p) =>
+              p.id === patientId
+                ? {
+                    ...p,
+                    personalHistory: {
+                      ...p.personalHistory,
+                      hospitalizations: [...(p.personalHistory.hospitalizations || []), localHosp]
+                    },
+                    updatedAt: new Date().toISOString(),
+                  }
+                : p
+            ),
+          }));
+          return localHosp.id;
         }
       },
 

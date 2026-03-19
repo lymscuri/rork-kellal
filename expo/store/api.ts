@@ -279,6 +279,20 @@ export const dossierAPI = {
 
   addVaccination: (patientId: string, data: Record<string, unknown>) =>
     apiClient.post(`/dossiers/patients/${patientId}/vaccinations/`, data),
+
+  // Chirurgies
+  createSurgery: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/dossiers/patients/${patientId}/chirurgies/`, data),
+
+  getSurgeries: (patientId: string) =>
+    apiClient.get(`/dossiers/patients/${patientId}/chirurgies/`),
+
+  // Hospitalisations
+  createHospitalisation: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/dossiers/patients/${patientId}/hospitalisations/`, data),
+
+  getHospitalisations: (patientId: string) =>
+    apiClient.get(`/dossiers/patients/${patientId}/hospitalisations/`),
 };
 
 export const emergencyAPI = {
