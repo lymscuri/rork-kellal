@@ -32,6 +32,21 @@ function genId(): string {
 }
 
 /**
+ * Helper: Merge arrays by ID - ne jamais supprimer ce qui existe localement
+ * @param localArr Array local existant
+ * @param backendArr Array provenant du backend
+ * @returns Array fusionné sans doublons par ID
+ */
+function mergeById<T extends { id: string }>(localArr: T[], backendArr: T[]): T[] {
+  const map = new Map<string, T>();
+  // D'abord les locaux
+  (localArr || []).forEach(item => map.set(item.id, item));
+  // Backend écrase/ajoute par ID
+  (backendArr || []).forEach(item => map.set(item.id, item));
+  return Array.from(map.values());
+}
+
+/**
  * Helper: Parse backend string/array to drugAllergies array
  */
 function parseDrugAllergies(value: unknown): Array<{id: string; name: string; type: 'medicament' | 'alimentaire' | 'autre'; severity: 'legere' | 'severe' | 'anaphylaxie'}> {
@@ -292,91 +307,124 @@ export const useMedicalStore = create<MedicalStore>()(
           const backendPatients = res.data.data || res.data.results || res.data;
 
           if (Array.isArray(backendPatients) && backendPatients.length > 0) {
-            const mappedPatients: PatientRecord[] = backendPatients.map(bp => ({
-              id: String(bp.id),
-              userId: bp.user_id ? String(bp.user_id) : undefined,
-              linkedEmail: bp.email?.toLowerCase(),
-              identity: {
-                firstName: bp.first_name || '',
-                lastName: bp.last_name || '',
-                dossierNumber: bp.dossier_number || `KNY-${Date.now()}`,
-                emergencyContacts: bp.emergency_contacts || [],
-                photo: bp.photo,
-                birthDate: bp.date_of_birth || bp.birth_date,
-                sex: bp.gender === 'M' || bp.gender === 'F' ? bp.gender : undefined,
-                phone: bp.phone,
-                address: bp.address,
-                commune: bp.city || bp.commune,
-                prefecture: bp.prefecture,
-              },
-              criticalInfo: {
-                drugAllergies: bp.critical_info?.drugAllergies
-                  ? parseDrugAllergies(bp.critical_info.drugAllergies)
-                  : parseDrugAllergies(bp.allergies),
-                foodAllergies: bp.critical_info?.foodAllergies || [],
-                chronicDiseases: bp.critical_info?.chronicDiseases
-                  ? parseChronicDiseases(bp.critical_info.chronicDiseases)
-                  : parseChronicDiseases(bp.chronic_diseases || bp.chronic_conditions),
-                permanentTreatments: bp.critical_info?.permanentTreatments
-                  ? parsePermanentTreatments(bp.critical_info.permanentTreatments)
-                  : parsePermanentTreatments(bp.permanent_treatments),
-                bloodGroup: bp.critical_info?.blood_type || bp.blood_type || bp.critical_info?.bloodGroup || '',
-                rhFactor: bp.critical_info?.rhFactor,
-              },
-              personalHistory: {
-                pastIllnesses: bp.personal_history?.pastIllnesses || bp.personal_history?.past_illnesses,
-                surgeries: (bp.surgeries || bp.chirurgies || bp.personal_history?.surgeries || []).map((s: any) => ({
-                  id: String(s.id || genId()),
-                  name: s.nom || s.name || '',
-                  date: s.date || '',
-                  hospital: s.hopital || s.hospital || '',
-                })),
-                hospitalizations: (bp.hospitalisations || bp.hospitalisations || bp.personal_history?.hospitalizations || []).map((h: any) => ({
-                  id: String(h.id || genId()),
-                  reason: h.motif || h.reason || '',
-                  date: h.date_entree || h.date || '',
-                  duration: h.duree || h.duration || '',
-                  hospital: h.hopital || h.hospital || '',
-                })),
-                bloodTransfusion: bp.personal_history?.bloodTransfusion || bp.personal_history?.blood_transfusion || false,
-                bloodTransfusionDate: bp.personal_history?.bloodTransfusionDate || bp.personal_history?.blood_transfusion_date,
-              },
-              familyHistory: bp.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-              lifeHabits: bp.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
-              consultations: bp.consultations || [],
-              labResults: bp.lab_results || [],
-              vaccines: bp.vaccinations || [],
-              doctorIds: bp.doctor_ids || (bp.doctor ? [String(bp.doctor)] : []),
-              doctorId: String(bp.doctor || bp.doctor_id || bp.created_by),
-              createdAt: bp.created_at || new Date().toISOString(),
-              updatedAt: bp.updated_at || new Date().toISOString(),
-            }));
-
             set((state) => {
               const updatedPatients = [...state.patients];
               let addedCount = 0;
               let updatedCount = 0;
 
-              mappedPatients.forEach(backendPatient => {
-                // Chercher si le patient existe déjà localement (par id, linkedEmail, ou userId)
+              backendPatients.forEach((bp: any) => {
+                // ÉTAPE 1 : Trouver le patient existant AVANT de mapper
+                const existing = state.patients.find(p =>
+                  p.id === String(bp.id) ||
+                  (p.linkedEmail && bp.email && p.linkedEmail === bp.email.toLowerCase()) ||
+                  (p.userId && bp.user_id && p.userId === String(bp.user_id))
+                );
+
+                // ÉTAPE 2 : Mapper les arrays du backend
+                const mappedConsultations = (bp.consultations || []).map((c: any) => ({
+                  id: String(c.id || genId()),
+                  ...c,
+                }));
+                const mappedVaccines = (bp.vaccinations || []).map((v: any) => ({
+                  id: String(v.id || genId()),
+                  ...v,
+                }));
+                const mappedLabResults = (bp.lab_results || []).map((l: any) => ({
+                  id: String(l.id || genId()),
+                  ...l,
+                }));
+                const mappedSurgeries = (bp.surgeries || bp.chirurgies || []).map((s: any) => ({
+                  id: String(s.id || genId()),
+                  name: s.nom || s.name || '',
+                  date: s.date || '',
+                  hospital: s.hopital || s.hospital || '',
+                }));
+                const mappedHospitalizations = (bp.hospitalisations || []).map((h: any) => ({
+                  id: String(h.id || genId()),
+                  reason: h.motif || h.reason || '',
+                  date: h.date_entree || h.date || '',
+                  duration: h.duree || h.duration || '',
+                  hospital: h.hopital || h.hospital || '',
+                }));
+
+                // ÉTAPE 3 : Créer le patient mergé avec RÈGLES DE MERGE
+                const mergedPatient: PatientRecord = {
+                  id: String(bp.id),
+                  userId: bp.user_id ? String(bp.user_id) : existing?.userId,
+                  linkedEmail: bp.email?.toLowerCase() || existing?.linkedEmail,
+
+                  // RÈGLE 4 — Identité : backend si non vide, sinon local
+                  identity: {
+                    firstName: bp.first_name || existing?.identity?.firstName || '',
+                    lastName: bp.last_name || existing?.identity?.lastName || '',
+                    dossierNumber: bp.dossier_number || existing?.identity?.dossierNumber || `KNY-${Date.now()}`,
+                    emergencyContacts: bp.emergency_contacts || existing?.identity?.emergencyContacts || [],
+                    photo: bp.photo || existing?.identity?.photo,
+                    birthDate: bp.date_of_birth || bp.birth_date || existing?.identity?.birthDate,
+                    sex: (bp.gender === 'M' || bp.gender === 'F' ? bp.gender : undefined) || existing?.identity?.sex,
+                    phone: bp.phone || existing?.identity?.phone,
+                    address: bp.address || existing?.identity?.address,
+                    commune: bp.city || bp.commune || existing?.identity?.commune,
+                    prefecture: bp.prefecture || existing?.identity?.prefecture,
+                  },
+
+                  // RÈGLE 3 — Objets imbriqués : merger champ par champ
+                  criticalInfo: {
+                    bloodGroup: bp.critical_info?.blood_type || bp.blood_type || existing?.criticalInfo?.bloodGroup || '',
+                    rhFactor: bp.critical_info?.rhFactor || existing?.criticalInfo?.rhFactor,
+                    drugAllergies: (bp.critical_info?.drugAllergies || bp.allergies)
+                      ? parseDrugAllergies(bp.critical_info?.drugAllergies || bp.allergies)
+                      : existing?.criticalInfo?.drugAllergies || [],
+                    foodAllergies: bp.critical_info?.foodAllergies || existing?.criticalInfo?.foodAllergies || [],
+                    chronicDiseases: (bp.critical_info?.chronicDiseases || bp.chronic_diseases || bp.chronic_conditions)
+                      ? parseChronicDiseases(bp.critical_info?.chronicDiseases || bp.chronic_diseases || bp.chronic_conditions)
+                      : existing?.criticalInfo?.chronicDiseases || [],
+                    permanentTreatments: (bp.critical_info?.permanentTreatments || bp.permanent_treatments)
+                      ? parsePermanentTreatments(bp.critical_info?.permanentTreatments || bp.permanent_treatments)
+                      : existing?.criticalInfo?.permanentTreatments || [],
+                    handicap: bp.critical_info?.handicap || existing?.criticalInfo?.handicap,
+                    otherChronicDisease: bp.critical_info?.otherChronicDisease || existing?.criticalInfo?.otherChronicDisease,
+                  },
+
+                  personalHistory: {
+                    pastIllnesses: bp.personal_history?.pastIllnesses || bp.personal_history?.past_illnesses || existing?.personalHistory?.pastIllnesses,
+                    surgeries: mergeById(existing?.personalHistory?.surgeries || [], mappedSurgeries),
+                    hospitalizations: mergeById(existing?.personalHistory?.hospitalizations || [], mappedHospitalizations),
+                    bloodTransfusion: bp.personal_history?.bloodTransfusion ?? bp.personal_history?.blood_transfusion ?? existing?.personalHistory?.bloodTransfusion ?? false,
+                    bloodTransfusionDate: bp.personal_history?.bloodTransfusionDate || bp.personal_history?.blood_transfusion_date || existing?.personalHistory?.bloodTransfusionDate,
+                  },
+
+                  familyHistory: bp.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
+                  lifeHabits: bp.life_habits || existing?.lifeHabits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
+
+                  // RÈGLE 2 — Arrays : fusionner par ID
+                  consultations: mergeById(existing?.consultations || [], mappedConsultations),
+                  labResults: mergeById(existing?.labResults || [], mappedLabResults),
+                  vaccines: mergeById(existing?.vaccines || [], mappedVaccines),
+
+                  doctorIds: bp.doctor_ids || (bp.doctor ? [String(bp.doctor)] : []) || existing?.doctorIds || [],
+                  doctorId: String(bp.doctor || bp.doctor_id || bp.created_by || existing?.doctorId),
+                  createdAt: bp.created_at || existing?.createdAt || new Date().toISOString(),
+                  updatedAt: bp.updated_at || new Date().toISOString(),
+                };
+
+                // ÉTAPE 4 : Ajouter ou mettre à jour
                 const existingIndex = updatedPatients.findIndex(p =>
-                  p.id === backendPatient.id ||
-                  (p.linkedEmail && backendPatient.linkedEmail && p.linkedEmail === backendPatient.linkedEmail) ||
-                  (p.userId && backendPatient.userId && p.userId === backendPatient.userId)
+                  p.id === mergedPatient.id ||
+                  (p.linkedEmail && mergedPatient.linkedEmail && p.linkedEmail === mergedPatient.linkedEmail) ||
+                  (p.userId && mergedPatient.userId && p.userId === mergedPatient.userId)
                 );
 
                 if (existingIndex !== -1) {
-                  // Patient existe → Mettre à jour avec les données du backend (source de vérité)
-                  updatedPatients[existingIndex] = backendPatient;
+                  updatedPatients[existingIndex] = mergedPatient;
                   updatedCount++;
                 } else {
-                  // Patient n'existe pas → Ajouter
-                  updatedPatients.push(backendPatient);
+                  updatedPatients.push(mergedPatient);
                   addedCount++;
                 }
               });
 
-              console.log(`[MedicalStore] Synced ${mappedPatients.length} patients from backend: ${updatedCount} updated, ${addedCount} added`);
+              console.log(`[MedicalStore] Synced ${backendPatients.length} patients from backend: ${updatedCount} updated, ${addedCount} added`);
               return { patients: updatedPatients };
             });
           } else {
@@ -400,98 +448,132 @@ export const useMedicalStore = create<MedicalStore>()(
             return;
           }
 
-          // Mapper vers PatientRecord
-          const mappedRecord: PatientRecord = {
+          // ÉTAPE 1 : Trouver le patient existant AVANT de mapper
+          const existing = get().patients.find(
+            (p) =>
+              p.userId === userId ||
+              p.id === String(data.id) ||
+              (p.linkedEmail && data.email && p.linkedEmail === data.email.toLowerCase())
+          );
+
+          // ÉTAPE 2 : Mapper les arrays du backend
+          const mappedConsultations = (data.consultations || []).map((c: any) => ({
+            id: String(c.id || genId()),
+            ...c,
+          }));
+          const mappedVaccines = (data.vaccinations || []).map((v: any) => ({
+            id: String(v.id || genId()),
+            ...v,
+          }));
+          const mappedLabResults = (data.lab_results || []).map((l: any) => ({
+            id: String(l.id || genId()),
+            ...l,
+          }));
+          const mappedSurgeries = (data.surgeries || data.chirurgies || []).map((s: any) => ({
+            id: String(s.id || genId()),
+            name: s.nom || s.name || '',
+            date: s.date || '',
+            hospital: s.hopital || s.hospital || '',
+          }));
+          const mappedHospitalizations = (data.hospitalisations || []).map((h: any) => ({
+            id: String(h.id || genId()),
+            reason: h.motif || h.reason || '',
+            date: h.date_entree || h.date || '',
+            duration: h.duree || h.duration || '',
+            hospital: h.hopital || h.hospital || '',
+          }));
+
+          // ÉTAPE 3 : Créer le patient mergé avec RÈGLES DE MERGE
+          const mergedRecord: PatientRecord = {
             id: String(data.id),
             userId: userId,
-            linkedEmail: data.email?.toLowerCase(),
+            linkedEmail: data.email?.toLowerCase() || existing?.linkedEmail,
+
+            // RÈGLE 4 — Identité : backend si non vide, sinon local
             identity: {
-              firstName: data.first_name || '',
-              lastName: data.last_name || '',
-              dossierNumber: data.dossier_number || `KNY-${Date.now()}`,
-              emergencyContacts: data.emergency_contacts || [],
-              photo: data.photo,
-              birthDate: data.date_of_birth || data.birth_date,
-              sex: data.gender === 'M' || data.gender === 'F' ? data.gender : undefined,
-              phone: data.phone,
-              address: data.address,
-              commune: data.city || data.commune,
-              prefecture: data.prefecture,
+              firstName: data.first_name || existing?.identity?.firstName || '',
+              lastName: data.last_name || existing?.identity?.lastName || '',
+              dossierNumber: data.dossier_number || existing?.identity?.dossierNumber || `KNY-${Date.now()}`,
+              emergencyContacts: data.emergency_contacts || existing?.identity?.emergencyContacts || [],
+              photo: data.photo || existing?.identity?.photo,
+              birthDate: data.date_of_birth || data.birth_date || existing?.identity?.birthDate,
+              sex: (data.gender === 'M' || data.gender === 'F' ? data.gender : undefined) || existing?.identity?.sex,
+              phone: data.phone || existing?.identity?.phone,
+              address: data.address || existing?.identity?.address,
+              commune: data.city || data.commune || existing?.identity?.commune,
+              prefecture: data.prefecture || existing?.identity?.prefecture,
             },
+
+            // RÈGLE 3 — Objets imbriqués : merger champ par champ
             criticalInfo: {
-              drugAllergies: data.critical_info?.drugAllergies
-                ? parseDrugAllergies(data.critical_info.drugAllergies)
-                : parseDrugAllergies(data.allergies),
-              foodAllergies: data.critical_info?.foodAllergies || [],
-              chronicDiseases: data.critical_info?.chronicDiseases
-                ? parseChronicDiseases(data.critical_info.chronicDiseases)
-                : parseChronicDiseases(data.chronic_diseases || data.chronic_conditions),
-              permanentTreatments: data.critical_info?.permanentTreatments
-                ? parsePermanentTreatments(data.critical_info.permanentTreatments)
-                : parsePermanentTreatments(data.permanent_treatments),
-              bloodGroup: data.critical_info?.blood_type || data.blood_type || data.critical_info?.bloodGroup || '',
-              rhFactor: data.critical_info?.rhFactor,
+              bloodGroup: data.critical_info?.blood_type || data.blood_type || existing?.criticalInfo?.bloodGroup || '',
+              rhFactor: data.critical_info?.rhFactor || existing?.criticalInfo?.rhFactor,
+              drugAllergies: (data.critical_info?.drugAllergies || data.allergies)
+                ? parseDrugAllergies(data.critical_info?.drugAllergies || data.allergies)
+                : existing?.criticalInfo?.drugAllergies || [],
+              foodAllergies: data.critical_info?.foodAllergies || existing?.criticalInfo?.foodAllergies || [],
+              chronicDiseases: (data.critical_info?.chronicDiseases || data.chronic_diseases || data.chronic_conditions)
+                ? parseChronicDiseases(data.critical_info?.chronicDiseases || data.chronic_diseases || data.chronic_conditions)
+                : existing?.criticalInfo?.chronicDiseases || [],
+              permanentTreatments: (data.critical_info?.permanentTreatments || data.permanent_treatments)
+                ? parsePermanentTreatments(data.critical_info?.permanentTreatments || data.permanent_treatments)
+                : existing?.criticalInfo?.permanentTreatments || [],
+              handicap: data.critical_info?.handicap || existing?.criticalInfo?.handicap,
+              otherChronicDisease: data.critical_info?.otherChronicDisease || existing?.criticalInfo?.otherChronicDisease,
             },
+
             personalHistory: {
-              pastIllnesses: data.personal_history?.pastIllnesses || data.personal_history?.past_illnesses,
-              surgeries: (data.surgeries || data.chirurgies || data.personal_history?.surgeries || []).map((s: any) => ({
-                id: String(s.id || genId()),
-                name: s.nom || s.name || '',
-                date: s.date || '',
-                hospital: s.hopital || s.hospital || '',
-              })),
-              hospitalizations: (data.hospitalisations || data.hospitalisations || data.personal_history?.hospitalizations || []).map((h: any) => ({
-                id: String(h.id || genId()),
-                reason: h.motif || h.reason || '',
-                date: h.date_entree || h.date || '',
-                duration: h.duree || h.duration || '',
-                hospital: h.hopital || h.hospital || '',
-              })),
-              bloodTransfusion: data.personal_history?.bloodTransfusion || data.personal_history?.blood_transfusion || false,
-              bloodTransfusionDate: data.personal_history?.bloodTransfusionDate || data.personal_history?.blood_transfusion_date,
+              pastIllnesses: data.personal_history?.pastIllnesses || data.personal_history?.past_illnesses || existing?.personalHistory?.pastIllnesses,
+              surgeries: mergeById(existing?.personalHistory?.surgeries || [], mappedSurgeries),
+              hospitalizations: mergeById(existing?.personalHistory?.hospitalizations || [], mappedHospitalizations),
+              bloodTransfusion: data.personal_history?.bloodTransfusion ?? data.personal_history?.blood_transfusion ?? existing?.personalHistory?.bloodTransfusion ?? false,
+              bloodTransfusionDate: data.personal_history?.bloodTransfusionDate || data.personal_history?.blood_transfusion_date || existing?.personalHistory?.bloodTransfusionDate,
             },
-            familyHistory: data.family_history || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-            lifeHabits: data.life_habits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
-            consultations: data.consultations || [],
-            labResults: data.lab_results || [],
-            vaccines: data.vaccinations || [],
-            doctorIds: data.doctor_ids || (data.doctor_id ? [String(data.doctor_id)] : []),
-            doctorId: String(data.doctor_id || data.doctor || data.created_by),
-            createdAt: data.created_at || new Date().toISOString(),
+
+            familyHistory: data.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
+            lifeHabits: data.life_habits || existing?.lifeHabits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
+
+            // RÈGLE 2 — Arrays : fusionner par ID
+            consultations: mergeById(existing?.consultations || [], mappedConsultations),
+            labResults: mergeById(existing?.labResults || [], mappedLabResults),
+            vaccines: mergeById(existing?.vaccines || [], mappedVaccines),
+
+            doctorIds: data.doctor_ids || (data.doctor_id ? [String(data.doctor_id)] : []) || existing?.doctorIds || [],
+            doctorId: String(data.doctor_id || data.doctor || data.created_by || existing?.doctorId),
+            createdAt: data.created_at || existing?.createdAt || new Date().toISOString(),
             updatedAt: data.updated_at || new Date().toISOString(),
           };
 
-          // FLUX DE SYNCHRONISATION:
+          // FLUX DE SYNCHRONISATION avec MERGE INTELLIGENT:
           // 1. Le médecin crée un dossier sur Railway avec le email du patient
           // 2. Le patient se connecte → on récupère son dossier via GET /dossiers/my-record/
-          // 3. On assigne userId au dossier récupéré
-          // 4. On cherche si ce dossier existe déjà localement (par id backend, userId, OU linkedEmail)
-          // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
-          // 6. Si pas trouvé → Ajouter le nouveau dossier
+          // 3. On trouve le dossier existant local et on MERGE intelligemment
+          // 4. Backend gagne sur les champs remplis, local gagne sur les champs vides
+          // 5. Arrays fusionnés par ID pour ne jamais perdre de données
           set((state) => {
             const existingIndex = state.patients.findIndex(
               (p) =>
-                p.id === mappedRecord.id ||
-                p.userId === mappedRecord.userId ||
-                (p.linkedEmail && mappedRecord.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
+                p.id === mergedRecord.id ||
+                p.userId === mergedRecord.userId ||
+                (p.linkedEmail && mergedRecord.linkedEmail && p.linkedEmail === mergedRecord.linkedEmail)
             );
 
             if (existingIndex !== -1) {
-              // Dossier existe → Mettre à jour avec les données du backend
-              console.log('[MedicalStore] Updating existing patient record from backend:', mappedRecord.id);
+              // Dossier existe → Merger intelligemment
+              console.log('[MedicalStore] Merging existing patient record from backend:', mergedRecord.id);
               const updatedPatients = [...state.patients];
-              updatedPatients[existingIndex] = mappedRecord;
+              updatedPatients[existingIndex] = mergedRecord;
               return { patients: updatedPatients };
             } else {
               // Dossier n'existe pas → Ajouter
-              console.log('[MedicalStore] Adding new patient record from backend:', mappedRecord.id);
+              console.log('[MedicalStore] Adding new patient record from backend:', mergedRecord.id);
               return {
-                patients: [...state.patients, mappedRecord],
+                patients: [...state.patients, mergedRecord],
               };
             }
           });
 
-          console.log('[MedicalStore] My record synced from backend:', mappedRecord.id, 'userId:', userId);
+          console.log('[MedicalStore] My record synced from backend:', mergedRecord.id, 'userId:', userId);
         } catch (e: any) {
           // Ignorer silencieusement les 404 (patient sans dossier)
           if (e?.response?.status !== 404) {
