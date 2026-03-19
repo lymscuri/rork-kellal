@@ -321,18 +321,59 @@ export const useMedicalStore = create<MedicalStore>()(
                 );
 
                 // ÉTAPE 2 : Mapper les arrays du backend
+                // BUG 3 FIX : Consultations avec lab_tests imbriqués
                 const mappedConsultations = (bp.consultations || []).map((c: any) => ({
                   id: String(c.id || genId()),
-                  ...c,
+                  patientId: String(bp.id),
+                  date: c.date || '',
+                  motif: c.motif || '',
+                  motifDetail: c.motif_detail || '',
+                  diagnostic: c.diagnostic || '',
+                  traitement: c.traitement || '',
+                  recommandations: c.recommandations || '',
+                  weight: c.poids ?? undefined,
+                  height: c.taille ?? undefined,
+                  systolicBP: c.tension_systolique ?? undefined,
+                  diastolicBP: c.tension_diastolique ?? undefined,
+                  heartRate: c.frequence_cardiaque ?? undefined,
+                  temperature: c.temperature ?? undefined,
+                  spo2: c.spo2 ?? undefined,
+                  nextAppointment: c.prochain_rdv ?? undefined,
+                  // lab_tests imbriqués
+                  labTests: (c.lab_tests || []).map((lt: any) => ({
+                    id: String(lt.id || genId()),
+                    testName: lt.test_name || '',
+                    testType: lt.test_type || '',
+                    status: lt.status || 'pending',
+                    results: lt.results || '',
+                    interpretation: lt.interpretation || '',
+                  })),
                 }));
-                const mappedVaccines = (bp.vaccinations || []).map((v: any) => ({
+                // BUG 1 FIX : Vaccins depuis bp.vaccines (pas bp.vaccinations)
+                const mappedVaccines = (bp.vaccines || bp.vaccinations || []).map((v: any) => ({
                   id: String(v.id || genId()),
-                  ...v,
+                  patientId: String(bp.id),
+                  vaccineName: v.vaccine_name || v.vaccineName || '',
+                  dateAdministered: v.date_administered || v.dateAdministered || '',
+                  doseNumber: v.dose_number || v.doseNumber || 1,
+                  nextDoseDate: v.next_dose_date || v.nextDoseDate || undefined,
+                  notes: v.notes || '',
                 }));
-                const mappedLabResults = (bp.lab_results || []).map((l: any) => ({
-                  id: String(l.id || genId()),
-                  ...l,
-                }));
+                // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
+                const mappedLabResults = (bp.consultations || []).flatMap((c: any) =>
+                  (c.lab_tests || []).map((lt: any) => ({
+                    id: String(lt.id || genId()),
+                    patientId: String(bp.id),
+                    consultationId: String(c.id),
+                    testName: lt.test_name || '',
+                    testType: lt.test_type || '',
+                    status: lt.status || 'pending',
+                    orderedDate: lt.ordered_date || '',
+                    completedDate: lt.completed_date || undefined,
+                    results: lt.results || '',
+                    interpretation: lt.interpretation || '',
+                  }))
+                );
                 const mappedSurgeries = (bp.surgeries || bp.chirurgies || []).map((s: any) => ({
                   id: String(s.id || genId()),
                   name: s.nom || s.name || '',
@@ -395,7 +436,17 @@ export const useMedicalStore = create<MedicalStore>()(
                   },
 
                   familyHistory: bp.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-                  lifeHabits: bp.life_habits || existing?.lifeHabits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
+                  // BUG 4 FIX : lifeHabits avec ?? pour préserver valeurs false
+                  lifeHabits: {
+                    tobacco: bp.life_habits?.tobacco ?? existing?.lifeHabits?.tobacco ?? false,
+                    alcohol: bp.life_habits?.alcohol ?? existing?.lifeHabits?.alcohol ?? false,
+                    physicalActivity: bp.life_habits?.physicalActivity
+                      || bp.life_habits?.physical_activity
+                      || existing?.lifeHabits?.physicalActivity
+                      || 'moderee',
+                    tobaccoQuantity: bp.life_habits?.tobaccoQuantity || existing?.lifeHabits?.tobaccoQuantity,
+                    specialDiet: bp.life_habits?.specialDiet || existing?.lifeHabits?.specialDiet,
+                  },
 
                   // RÈGLE 2 — Arrays : fusionner par ID
                   consultations: mergeById(existing?.consultations || [], mappedConsultations),
@@ -457,18 +508,59 @@ export const useMedicalStore = create<MedicalStore>()(
           );
 
           // ÉTAPE 2 : Mapper les arrays du backend
+          // BUG 3 FIX : Consultations avec lab_tests imbriqués
           const mappedConsultations = (data.consultations || []).map((c: any) => ({
             id: String(c.id || genId()),
-            ...c,
+            patientId: String(data.id),
+            date: c.date || '',
+            motif: c.motif || '',
+            motifDetail: c.motif_detail || '',
+            diagnostic: c.diagnostic || '',
+            traitement: c.traitement || '',
+            recommandations: c.recommandations || '',
+            weight: c.poids ?? undefined,
+            height: c.taille ?? undefined,
+            systolicBP: c.tension_systolique ?? undefined,
+            diastolicBP: c.tension_diastolique ?? undefined,
+            heartRate: c.frequence_cardiaque ?? undefined,
+            temperature: c.temperature ?? undefined,
+            spo2: c.spo2 ?? undefined,
+            nextAppointment: c.prochain_rdv ?? undefined,
+            // lab_tests imbriqués
+            labTests: (c.lab_tests || []).map((lt: any) => ({
+              id: String(lt.id || genId()),
+              testName: lt.test_name || '',
+              testType: lt.test_type || '',
+              status: lt.status || 'pending',
+              results: lt.results || '',
+              interpretation: lt.interpretation || '',
+            })),
           }));
-          const mappedVaccines = (data.vaccinations || []).map((v: any) => ({
+          // BUG 1 FIX : Vaccins depuis data.vaccines (pas data.vaccinations)
+          const mappedVaccines = (data.vaccines || data.vaccinations || []).map((v: any) => ({
             id: String(v.id || genId()),
-            ...v,
+            patientId: String(data.id),
+            vaccineName: v.vaccine_name || v.vaccineName || '',
+            dateAdministered: v.date_administered || v.dateAdministered || '',
+            doseNumber: v.dose_number || v.doseNumber || 1,
+            nextDoseDate: v.next_dose_date || v.nextDoseDate || undefined,
+            notes: v.notes || '',
           }));
-          const mappedLabResults = (data.lab_results || []).map((l: any) => ({
-            id: String(l.id || genId()),
-            ...l,
-          }));
+          // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
+          const mappedLabResults = (data.consultations || []).flatMap((c: any) =>
+            (c.lab_tests || []).map((lt: any) => ({
+              id: String(lt.id || genId()),
+              patientId: String(data.id),
+              consultationId: String(c.id),
+              testName: lt.test_name || '',
+              testType: lt.test_type || '',
+              status: lt.status || 'pending',
+              orderedDate: lt.ordered_date || '',
+              completedDate: lt.completed_date || undefined,
+              results: lt.results || '',
+              interpretation: lt.interpretation || '',
+            }))
+          );
           const mappedSurgeries = (data.surgeries || data.chirurgies || []).map((s: any) => ({
             id: String(s.id || genId()),
             name: s.nom || s.name || '',
@@ -531,7 +623,17 @@ export const useMedicalStore = create<MedicalStore>()(
             },
 
             familyHistory: data.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-            lifeHabits: data.life_habits || existing?.lifeHabits || { tobacco: false, alcohol: false, physicalActivity: 'moderee' },
+            // BUG 4 FIX : lifeHabits avec ?? pour préserver valeurs false
+            lifeHabits: {
+              tobacco: data.life_habits?.tobacco ?? existing?.lifeHabits?.tobacco ?? false,
+              alcohol: data.life_habits?.alcohol ?? existing?.lifeHabits?.alcohol ?? false,
+              physicalActivity: data.life_habits?.physicalActivity
+                || data.life_habits?.physical_activity
+                || existing?.lifeHabits?.physicalActivity
+                || 'moderee',
+              tobaccoQuantity: data.life_habits?.tobaccoQuantity || existing?.lifeHabits?.tobaccoQuantity,
+              specialDiet: data.life_habits?.specialDiet || existing?.lifeHabits?.specialDiet,
+            },
 
             // RÈGLE 2 — Arrays : fusionner par ID
             consultations: mergeById(existing?.consultations || [], mappedConsultations),
