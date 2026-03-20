@@ -198,7 +198,8 @@ function syncToBackendUpdatePatient(patientId: string, data: Record<string, unkn
   if (data.phone !== undefined) mappedData.phone = data.phone;
   if (data.address !== undefined) mappedData.address = data.address;
   if (data.commune !== undefined) mappedData.city = data.commune;
-  
+  if (data.prefecture !== undefined) mappedData.prefecture = data.prefecture;
+
   // Infos critiques → champs backend
   if (data.critical_info) {
     const ci = data.critical_info as Record<string, unknown>;
@@ -707,7 +708,8 @@ export const useMedicalStore = create<MedicalStore>()(
             phone: identity.phone || '',
             email: linkedEmail?.toLowerCase() || '',
             address: identity.address || '',
-            city: identity.commune || identity.prefecture || '',
+            city: identity.commune || '',
+            prefecture: identity.prefecture || '',
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
