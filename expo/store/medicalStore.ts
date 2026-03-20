@@ -253,7 +253,7 @@ interface MedicalStore {
   updateFamilyHistory: (patientId: string, history: Partial<FamilyHistory>) => void;
   updateLifeHabits: (patientId: string, habits: Partial<LifeHabits>) => void;
   addConsultation: (patientId: string, consultation: Omit<ConsultationRecord, 'id' | 'patientId'>) => void;
-  addLabResult: (patientId: string, result: Omit<LabResult, 'id' | 'patientId'>) => void;
+  addLabResult: (patientId: string, result: Omit<LabResult, 'id' | 'patientId'>) => Promise<string> | void;
   addVaccine: (patientId: string, vaccine: Omit<VaccineRecord, 'id' | 'patientId'>) => void;
   addSurgery: (patientId: string, surgery: Omit<Surgery, 'id'>) => Promise<string>;
   addHospitalisation: (patientId: string, hosp: Omit<Hospitalization, 'id'>) => Promise<string>;
@@ -917,8 +917,9 @@ export const useMedicalStore = create<MedicalStore>()(
         }
       },
 
-      addLabResult: (patientId, result) => {
+      addLabResult: async (patientId, result) => {
         const id = genId();
+        // Optimistic update local d'abord
         set((state) => ({
           patients: state.patients.map(p =>
             p.id === patientId
@@ -930,6 +931,47 @@ export const useMedicalStore = create<MedicalStore>()(
               : p
           ),
         }));
+        // Puis sauvegarder au backend
+        try {
+          // Note: LabResult type has: examType, date, facility, result, interpretation, prescribedBy
+          // Backend expects: test_name, test_type, status, ordered_date, results, notes
+          const consultationId = (result as any).consultationId;
+          if (consultationId) {
+            const res = await dossierAPI.addLabTest(patientId, consultationId, {
+              test_name: result.examType || '',
+              test_type: result.examType || '',
+              status: 'pending',
+              ordered_date: result.date
+                ? new Date(result.date).toISOString().split('T')[0]
+                : new Date().toISOString().split('T')[0],
+              results: result.result || '',
+              interpretation: result.interpretation || '',
+              notes: '',
+            });
+            const backendId = res.data?.data?.id || res.data?.id;
+            if (backendId && backendId !== id) {
+              // Mettre à jour l'ID local avec l'ID backend
+              set((state) => ({
+                patients: state.patients.map(p =>
+                  p.id === patientId
+                    ? {
+                        ...p,
+                        labResults: p.labResults.map(r =>
+                          r.id === id ? { ...r, id: backendId } : r
+                        ),
+                      }
+                    : p
+                ),
+              }));
+              return backendId;
+            }
+          }
+        } catch (error) {
+          console.warn('[MedicalStore] addLabResult backend failed:',
+            extractErrorMessage(error));
+          // Garder le local même si backend échoue
+        }
+        return id;
       },
 
       addVaccine: async (patientId, vaccine) => {
