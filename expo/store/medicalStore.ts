@@ -354,11 +354,12 @@ export const useMedicalStore = create<MedicalStore>()(
                 const mappedVaccines = (bp.vaccines || bp.vaccinations || []).map((v: any) => ({
                   id: String(v.id || genId()),
                   patientId: String(bp.id),
-                  vaccineName: v.vaccine_name || v.vaccineName || '',
-                  dateAdministered: v.date_administered || v.dateAdministered || '',
-                  doseNumber: v.dose_number || v.doseNumber || 1,
-                  nextDoseDate: v.next_dose_date || v.nextDoseDate || undefined,
-                  notes: v.notes || '',
+                  name: v.vaccine_name || v.name || '',
+                  date: v.date_administered || v.date || '',
+                  facility: v.facility || v.etablissement || '',
+                  doctor: v.doctor || v.medecin || '',
+                  nextReminder: v.next_reminder || v.nextReminder || undefined,
+                  status: v.status || 'a_faire',
                 }));
                 // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
                 const mappedLabResults = (bp.consultations || []).flatMap((c: any) =>
@@ -541,11 +542,12 @@ export const useMedicalStore = create<MedicalStore>()(
           const mappedVaccines = (data.vaccines || data.vaccinations || []).map((v: any) => ({
             id: String(v.id || genId()),
             patientId: String(data.id),
-            vaccineName: v.vaccine_name || v.vaccineName || '',
-            dateAdministered: v.date_administered || v.dateAdministered || '',
-            doseNumber: v.dose_number || v.doseNumber || 1,
-            nextDoseDate: v.next_dose_date || v.nextDoseDate || undefined,
-            notes: v.notes || '',
+            name: v.vaccine_name || v.name || '',
+            date: v.date_administered || v.date || '',
+            facility: v.facility || v.etablissement || '',
+            doctor: v.doctor || v.medecin || '',
+            nextReminder: v.next_reminder || v.nextReminder || undefined,
+            status: v.status || 'a_faire',
           }));
           // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
           const mappedLabResults = (data.consultations || []).flatMap((c: any) =>
@@ -938,35 +940,41 @@ export const useMedicalStore = create<MedicalStore>()(
           // Note: LabResult type has: examType, date, facility, result, interpretation, prescribedBy
           // Backend expects: test_name, test_type, status, ordered_date, results, notes
           const consultationId = (result as any).consultationId;
+          const payload = {
+            test_name: result.examType || '',
+            test_type: result.examType || '',
+            status: 'pending',
+            ordered_date: result.date
+              ? new Date(result.date).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
+            results: result.result || '',
+            interpretation: result.interpretation || '',
+            notes: consultationId ? '' : (result.facility || ''),
+          };
+
+          let res;
           if (consultationId) {
-            const res = await dossierAPI.addLabTest(patientId, consultationId, {
-              test_name: result.examType || '',
-              test_type: result.examType || '',
-              status: 'pending',
-              ordered_date: result.date
-                ? new Date(result.date).toISOString().split('T')[0]
-                : new Date().toISOString().split('T')[0],
-              results: result.result || '',
-              interpretation: result.interpretation || '',
-              notes: '',
-            });
-            const backendId = res.data?.data?.id || res.data?.id;
-            if (backendId && backendId !== id) {
-              // Mettre à jour l'ID local avec l'ID backend
-              set((state) => ({
-                patients: state.patients.map(p =>
-                  p.id === patientId
-                    ? {
-                        ...p,
-                        labResults: p.labResults.map(r =>
-                          r.id === id ? { ...r, id: backendId } : r
-                        ),
-                      }
-                    : p
-                ),
-              }));
-              return backendId;
-            }
+            res = await dossierAPI.addLabTest(patientId, consultationId, payload);
+          } else {
+            res = await dossierAPI.addLabTestDirect(patientId, payload);
+          }
+
+          const backendId = res.data?.data?.id || res.data?.id;
+          if (backendId && backendId !== id) {
+            // Mettre à jour l'ID local avec l'ID backend
+            set((state) => ({
+              patients: state.patients.map(p =>
+                p.id === patientId
+                  ? {
+                      ...p,
+                      labResults: p.labResults.map(r =>
+                        r.id === id ? { ...r, id: backendId } : r
+                      ),
+                    }
+                  : p
+              ),
+            }));
+            return backendId;
           }
         } catch (error) {
           console.warn('[MedicalStore] addLabResult backend failed:',

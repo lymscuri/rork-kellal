@@ -271,6 +271,9 @@ export const dossierAPI = {
   updateLabTest: (patientId: string, consultationId: string, labTestId: string, data: Record<string, unknown>) =>
     apiClient.patch(`/dossiers/patients/${patientId}/consultations/${consultationId}/lab-tests/${labTestId}/`, data),
 
+  addLabTestDirect: (patientId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/dossiers/patients/${patientId}/lab-tests/`, data),
+
   addPrescription: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
     apiClient.post(`/dossiers/patients/${patientId}/consultations/${consultationId}/prescriptions/`, data),
 
