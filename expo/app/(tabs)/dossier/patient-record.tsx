@@ -1,93 +1,32 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, Button, Chip } from 'react-native-paper';
+import React, { useState, useMemo } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, Button } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
-import { useMedicalStore } from '@/store/medicalStore';
+import { useBackendStore } from '@/store/backendStore';
 import { useAuthStore } from '@/store/authStore';
 import {
-  User, History, Stethoscope, FlaskConical, Syringe,
-  Plus, Shield
+  User, History, Stethoscope, FlaskConical, Syringe, Plus
 } from 'lucide-react-native';
-import type { BloodGroup, AllergySeverity, Surgery, Hospitalization } from '@/types/medical';
 
 const TABS = ['Identité', 'Infos critiques', 'Antécédents', 'Consultations', 'Examens', 'Vaccins'];
-const BLOOD_GROUPS: BloodGroup[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const CHRONIC_OPTIONS = ['Diabète', 'Hypertension', 'Asthme', 'Drépanocytose', 'VIH', 'Insuffisance rénale', 'Épilepsie'];
 
 export default function PatientRecordScreen() {
-  const { patientId, readOnly: readOnlyParam } = useLocalSearchParams<{ patientId: string; readOnly?: string }>();
+  const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
-  const store = useMedicalStore();
   const [activeTab, setActiveTab] = useState(0);
-  const isReadOnly = readOnlyParam === 'true' || user?.role === 'patient';
 
-  const patient = useMemo(() => {
+  // Médecin : chercher dans patients
+  // Patient : chercher dans myRecord
+  const patient = useBackendStore(s => {
     if (!patientId) return null;
-    return store.getPatientById(patientId);
-  }, [patientId, store]);
-
-  const [allergyName, setAllergyName] = useState('');
-
-  const [pastIllnesses, setPastIllnesses] = useState(patient?.personalHistory.pastIllnesses || '');
-  const [surgeryName, setSurgeryName] = useState('');
-  const [surgeryDate, setSurgeryDate] = useState('');
-  const [surgeryHospital, setSurgeryHospital] = useState('');
-  const [hospReason, setHospReason] = useState('');
-  const [hospDate, setHospDate] = useState('');
-  const [hospDuration, setHospDuration] = useState('');
-  const [hospHospital, setHospHospital] = useState('');
-  const [transfusionDate, setTransfusionDate] = useState(patient?.personalHistory.bloodTransfusionDate || '');
-  const [tobaccoQty, setTobaccoQty] = useState(patient?.lifeHabits.tobaccoQuantity || '');
-  const [specialDiet, setSpecialDiet] = useState(patient?.lifeHabits.specialDiet || '');
-  const [allergySeverity, setAllergySeverity] = useState<AllergySeverity>('legere');
-  const [allergyType, setAllergyType] = useState<'medicament' | 'alimentaire'>('medicament');
-
-  const handleAddSurgery = useCallback(() => {
-    if (!surgeryName.trim() || !surgeryDate.trim() || !patientId) return;
-    const current = patient?.personalHistory;
-    if (!current) return;
-    const newSurgery: Surgery = { id: Date.now().toString(), name: surgeryName.trim(), date: surgeryDate.trim(), hospital: surgeryHospital.trim() || undefined };
-    store.updatePersonalHistory(patientId, { surgeries: [...current.surgeries, newSurgery] });
-    setSurgeryName('');
-    setSurgeryDate('');
-    setSurgeryHospital('');
-  }, [surgeryName, surgeryDate, surgeryHospital, patientId, patient, store]);
-
-  const handleAddHospitalization = useCallback(() => {
-    if (!hospReason.trim() || !hospDate.trim() || !patientId) return;
-    const current = patient?.personalHistory;
-    if (!current) return;
-    const newHosp: Hospitalization = { id: Date.now().toString(), reason: hospReason.trim(), date: hospDate.trim(), duration: hospDuration.trim() || undefined, hospital: hospHospital.trim() || undefined };
-    store.updatePersonalHistory(patientId, { hospitalizations: [...current.hospitalizations, newHosp] });
-    setHospReason('');
-    setHospDate('');
-    setHospDuration('');
-    setHospHospital('');
-  }, [hospReason, hospDate, hospDuration, hospHospital, patientId, patient, store]);
-
-  const handleAddAllergy = useCallback(() => {
-    if (!allergyName.trim() || !patientId) return;
-    const current = patient?.criticalInfo;
-    if (!current) return;
-    const newAllergy = { id: Date.now().toString(), name: allergyName.trim(), type: allergyType, severity: allergySeverity };
-    if (allergyType === 'medicament') {
-      store.updateCriticalInfo(patientId, { drugAllergies: [...current.drugAllergies, newAllergy] });
+    if (user?.role === 'medecin') {
+      return s.patients.find(p => p.id === patientId) || null;
     } else {
-      store.updateCriticalInfo(patientId, { foodAllergies: [...current.foodAllergies, newAllergy] });
+      return s.myRecord?.id === patientId ? s.myRecord : null;
     }
-    setAllergyName('');
-  }, [allergyName, allergyType, allergySeverity, patientId, patient, store]);
-
-  const toggleChronic = useCallback((disease: string) => {
-    if (!patientId || !patient) return;
-    const current = patient.criticalInfo?.chronicDiseases || [];
-    const updated = current.includes(disease)
-      ? current.filter(d => d !== disease)
-      : [...current, disease];
-    store.updateCriticalInfo(patientId, { chronicDiseases: updated });
-  }, [patientId, patient, store]);
+  });
 
   if (!patient) {
     return (
@@ -97,37 +36,36 @@ export default function PatientRecordScreen() {
     );
   }
 
-  const age = patient.identity.birthDate
-    ? Math.floor((Date.now() - new Date(patient.identity.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-    : null;
-
   const renderIdentity = () => (
     <View style={styles.tabContent}>
       <View style={styles.profileHeader}>
         <View style={styles.profileAvatar}>
           <Text style={styles.profileAvatarText}>
-            {patient.identity.firstName.charAt(0)}{patient.identity.lastName.charAt(0)}
+            {patient.first_name.charAt(0)}{patient.last_name.charAt(0)}
           </Text>
         </View>
         <View>
-          <Text style={styles.profileName}>{patient.identity.lastName} {patient.identity.firstName}</Text>
-          <Text style={styles.profileDossier}>{patient.identity.dossierNumber}</Text>
-          {age !== null && <Text style={styles.profileAge}>{age} ans • {patient.identity.sex === 'M' ? 'Masculin' : patient.identity.sex === 'F' ? 'Féminin' : ''}</Text>}
+          <Text style={styles.profileName}>{patient.last_name} {patient.first_name}</Text>
+          <Text style={styles.profileDossier}>{patient.numero_dossier}</Text>
+          {patient.age && <Text style={styles.profileAge}>{patient.age} ans • {patient.gender === 'M' ? 'Masculin' : 'Féminin'}</Text>}
         </View>
       </View>
       <View style={styles.infoGrid}>
-        <InfoRow label="Téléphone" value={patient.identity.phone || 'Non renseigné'} />
-        <InfoRow label="Adresse" value={patient.identity.address || 'Non renseigné'} />
-        <InfoRow label="Commune" value={patient.identity.commune || 'Non renseigné'} />
-        <InfoRow label="Préfecture" value={patient.identity.prefecture || 'Non renseigné'} />
+        <InfoRow label="Téléphone" value={patient.phone || 'Non renseigné'} />
+        <InfoRow label="Adresse" value={patient.address || 'Non renseigné'} />
+        <InfoRow label="Ville" value={patient.city || 'Non renseigné'} />
+        <InfoRow label="Préfecture" value={patient.prefecture || 'Non renseigné'} />
+        <InfoRow label="Email" value={patient.email || patient.linked_email || 'Non renseigné'} />
       </View>
-      {patient.identity.emergencyContacts?.length > 0 && (
+      {patient.emergency_contacts?.length > 0 && (
         <View style={styles.contactsSection}>
           <Text style={styles.subSectionTitle}>Contacts d'urgence</Text>
-          {patient.identity.emergencyContacts?.map(c => (
-            <View key={c.id} style={styles.contactCard}>
-              <Text style={styles.contactName}>{c.fullName}</Text>
-              <Text style={styles.contactDetail}>{c.relationship} • {c.phoneNumber}</Text>
+          {patient.emergency_contacts.map((c: any, i: number) => (
+            <View key={i} style={styles.contactCard}>
+              <Text style={styles.contactName}>{c.fullName || c.name || 'Contact'}</Text>
+              <Text style={styles.contactDetail}>
+                {c.relationship || c.relation || 'N/A'} • {c.phoneNumber || c.phone || 'N/A'}
+              </Text>
             </View>
           ))}
         </View>
@@ -139,101 +77,23 @@ export default function PatientRecordScreen() {
     <View style={styles.tabContent}>
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Groupe sanguin</Text>
-        {isReadOnly ? (
-          <Text style={styles.readValue}>{patient.criticalInfo.bloodGroup || 'Non renseigné'} {patient.criticalInfo.rhFactor ? `(Rh ${patient.criticalInfo.rhFactor})` : ''}</Text>
-        ) : (
-          <View style={styles.chipRow}>
-            {BLOOD_GROUPS.map(bg => (
-              <Chip
-                key={bg}
-                selected={patient.criticalInfo.bloodGroup === bg}
-                onPress={() => store.updateCriticalInfo(patientId!, { bloodGroup: bg })}
-                style={[styles.chip, patient.criticalInfo.bloodGroup === bg && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.criticalInfo.bloodGroup === bg ? MedicalColors.white : MedicalColors.text }}
-              >
-                {bg}
-              </Chip>
-            ))}
-          </View>
-        )}
+        <Text style={styles.readValue}>{patient.blood_type || 'Non renseigné'}</Text>
       </View>
 
       <View style={styles.fieldGroup}>
-        <Text style={styles.subSectionTitle}>Allergies médicamenteuses</Text>
-        {patient.criticalInfo.drugAllergies?.map(a => (
-          <View key={a.id} style={[styles.allergyBadge, a.severity === 'anaphylaxie' ? styles.allergyDanger : a.severity === 'severe' ? styles.allergyWarn : styles.allergyMild]}>
-            <Text style={styles.allergyText}>{a.name} — {a.severity}</Text>
-          </View>
-        ))}
-        {patient.criticalInfo.foodAllergies?.length || 0 > 0 && (
-          <>
-            <Text style={[styles.subSectionTitle, { marginTop: 12 }]}>Allergies alimentaires</Text>
-            {patient.criticalInfo.foodAllergies?.map(a => (
-              <View key={a.id} style={[styles.allergyBadge, styles.allergyMild]}>
-                <Text style={styles.allergyText}>{a.name}</Text>
-              </View>
-            ))}
-          </>
-        )}
-        {!isReadOnly && (
-          <View style={styles.addAllergyForm}>
-            <TextInput label="Nom allergie" value={allergyName} onChangeText={setAllergyName} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            <View style={styles.chipRow}>
-              {(['medicament', 'alimentaire'] as const).map(t => (
-                <Chip key={t} selected={allergyType === t} onPress={() => setAllergyType(t)} style={styles.chipSmall}>
-                  {t === 'medicament' ? 'Médicament' : 'Alimentaire'}
-                </Chip>
-              ))}
-            </View>
-            <View style={styles.chipRow}>
-              {(['legere', 'severe', 'anaphylaxie'] as const).map(s => (
-                <Chip key={s} selected={allergySeverity === s} onPress={() => setAllergySeverity(s)} style={styles.chipSmall}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </Chip>
-              ))}
-            </View>
-            <Button mode="contained" onPress={handleAddAllergy} compact buttonColor={MedicalColors.medical} style={styles.addBtn}>
-              Ajouter allergie
-            </Button>
-          </View>
-        )}
+        <Text style={styles.subSectionTitle}>Allergies</Text>
+        <Text style={styles.readValue}>{patient.allergies || 'Aucune allergie renseignée'}</Text>
       </View>
 
       <View style={styles.fieldGroup}>
-        <Text style={styles.subSectionTitle}>Maladies chroniques actives</Text>
-        {isReadOnly ? (
-          <View style={styles.chipRow}>
-            {patient.criticalInfo.chronicDiseases?.map(d => (
-              <Chip key={d} style={styles.chipActive} textStyle={{ color: MedicalColors.white, fontSize: 12 }}>{d}</Chip>
-            ))}
-            {patient.criticalInfo.chronicDiseases?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
-          </View>
-        ) : (
-          <View style={styles.chipRow}>
-            {CHRONIC_OPTIONS.map(d => (
-              <Chip
-                key={d}
-                selected={patient.criticalInfo.chronicDiseases?.includes(d)}
-                onPress={() => toggleChronic(d)}
-                style={[styles.chip, patient.criticalInfo.chronicDiseases?.includes(d) && styles.chipSelected]}
-                textStyle={{ fontSize: 11, color: patient.criticalInfo.chronicDiseases?.includes(d) ? MedicalColors.white : MedicalColors.text }}
-              >
-                {d}
-              </Chip>
-            ))}
-          </View>
-        )}
+        <Text style={styles.subSectionTitle}>Maladies chroniques</Text>
+        <Text style={styles.readValue}>{patient.chronic_diseases || 'Aucune'}</Text>
       </View>
 
-      {patient.criticalInfo.permanentTreatments?.length || 0 > 0 && (
+      {patient.permanent_treatments && (
         <View style={styles.fieldGroup}>
           <Text style={styles.subSectionTitle}>Traitements permanents</Text>
-          {patient.criticalInfo.permanentTreatments?.map(t => (
-            <View key={t.id} style={styles.treatmentCard}>
-              <Text style={styles.treatmentName}>{t.medication}</Text>
-              <Text style={styles.treatmentDetail}>{t.dosage} — {t.frequency}</Text>
-            </View>
-          ))}
+          <Text style={styles.readValue}>{patient.permanent_treatments}</Text>
         </View>
       )}
     </View>
@@ -243,235 +103,71 @@ export default function PatientRecordScreen() {
     <View style={styles.tabContent}>
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents personnels</Text>
+        <Text style={styles.readValue}>{patient.personal_history?.past_illnesses || 'Aucun'}</Text>
 
-        <Text style={styles.subLabel}>Maladies passées</Text>
-        {isReadOnly ? (
-          <Text style={styles.readValue}>{patient.personalHistory?.pastIllnesses || 'Aucune'}</Text>
+        {patient.personal_history?.blood_transfusion && (
+          <>
+            <Text style={[styles.subLabel, { marginTop: 12 }]}>Transfusion sanguine</Text>
+            <Text style={styles.readValue}>Oui{patient.personal_history?.blood_transfusion_date ? ` (${patient.personal_history?.blood_transfusion_date})` : ''}</Text>
+          </>
+        )}
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.subSectionTitle}>Chirurgies</Text>
+        {patient.surgeries?.length === 0 ? (
+          <Text style={styles.readValue}>Aucune chirurgie enregistrée</Text>
         ) : (
-          <View style={styles.editRow}>
-            <TextInput
-              label="Maladies passées"
-              value={pastIllnesses}
-              onChangeText={setPastIllnesses}
-              mode="outlined"
-              dense
-              style={styles.inputSmall}
-              outlineColor={MedicalColors.border}
-              activeOutlineColor={MedicalColors.medical}
-              onBlur={() => {
-                if (patientId) store.updatePersonalHistory(patientId, { pastIllnesses: pastIllnesses.trim() || undefined });
-              }}
-            />
-          </View>
+          patient.surgeries?.map(s => (
+            <View key={s.id} style={styles.historyItem}>
+              <Text style={styles.historyItemTitle}>{s.nom}</Text>
+              <Text style={styles.historyItemSub}>{s.date} {s.hopital ? `— ${s.hopital}` : ''}</Text>
+            </View>
+          ))
         )}
+      </View>
 
-        <Text style={[styles.subLabel, { marginTop: 12 }]}>Transfusion sanguine</Text>
-        {isReadOnly ? (
-          <Text style={styles.readValue}>{patient.personalHistory?.bloodTransfusion ? `Oui${patient.personalHistory?.bloodTransfusionDate ? ` (${patient.personalHistory?.bloodTransfusionDate})` : ''}` : 'Non'}</Text>
+      <View style={styles.fieldGroup}>
+        <Text style={styles.subSectionTitle}>Hospitalisations</Text>
+        {patient.hospitalisations?.length === 0 ? (
+          <Text style={styles.readValue}>Aucune hospitalisation enregistrée</Text>
         ) : (
-          <View>
-            <View style={styles.chipRow}>
-              <Chip
-                selected={patient.personalHistory?.bloodTransfusion}
-                onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: true })}
-                style={[styles.chip, patient.personalHistory?.bloodTransfusion && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.personalHistory?.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
-              >Oui</Chip>
-              <Chip
-                selected={!patient.personalHistory?.bloodTransfusion}
-                onPress={() => store.updatePersonalHistory(patientId!, { bloodTransfusion: false, bloodTransfusionDate: undefined })}
-                style={[styles.chip, !patient.personalHistory?.bloodTransfusion && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.personalHistory?.bloodTransfusion ? MedicalColors.white : MedicalColors.text }}
-              >Non</Chip>
+          patient.hospitalisations?.map(h => (
+            <View key={h.id} style={styles.historyItem}>
+              <Text style={styles.historyItemTitle}>{h.motif}</Text>
+              <Text style={styles.historyItemSub}>
+                {h.date_entree} {h.date_sortie ? `→ ${h.date_sortie}` : ''} {h.hopital ? `— ${h.hopital}` : ''}
+              </Text>
             </View>
-            {patient.personalHistory?.bloodTransfusion && (
-              <TextInput
-                label="Date de transfusion"
-                value={transfusionDate}
-                onChangeText={setTransfusionDate}
-                placeholder="ex: 2023-06"
-                mode="outlined"
-                dense
-                style={[styles.inputSmall, { marginTop: 8 }]}
-                outlineColor={MedicalColors.border}
-                activeOutlineColor={MedicalColors.medical}
-                onBlur={() => {
-                  if (patientId) store.updatePersonalHistory(patientId, { bloodTransfusionDate: transfusionDate.trim() || undefined });
-                }}
-              />
-            )}
-          </View>
-        )}
-
-        <Text style={[styles.subLabel, { marginTop: 14 }]}>Chirurgies</Text>
-        {patient.personalHistory?.surgeries?.map(s => (
-          <View key={s.id} style={styles.historyItem}>
-            <Text style={styles.historyItemTitle}>{s.name}</Text>
-            <Text style={styles.historyItemSub}>{s.date}{s.hospital ? ` — ${s.hospital}` : ''}</Text>
-          </View>
-        ))}
-        {patient.personalHistory?.surgeries?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
-        {!isReadOnly && (
-          <View style={styles.addHistoryForm}>
-            <TextInput label="Nom chirurgie" value={surgeryName} onChangeText={setSurgeryName} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            <View style={styles.rowInputs}>
-              <TextInput label="Date" value={surgeryDate} onChangeText={setSurgeryDate} placeholder="ex: 2022-03" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-              <TextInput label="Hôpital" value={surgeryHospital} onChangeText={setSurgeryHospital} mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            </View>
-            <Button mode="contained" onPress={handleAddSurgery} compact buttonColor={MedicalColors.medical} style={styles.addBtnSmall} labelStyle={styles.addBtnLabel}>
-              Ajouter chirurgie
-            </Button>
-          </View>
-        )}
-
-        <Text style={[styles.subLabel, { marginTop: 14 }]}>Hospitalisations</Text>
-        {patient.personalHistory?.hospitalizations?.map(h => (
-          <View key={h.id} style={styles.historyItem}>
-            <Text style={styles.historyItemTitle}>{h.reason}</Text>
-            <Text style={styles.historyItemSub}>{h.date}{h.hospital ? ` — ${h.hospital}` : ''}{h.duration ? ` (${h.duration})` : ''}</Text>
-          </View>
-        ))}
-        {patient.personalHistory?.hospitalizations?.length || 0 === 0 && <Text style={styles.readValue}>Aucune</Text>}
-        {!isReadOnly && (
-          <View style={styles.addHistoryForm}>
-            <TextInput label="Motif" value={hospReason} onChangeText={setHospReason} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            <View style={styles.rowInputs}>
-              <TextInput label="Date" value={hospDate} onChangeText={setHospDate} placeholder="ex: 2021-08" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-              <TextInput label="Durée" value={hospDuration} onChangeText={setHospDuration} placeholder="ex: 5 jours" mode="outlined" dense style={[styles.inputSmall, styles.halfInput]} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            </View>
-            <TextInput label="Hôpital" value={hospHospital} onChangeText={setHospHospital} mode="outlined" dense style={styles.inputSmall} outlineColor={MedicalColors.border} activeOutlineColor={MedicalColors.medical} />
-            <Button mode="contained" onPress={handleAddHospitalization} compact buttonColor={MedicalColors.medical} style={styles.addBtnSmall} labelStyle={styles.addBtnLabel}>
-              Ajouter hospitalisation
-            </Button>
-          </View>
+          ))
         )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents familiaux</Text>
-        {isReadOnly ? (
-          <View style={styles.chipRow}>
-            {patient.familyHistory?.diabetes && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Diabète</Chip>}
-            {patient.familyHistory?.hypertension && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Hypertension</Chip>}
-            {patient.familyHistory?.cancer && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Cancer</Chip>}
-            {patient.familyHistory?.sickleCell && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Drépanocytose</Chip>}
-            {patient.familyHistory?.hereditary && <Chip style={styles.chipActive} textStyle={styles.chipActiveText}>Maladies héréditaires</Chip>}
-            {!patient.familyHistory?.diabetes && !patient.familyHistory?.hypertension && !patient.familyHistory?.cancer && !patient.familyHistory?.sickleCell && !patient.familyHistory?.hereditary && <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>}
-          </View>
-        ) : (
-          <View style={styles.chipRow}>
-            {([['diabetes', 'Diabète'], ['hypertension', 'Hypertension'], ['cancer', 'Cancer'], ['sickleCell', 'Drépanocytose'], ['hereditary', 'Maladies héréditaires']] as const).map(([key, label]) => (
-              <Chip
-                key={key}
-                selected={patient.familyHistory[key]}
-                onPress={() => store.updateFamilyHistory(patientId!, { [key]: !patient.familyHistory[key] })}
-                style={[styles.chip, patient.familyHistory[key] && styles.chipSelected]}
-                textStyle={{ fontSize: 11, color: patient.familyHistory[key] ? MedicalColors.white : MedicalColors.text }}
-              >
-                {label}
-              </Chip>
-            ))}
-          </View>
+        {patient.family_history?.diabetes && <Text style={styles.listItem}>• Diabète</Text>}
+        {patient.family_history?.hypertension && <Text style={styles.listItem}>• Hypertension</Text>}
+        {patient.family_history?.cancer && <Text style={styles.listItem}>• Cancer</Text>}
+        {patient.family_history?.sickleCell && <Text style={styles.listItem}>• Drépanocytose</Text>}
+        {patient.family_history?.hereditary && <Text style={styles.listItem}>• Maladies héréditaires</Text>}
+        {!patient.family_history?.diabetes && !patient.family_history?.hypertension && !patient.family_history?.cancer && !patient.family_history?.sickleCell && !patient.family_history?.hereditary && (
+          <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>
         )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Habitudes de vie</Text>
-        {isReadOnly ? (
-          <>
-            <InfoRow label="Tabac" value={patient.lifeHabits?.tobacco ? `Oui${patient.lifeHabits?.tobaccoQuantity ? ` (${patient.lifeHabits?.tobaccoQuantity})` : ''}` : 'Non'} />
-            <InfoRow label="Alcool" value={patient.lifeHabits?.alcohol ? 'Oui' : 'Non'} />
-            <InfoRow label="Activité physique" value={patient.lifeHabits?.physicalActivity === 'sedentaire' ? 'Sédentaire' : patient.lifeHabits?.physicalActivity === 'moderee' ? 'Modérée' : 'Active'} />
-            {patient.lifeHabits?.specialDiet && <InfoRow label="Régime spécial" value={patient.lifeHabits?.specialDiet} />}
-          </>
-        ) : (
-          <>
-            <Text style={styles.subLabel}>Tabac</Text>
-            <View style={styles.chipRow}>
-              <Chip
-                selected={patient.lifeHabits?.tobacco}
-                onPress={() => store.updateLifeHabits(patientId!, { tobacco: true })}
-                style={[styles.chip, patient.lifeHabits?.tobacco && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.lifeHabits?.tobacco ? MedicalColors.white : MedicalColors.text }}
-              >Oui</Chip>
-              <Chip
-                selected={!patient.lifeHabits?.tobacco}
-                onPress={() => store.updateLifeHabits(patientId!, { tobacco: false, tobaccoQuantity: undefined })}
-                style={[styles.chip, !patient.lifeHabits?.tobacco && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.lifeHabits?.tobacco ? MedicalColors.white : MedicalColors.text }}
-              >Non</Chip>
-            </View>
-            {patient.lifeHabits?.tobacco && (
-              <TextInput
-                label="Quantité"
-                value={tobaccoQty}
-                onChangeText={setTobaccoQty}
-                placeholder="ex: 10 cigarettes/jour"
-                mode="outlined"
-                dense
-                style={[styles.inputSmall, { marginTop: 6 }]}
-                outlineColor={MedicalColors.border}
-                activeOutlineColor={MedicalColors.medical}
-                onBlur={() => {
-                  if (patientId) store.updateLifeHabits(patientId, { tobaccoQuantity: tobaccoQty.trim() || undefined });
-                }}
-              />
-            )}
-
-            <Text style={[styles.subLabel, { marginTop: 12 }]}>Alcool</Text>
-            <View style={styles.chipRow}>
-              <Chip
-                selected={patient.lifeHabits?.alcohol}
-                onPress={() => store.updateLifeHabits(patientId!, { alcohol: true })}
-                style={[styles.chip, patient.lifeHabits?.alcohol && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: patient.lifeHabits?.alcohol ? MedicalColors.white : MedicalColors.text }}
-              >Oui</Chip>
-              <Chip
-                selected={!patient.lifeHabits?.alcohol}
-                onPress={() => store.updateLifeHabits(patientId!, { alcohol: false })}
-                style={[styles.chip, !patient.lifeHabits?.alcohol && styles.chipSelected]}
-                textStyle={{ fontSize: 12, color: !patient.lifeHabits?.alcohol ? MedicalColors.white : MedicalColors.text }}
-              >Non</Chip>
-            </View>
-
-            <Text style={[styles.subLabel, { marginTop: 12 }]}>Activité physique</Text>
-            <View style={styles.chipRow}>
-              {(['sedentaire', 'moderee', 'active'] as const).map(level => (
-                <Chip
-                  key={level}
-                  selected={patient.lifeHabits?.physicalActivity === level}
-                  onPress={() => store.updateLifeHabits(patientId!, { physicalActivity: level })}
-                  style={[styles.chip, patient.lifeHabits?.physicalActivity === level && styles.chipSelected]}
-                  textStyle={{ fontSize: 12, color: patient.lifeHabits?.physicalActivity === level ? MedicalColors.white : MedicalColors.text }}
-                >
-                  {level === 'sedentaire' ? 'Sédentaire' : level === 'moderee' ? 'Modérée' : 'Active'}
-                </Chip>
-              ))}
-            </View>
-
-            <TextInput
-              label="Régime spécial"
-              value={specialDiet}
-              onChangeText={setSpecialDiet}
-              placeholder="ex: sans gluten, végétarien..."
-              mode="outlined"
-              dense
-              style={[styles.inputSmall, { marginTop: 12 }]}
-              outlineColor={MedicalColors.border}
-              activeOutlineColor={MedicalColors.medical}
-              onBlur={() => {
-                if (patientId) store.updateLifeHabits(patientId, { specialDiet: specialDiet.trim() || undefined });
-              }}
-            />
-          </>
-        )}
+        <InfoRow label="Tabac" value={patient.life_habits?.tobacco ? 'Oui' : 'Non'} />
+        <InfoRow label="Alcool" value={patient.life_habits?.alcohol ? 'Oui' : 'Non'} />
+        <InfoRow label="Activité physique" value={patient.life_habits?.physical_activity || 'Non renseigné'} />
+        {patient.life_habits?.specialDiet && <InfoRow label="Régime spécial" value={patient.life_habits?.specialDiet} />}
       </View>
     </View>
   );
 
   const renderConsultations = () => (
     <View style={styles.tabContent}>
-      {!isReadOnly && (
+      {user?.role === 'medecin' && (
         <Button
           mode="contained"
           onPress={() => router.push({ pathname: '/(tabs)/dossier/new-consultation', params: { patientId: patient.id } })}
@@ -492,55 +188,57 @@ export default function PatientRecordScreen() {
           <View key={c.id} style={styles.consultCard}>
             <View style={styles.consultHeader}>
               <Text style={styles.consultDate}>{new Date(c.date).toLocaleDateString('fr-FR')}</Text>
-              <Text style={styles.consultDoctor}>Dr. {c.doctorName}</Text>
             </View>
-            <Text style={styles.consultDiag}>{c.mainDiagnosis}</Text>
-            <Text style={styles.consultReason}>{c.reason}</Text>
-            {c.prescriptions?.length > 0 && (
-              <View style={styles.prescBadge}>
-                <Text style={styles.prescBadgeText}>{c.prescriptions?.length} médicament(s) prescrit(s)</Text>
-              </View>
-            )}
+            <Text style={styles.consultDiag}>{c.diagnostic}</Text>
+            <Text style={styles.consultReason}>Motif : {c.motif}</Text>
+            {c.traitement && <Text style={styles.consultTreatment}>Traitement : {c.traitement}</Text>}
+            {c.poids && <Text style={styles.consultVital}>Poids : {c.poids} kg</Text>}
+            {c.tension_systolique && <Text style={styles.consultVital}>TA : {c.tension_systolique}/{c.tension_diastolique}</Text>}
           </View>
         ))
       )}
     </View>
   );
 
-  const renderExams = () => (
-    <View style={styles.tabContent}>
-      {!isReadOnly && (
-        <Button
-          mode="contained"
-          onPress={() => router.push({ pathname: '/(tabs)/dossier/new-lab-result', params: { patientId: patient.id } })}
-          buttonColor={MedicalColors.medical}
-          icon={() => <Plus size={18} color={MedicalColors.white} />}
-          style={styles.addBtn}
-        >
-          Nouveau résultat d'examen
-        </Button>
-      )}
-      {patient.labResults?.length === 0 ? (
-        <View style={styles.emptySection}>
-          <FlaskConical size={32} color={MedicalColors.border} />
-          <Text style={styles.emptySectionText}>Aucun résultat d'examen</Text>
-        </View>
-      ) : (
-        patient.labResults?.map(r => (
-          <View key={r.id} style={styles.examCard}>
-            <Text style={styles.examType}>{r.examType}</Text>
-            <Text style={styles.examDate}>{new Date(r.date).toLocaleDateString('fr-FR')} — {r.facility}</Text>
-            <Text style={styles.examResult}>Résultat : {r.result} {r.unit || ''}</Text>
-            {r.interpretation && <Text style={styles.examInterp}>{r.interpretation}</Text>}
+  const renderExams = () => {
+    const labTests = patient.consultations?.flatMap(c => c.lab_tests || []) || [];
+
+    return (
+      <View style={styles.tabContent}>
+        {user?.role === 'medecin' && (
+          <Button
+            mode="contained"
+            onPress={() => router.push({ pathname: '/(tabs)/dossier/new-lab-result', params: { patientId: patient.id } })}
+            buttonColor={MedicalColors.medical}
+            icon={() => <Plus size={18} color={MedicalColors.white} />}
+            style={styles.addBtn}
+          >
+            Nouveau résultat d'examen
+          </Button>
+        )}
+        {labTests.length === 0 ? (
+          <View style={styles.emptySection}>
+            <FlaskConical size={32} color={MedicalColors.border} />
+            <Text style={styles.emptySectionText}>Aucun résultat d'examen</Text>
           </View>
-        ))
-      )}
-    </View>
-  );
+        ) : (
+          labTests.map(r => (
+            <View key={r.id} style={styles.examCard}>
+              <Text style={styles.examType}>{r.test_name}</Text>
+              <Text style={styles.examDate}>{new Date(r.ordered_date).toLocaleDateString('fr-FR')}</Text>
+              <Text style={styles.examResult}>Résultat : {r.results || 'En attente'}</Text>
+              {r.interpretation && <Text style={styles.examInterp}>{r.interpretation}</Text>}
+              <Text style={styles.examStatus}>Statut : {r.status}</Text>
+            </View>
+          ))
+        )}
+      </View>
+    );
+  };
 
   const renderVaccines = () => (
     <View style={styles.tabContent}>
-      {!isReadOnly && (
+      {user?.role === 'medecin' && (
         <Button
           mode="contained"
           onPress={() => router.push({ pathname: '/(tabs)/dossier/new-vaccine', params: { patientId: patient.id } })}
@@ -559,24 +257,25 @@ export default function PatientRecordScreen() {
       ) : (
         patient.vaccines?.map(v => (
           <View key={v.id} style={styles.vaccineCard}>
-            <View style={[styles.vaccineStatus, v.status === 'fait' ? styles.statusDone : v.status === 'en_retard' ? styles.statusLate : styles.statusPending]} />
             <View style={styles.vaccineInfo}>
-              <Text style={styles.vaccineName}>{v.name}</Text>
-              <Text style={styles.vaccineDate}>{v.date ? new Date(v.date).toLocaleDateString('fr-FR') : 'Non programmé'}</Text>
+              <Text style={styles.vaccineName}>{v.vaccine_name}</Text>
+              <Text style={styles.vaccineDate}>
+                {v.date_administered ? new Date(v.date_administered).toLocaleDateString('fr-FR') : 'Non programmé'}
+              </Text>
+              <Text style={styles.vaccineDose}>Dose {v.dose_number}</Text>
+              {v.notes && <Text style={styles.vaccineNotes}>{v.notes}</Text>}
             </View>
-            <Text style={styles.vaccineStatusText}>
-              {v.status === 'fait' ? '✅' : v.status === 'en_retard' ? '⚠️' : '⏳'}
-            </Text>
+            <Text style={styles.vaccineStatusText}>✅</Text>
           </View>
         ))
       )}
     </View>
   );
 
-  const tabIcons = [User, Shield, History, Stethoscope, FlaskConical, Syringe];
+  const tabIcons = [User, Stethoscope, History, Stethoscope, FlaskConical, Syringe];
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
+    <View style={styles.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
         {TABS.map((tab, i) => {
           const Icon = tabIcons[i];
@@ -593,7 +292,7 @@ export default function PatientRecordScreen() {
         })}
       </ScrollView>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {activeTab === 0 && renderIdentity()}
         {activeTab === 1 && renderCriticalInfo()}
         {activeTab === 2 && renderHistory()}
@@ -601,7 +300,7 @@ export default function PatientRecordScreen() {
         {activeTab === 4 && renderExams()}
         {activeTab === 5 && renderVaccines()}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -645,57 +344,33 @@ const styles = StyleSheet.create({
   contactName: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   contactDetail: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   fieldGroup: { backgroundColor: MedicalColors.white, borderRadius: 12, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: MedicalColors.border },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { backgroundColor: MedicalColors.background },
-  chipSelected: { backgroundColor: MedicalColors.medical },
-  chipActive: { backgroundColor: MedicalColors.medical },
-  chipActiveText: { color: MedicalColors.white, fontSize: 12 },
-  chipSmall: { marginVertical: 4 },
-  readValue: { fontSize: 14, color: MedicalColors.text },
-  allergyBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginBottom: 6 },
-  allergyDanger: { backgroundColor: '#FFEBEE' },
-  allergyWarn: { backgroundColor: '#FFF3E0' },
-  allergyMild: { backgroundColor: '#E8F5E9' },
-  allergyText: { fontSize: 13, color: MedicalColors.text },
-  addAllergyForm: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: MedicalColors.border },
-  inputSmall: { marginBottom: 8, backgroundColor: MedicalColors.white },
-  addBtn: { borderRadius: 8, marginBottom: 16 },
-  addBtnSmall: { borderRadius: 8, marginTop: 10 },
-  addBtnLabel: { fontSize: 12 },
-  editRow: { marginBottom: 4 },
-  rowInputs: { flexDirection: 'row', gap: 8 },
-  halfInput: { flex: 1 },
-  addHistoryForm: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: MedicalColors.border },
+  readValue: { fontSize: 14, color: MedicalColors.text, lineHeight: 20 },
+  subLabel: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.textSecondary, marginTop: 10, marginBottom: 4 },
   historyItem: { backgroundColor: MedicalColors.background, borderRadius: 8, padding: 10, marginBottom: 6 },
   historyItemTitle: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   historyItemSub: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
-  treatmentCard: { backgroundColor: MedicalColors.background, borderRadius: 8, padding: 10, marginBottom: 6 },
-  treatmentName: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
-  treatmentDetail: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
-  subLabel: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.textSecondary, marginTop: 10, marginBottom: 4 },
   listItem: { fontSize: 13, color: MedicalColors.text, paddingVertical: 2 },
   emptySection: { alignItems: 'center', paddingVertical: 40 },
   emptySectionText: { fontSize: 14, color: MedicalColors.textSecondary, marginTop: 8 },
+  addBtn: { borderRadius: 8, marginBottom: 16 },
   consultCard: { backgroundColor: MedicalColors.white, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: MedicalColors.border },
   consultHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   consultDate: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.medical },
-  consultDoctor: { fontSize: 12, color: MedicalColors.textSecondary },
   consultDiag: { fontSize: 15, fontWeight: '600' as const, color: MedicalColors.text },
   consultReason: { fontSize: 13, color: MedicalColors.textSecondary, marginTop: 4 },
-  prescBadge: { marginTop: 8, backgroundColor: MedicalColors.lifeLight, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
-  prescBadgeText: { fontSize: 11, color: MedicalColors.life, fontWeight: '600' as const },
+  consultTreatment: { fontSize: 13, color: MedicalColors.text, marginTop: 4 },
+  consultVital: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   examCard: { backgroundColor: MedicalColors.white, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: MedicalColors.border },
   examType: { fontSize: 15, fontWeight: '600' as const, color: MedicalColors.text },
   examDate: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   examResult: { fontSize: 13, color: MedicalColors.text, marginTop: 6 },
   examInterp: { fontSize: 12, color: MedicalColors.life, marginTop: 2, fontStyle: 'italic' },
+  examStatus: { fontSize: 11, color: MedicalColors.textSecondary, marginTop: 4 },
   vaccineCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: MedicalColors.white, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: MedicalColors.border },
-  vaccineStatus: { width: 8, height: 40, borderRadius: 4, marginRight: 12 },
-  statusDone: { backgroundColor: MedicalColors.life },
-  statusLate: { backgroundColor: MedicalColors.urgency },
-  statusPending: { backgroundColor: MedicalColors.warning },
   vaccineInfo: { flex: 1 },
   vaccineName: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   vaccineDate: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
+  vaccineDose: { fontSize: 11, color: MedicalColors.medical, marginTop: 2 },
+  vaccineNotes: { fontSize: 11, color: MedicalColors.textSecondary, marginTop: 4, fontStyle: 'italic' },
   vaccineStatusText: { fontSize: 18 },
 });

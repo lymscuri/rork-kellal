@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useAuthStore } from './authStore';
-import { useMedicalStore } from './medicalStore';
+import { useBackendStore } from './backendStore';
 
 /**
  * SyncEngine définitif pour la synchronisation médecin↔patient
  *
  * SYNC MÉDECIN :
- * - Appelle syncPatientsFromBackend() (dossiers généraux)
- * - Appelle syncMaternityPatientsFromBackend() (dossiers maternité)
+ * - Appelle syncPatients() (dossiers généraux)
+ * - Appelle syncMaternityPatients() (dossiers maternité)
  *
  * SYNC PATIENT :
- * - Appelle syncMyRecordFromBackend(userId) (dossier général)
- * - Appelle syncMyMaternityFromBackend(userId) (dossier maternité)
+ * - Appelle syncMyRecord(userId) (dossier général)
+ * - Appelle syncMyMaternity(userId) (dossier maternité)
  *
  * TRIGGERS DE SYNC :
  * - Au montage : immédiatement
@@ -25,11 +25,11 @@ import { useMedicalStore } from './medicalStore';
 export function useSyncEngine() {
   const { user } = useAuthStore();
   const {
-    syncPatientsFromBackend,
-    syncMaternityPatientsFromBackend,
-    syncMyRecordFromBackend,
-    syncMyMaternityFromBackend,
-  } = useMedicalStore();
+    syncPatients,
+    syncMaternityPatients,
+    syncMyRecord,
+    syncMyMaternity,
+  } = useBackendStore();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -48,16 +48,16 @@ export function useSyncEngine() {
         // SYNC MÉDECIN : récupérer tous les patients du médecin
         console.log('[SyncEngine] Running doctor sync...');
         await Promise.all([
-          syncPatientsFromBackend(),
-          syncMaternityPatientsFromBackend(),
+          syncPatients(),
+          syncMaternityPatients(),
         ]);
         console.log('[SyncEngine] Doctor sync completed');
       } else {
         // SYNC PATIENT : récupérer le dossier du patient connecté
         console.log('[SyncEngine] Running patient sync...');
         await Promise.all([
-          syncMyRecordFromBackend(user.id),
-          syncMyMaternityFromBackend(user.id),
+          syncMyRecord(user.id),
+          syncMyMaternity(user.id),
         ]);
         console.log('[SyncEngine] Patient sync completed');
       }

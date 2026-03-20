@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
+import { useBackendStore } from '@/store/backendStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Baby, Calendar, Heart, Plus, ChevronRight,
@@ -15,55 +16,10 @@ import type { MaternityPatient } from '@/types/medical';
 function PatientView() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { maternityPatients } = useMedicalStore();
-  const autoLinkMaternityByEmail = useMedicalStore((s) => s.autoLinkMaternityByEmail);
-  const getMyMaternityDataByEmail = useMedicalStore((s) => s.getMyMaternityDataByEmail);
-  const syncMyMaternityFromBackend = useMedicalStore((s) => s.syncMyMaternityFromBackend);
-  const hasAttemptedAutoLink = React.useRef(false);
+  const myMaternity = useBackendStore(s => s.myMaternity);
 
-  // Synchroniser mon dossier maternité depuis le backend au montage
-  useEffect(() => {
-    if (!user?.id) return;
-    console.log('[MaternityPatientView] Syncing my maternity record from backend on mount, userId:', user.id);
-    syncMyMaternityFromBackend(user.id);
-  }, [user?.id, syncMyMaternityFromBackend]);
-
-  // Synchronisation automatique toutes les 30 secondes
-  useEffect(() => {
-    if (!user?.id) return;
-    const interval = setInterval(() => {
-      console.log('[MaternityPatientView] Auto-syncing my maternity record from backend, userId:', user.id);
-      syncMyMaternityFromBackend(user.id);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [user?.id, syncMyMaternityFromBackend]);
-
-  useEffect(() => {
-    if (!user || hasAttemptedAutoLink.current) return;
-    const byId = maternityPatients.find(p => p.userId === user.id);
-    if (!byId && user.email) {
-      console.log('[MaternityPatientView] No data by userId, trying auto-link by email:', user.email);
-      const linked = autoLinkMaternityByEmail(user.email, user.id);
-      if (linked) {
-        console.log('[MaternityPatientView] Auto-linked maternity record:', linked.id);
-      }
-      hasAttemptedAutoLink.current = true;
-    }
-  }, [user, maternityPatients, autoLinkMaternityByEmail]);
-
-  const myData = useMemo(() => {
-    if (!user) return null;
-    const byId = maternityPatients.find(p => p.userId === user.id);
-    if (byId) return byId;
-    if (user.email) {
-      const byEmail = getMyMaternityDataByEmail(user.email);
-      if (byEmail) return byEmail;
-    }
-    return null;
-  }, [maternityPatients, user, getMyMaternityDataByEmail]);
-
-  const pregnancy = myData?.pregnancy;
-  const progressPercent = pregnancy ? Math.min((pregnancy.currentWeek / 40) * 100, 100) : 0;
+  const pregnancy = myMaternity?.pregnancy;
+  const progressPercent = pregnancy ? Math.min(((pregnancy.current_week || 0) / 40) * 100, 100) : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -73,7 +29,7 @@ function PatientView() {
             <Baby size={28} color={MedicalColors.white} />
             <Text style={styles.headerTitle}>Maternité</Text>
             {pregnancy && (
-              <Text style={styles.headerWeek}>Semaine {pregnancy.currentWeek} / 40</Text>
+              <Text style={styles.headerWeek}>Semaine {pregnancy.current_week} / 40</Text>
             )}
           </View>
 
@@ -91,21 +47,21 @@ function PatientView() {
           {pregnancy && (
             <>
               <View style={styles.pregnancyCard}>
-                <Text style={styles.pregnancyName}>{pregnancy.firstName}, {pregnancy.age} ans</Text>
+                <Text style={styles.pregnancyName}>{myMaternity.first_name}, {myMaternity.age || 'N/A'} ans</Text>
                 <View style={styles.pregnancyDetails}>
                   <View style={styles.pregnancyDetail}>
                     <Text style={styles.detailLabel}>DPA</Text>
                     <Text style={styles.detailValue}>
-                      {pregnancy.dueDate ? new Date(pregnancy.dueDate).toLocaleDateString('fr-FR') : 'Non calculée'}
+                      {pregnancy.due_date ? new Date(pregnancy.due_date).toLocaleDateString('fr-FR') : 'Non calculée'}
                     </Text>
                   </View>
                   <View style={styles.pregnancyDetail}>
                     <Text style={styles.detailLabel}>G/P</Text>
-                    <Text style={styles.detailValue}>G{pregnancy.gravidity} P{pregnancy.parity}</Text>
+                    <Text style={styles.detailValue}>G{pregnancy.gravidity || 0} P{pregnancy.parity || 0}</Text>
                   </View>
                   <View style={styles.pregnancyDetail}>
                     <Text style={styles.detailLabel}>Lieu prévu</Text>
-                    <Text style={styles.detailValue}>{pregnancy.deliveryPlace || 'Non défini'}</Text>
+                    <Text style={styles.detailValue}>{pregnancy.delivery_place || 'Non défini'}</Text>
                   </View>
                 </View>
               </View>
@@ -133,9 +89,9 @@ function PatientView() {
               </TouchableOpacity>
 
               {(() => {
-                const upcoming = myData?.prenatalConsultations
-                  ?.filter(c => c.status !== 'effectuee' && c.scheduledDate)
-                  .sort((a, b) => new Date(a.scheduledDate!).getTime() - new Date(b.scheduledDate!).getTime())
+                const upcoming = myMaternity?.prenatal_consultations
+                  ?.filter(c => c.next_appointment)
+                  .sort((a, b) => new Date(a.next_appointment!).getTime() - new Date(b.next_appointment!).getTime())
                   .slice(0, 2) || [];
                 if (upcoming.length === 0) return null;
                 return (
@@ -148,16 +104,16 @@ function PatientView() {
                       <View key={c.id} style={styles.rdvItem}>
                         <View style={styles.rdvDateBadge}>
                           <Text style={styles.rdvDateDay}>
-                            {new Date(c.scheduledDate!).getDate()}
+                            {new Date(c.next_appointment!).getDate()}
                           </Text>
                           <Text style={styles.rdvDateMonth}>
-                            {new Date(c.scheduledDate!).toLocaleDateString('fr-FR', { month: 'short' })}
+                            {new Date(c.next_appointment!).toLocaleDateString('fr-FR', { month: 'short' })}
                           </Text>
                         </View>
                         <View style={styles.rdvItemInfo}>
-                          <Text style={styles.rdvItemTitle}>S{c.weekTarget} — {c.description}</Text>
+                          <Text style={styles.rdvItemTitle}>S{c.week || 'N/A'}</Text>
                           <Text style={styles.rdvItemDate}>
-                            {new Date(c.scheduledDate!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                            {new Date(c.next_appointment!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                           </Text>
                         </View>
                       </View>
@@ -168,18 +124,6 @@ function PatientView() {
             </>
           )}
 
-          {myData && myData.children.length > 0 && (
-            <TouchableOpacity style={styles.menuCard} onPress={() => router.push('/(tabs)/maternite/child-tracking')}>
-              <View style={[styles.menuIcon, { backgroundColor: '#E8F5E9' }]}>
-                <Baby size={22} color={MedicalColors.life} />
-              </View>
-              <View style={styles.menuInfo}>
-                <Text style={styles.menuTitle}>Suivi pédiatrique</Text>
-                <Text style={styles.menuSubtitle}>{myData.children.length} enfant(s) enregistré(s)</Text>
-              </View>
-              <ChevronRight size={20} color={MedicalColors.textSecondary} />
-            </TouchableOpacity>
-          )}
 
           {!pregnancy && (
             <View style={styles.emptyCard}>
@@ -198,53 +142,22 @@ function PatientView() {
 
 type FilterTab = 'toutes' | 'a_jour' | 'en_retard' | 'alertes';
 
-function getPatientConsultProgress(p: MaternityPatient) {
-  const total = p.prenatalConsultations.length;
-  const done = p.prenatalConsultations.filter(c => c.status === 'effectuee').length;
-  const overdue = p.prenatalConsultations.filter(
-    c => c.status !== 'effectuee' && c.weekTarget <= p.pregnancy.currentWeek
-  ).length;
-  const isUpToDate = overdue === 0;
-  return { total, done, overdue, isUpToDate };
-}
-
 function SoignantView() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { maternityPatients } = useMedicalStore();
-  const syncMaternityPatientsFromBackend = useMedicalStore((s) => s.syncMaternityPatientsFromBackend);
+  const maternityPatients = useBackendStore(s => s.maternityPatients);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('toutes');
 
-  const doctorPatients = useMemo(() => {
-    if (!user) return maternityPatients;
-    return maternityPatients.filter(p => !p.soignantId || p.soignantId === user.id);
-  }, [maternityPatients, user]);
-
   const filterCounts = useMemo(() => {
-    let aJour = 0;
-    let enRetard = 0;
-    let alertes = 0;
-    doctorPatients.forEach(p => {
-      const progress = getPatientConsultProgress(p);
-      if (p.alertLevel === 'rouge' || p.alertLevel === 'jaune') alertes++;
-      if (progress.isUpToDate) aJour++;
-      else enRetard++;
-    });
-    return { toutes: doctorPatients.length, aJour, enRetard, alertes };
-  }, [doctorPatients]);
+    return {
+      toutes: maternityPatients.length,
+      aJour: maternityPatients.length,
+      enRetard: 0,
+      alertes: 0
+    };
+  }, [maternityPatients]);
 
-  const filtered = useMemo(() => {
-    if (activeFilter === 'toutes') return doctorPatients;
-    if (activeFilter === 'alertes') return doctorPatients.filter(p => p.alertLevel === 'rouge' || p.alertLevel === 'jaune');
-    if (activeFilter === 'a_jour') return doctorPatients.filter(p => getPatientConsultProgress(p).isUpToDate);
-    return doctorPatients.filter(p => !getPatientConsultProgress(p).isUpToDate);
-  }, [doctorPatients, activeFilter]);
-
-  // Synchroniser les patientes de maternité depuis le backend au montage
-  React.useEffect(() => {
-    console.log('[SoignantView] Syncing maternity patients from backend on mount');
-    syncMaternityPatientsFromBackend();
-  }, [syncMaternityPatientsFromBackend]);
+  const filtered = maternityPatients;
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
@@ -253,41 +166,18 @@ function SoignantView() {
     ]);
   }, [logout]);
 
-  const getAlertColor = (level: string) => {
-    if (level === 'rouge') return MedicalColors.urgency;
-    if (level === 'jaune') return MedicalColors.warning;
-    return MedicalColors.life;
-  };
-
-  const renderPatient = useCallback(({ item }: { item: MaternityPatient }) => {
-    const progress = getPatientConsultProgress(item);
-    const pct = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+  const renderPatient = useCallback(({ item }: { item: any }) => {
     return (
       <TouchableOpacity
         style={styles.patientCard}
         onPress={() => router.push({ pathname: '/(tabs)/maternite/patient-dossier', params: { patientId: item.id } })}
       >
-        <View style={[styles.alertDot, { backgroundColor: getAlertColor(item.alertLevel) }]} />
+        <View style={[styles.alertDot, { backgroundColor: MedicalColors.life }]} />
         <View style={styles.patientInfo}>
-          <Text style={styles.patientName}>{item.pregnancy.firstName}</Text>
-          <Text style={styles.patientWeek}>Semaine {item.pregnancy.currentWeek} • G{item.pregnancy.gravidity} P{item.pregnancy.parity}</Text>
-          <View style={styles.consultProgressRow}>
-            <View style={styles.consultProgressBar}>
-              <View style={[
-                styles.consultProgressFill,
-                { width: `${pct}%`, backgroundColor: progress.isUpToDate ? MedicalColors.life : MedicalColors.warning }
-              ]} />
-            </View>
-            <Text style={[
-              styles.consultProgressText,
-              { color: progress.isUpToDate ? MedicalColors.life : MedicalColors.urgency }
-            ]}>
-              {progress.done}/{progress.total}
-            </Text>
-          </View>
-          {progress.overdue > 0 && (
-            <Text style={styles.overdueText}>{progress.overdue} consultation(s) en retard</Text>
-          )}
+          <Text style={styles.patientName}>{item.first_name}</Text>
+          <Text style={styles.patientWeek}>
+            Semaine {item.pregnancy?.current_week || 'N/A'} • G{item.pregnancy?.gravidity || 0} P{item.pregnancy?.parity || 0}
+          </Text>
         </View>
         <ChevronRight size={18} color={MedicalColors.textSecondary} />
       </TouchableOpacity>

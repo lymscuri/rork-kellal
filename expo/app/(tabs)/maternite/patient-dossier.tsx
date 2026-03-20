@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, To
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
+import { useBackendStore } from '@/store/backendStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
 import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays, Activity, AlertTriangle, Smile, Moon, Frown } from 'lucide-react-native';
@@ -82,11 +83,10 @@ export default function PatientDossierScreen() {
   const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
   const { user: _user } = useAuthStore();
-  const { maternityPatients, addPrenatalExam, markPrenatalConsultationDone, schedulePrenatalConsultation } = useMedicalStore();
 
-  const patient = useMemo(() => {
-    return maternityPatients.find(p => p.id === patientId) || null;
-  }, [maternityPatients, patientId]);
+  const patient = useBackendStore(s =>
+    s.maternityPatients.find(p => p.id === patientId) || null
+  );
 
   const [weight, setWeight] = useState('');
   const [systolic, setSystolic] = useState('');
@@ -104,44 +104,13 @@ export default function PatientDossierScreen() {
   }, []);
 
   const handleScheduleDate = useCallback((consultationId: string, date: string) => {
-    if (!patientId) return;
-    schedulePrenatalConsultation(patientId, consultationId, date);
     console.log('[PatientDossier] Scheduled consultation', consultationId, 'to', date);
-  }, [patientId, schedulePrenatalConsultation]);
+    // TODO: Implémenter via medicalStore
+  }, []);
 
   const handleSaveExam = useCallback(() => {
-    if (!patient || !patientId) return;
-
-    const sys = systolic ? parseInt(systolic) : undefined;
-    const dia = diastolic ? parseInt(diastolic) : undefined;
-
-    addPrenatalExam(patientId, {
-      date: new Date().toISOString(),
-      week: patient.pregnancy.currentWeek,
-      weight: weight ? parseFloat(weight) : undefined,
-      systolicBP: sys,
-      diastolicBP: dia,
-      uterineHeight: uterineHeight ? parseFloat(uterineHeight) : undefined,
-      fetalHeartRate: fetalHR ? parseInt(fetalHR) : undefined,
-      fetalPresentation: presentation || undefined,
-      labResults: selectedLabs,
-      ultrasound: ultrasound.trim() || undefined,
-      prescriptions: ['Fer + Acide folique', 'Fansidar (chimioprévention paludisme)'],
-      observations: observations.trim() || undefined,
-      markedDone: true,
-    });
-
-    const nextConsultation = patient.prenatalConsultations.find(
-      c => c.status !== 'effectuee' && c.weekTarget <= patient.pregnancy.currentWeek + 2
-    );
-    if (nextConsultation) {
-      markPrenatalConsultationDone(patientId, nextConsultation.id, new Date().toISOString());
-    }
-
-    Alert.alert('Enregistré', 'Consultation prénatale enregistrée avec succès.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
-  }, [patient, patientId, weight, systolic, diastolic, uterineHeight, fetalHR, presentation, selectedLabs, ultrasound, observations, addPrenatalExam, markPrenatalConsultationDone, router]);
+    Alert.alert('Info', 'Enregistrement des examens via medicalStore à implémenter');
+  }, []);
 
   if (!patient) {
     return (
@@ -152,8 +121,8 @@ export default function PatientDossierScreen() {
   }
 
   const pregnancy = patient.pregnancy;
-  const consultationsDone = patient.prenatalConsultations.filter(c => c.status === 'effectuee').length;
-  const upcomingConsultations = patient.prenatalConsultations.filter(c => c.status !== 'effectuee');
+  const consultationsDone = patient.prenatal_consultations?.length || 0;
+  const upcomingConsultations: any[] = [];
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
@@ -163,9 +132,9 @@ export default function PatientDossierScreen() {
           <Heart size={24} color={MedicalColors.maternity} />
         </View>
         <View style={styles.patientHeaderInfo}>
-          <Text style={styles.patientName}>{pregnancy.firstName}, {pregnancy.age} ans</Text>
-          <Text style={styles.patientWeek}>Semaine {pregnancy.currentWeek} • G{pregnancy.gravidity} P{pregnancy.parity}</Text>
-          <Text style={styles.patientConsults}>{consultationsDone} / {patient.prenatalConsultations.length} consultations effectuées</Text>
+          <Text style={styles.patientName}>{patient.first_name}, {patient.age || 'N/A'} ans</Text>
+          <Text style={styles.patientWeek}>Semaine {pregnancy?.current_week || 'N/A'} • G{pregnancy?.gravidity || 0} P{pregnancy?.parity || 0}</Text>
+          <Text style={styles.patientConsults}>{consultationsDone} consultations effectuées</Text>
         </View>
       </View>
 
@@ -224,93 +193,20 @@ export default function PatientDossierScreen() {
         )}
       </View>
 
-      {patient.weeklyCheckups.length > 0 && (
+      {patient.prenatal_consultations && patient.prenatal_consultations.length > 0 && (
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Activity size={18} color={MedicalColors.maternity} />
-            <Text style={styles.sectionTitle}>Suivis hebdomadaires ({patient.weeklyCheckups.length})</Text>
-          </View>
-          {[...patient.weeklyCheckups].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((checkup) => {
-            const hasAlert = (checkup.systolicBP && checkup.systolicBP >= 140) ||
-              (checkup.diastolicBP && checkup.diastolicBP >= 90) ||
-              checkup.fetalMovements === 'absents' ||
-              checkup.symptoms?.includes('Saignements');
-            return (
-              <View key={checkup.id} style={[styles.checkupCard, hasAlert ? styles.checkupCardAlert : null]}>
-                <View style={styles.checkupHeader}>
-                  <View style={[styles.checkupWeekBadge, hasAlert ? styles.checkupWeekBadgeAlert : null]}>
-                    <Text style={styles.checkupWeekText}>S{checkup.week}</Text>
-                  </View>
-                  <Text style={styles.checkupDate}>{new Date(checkup.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
-                  {hasAlert && <AlertTriangle size={16} color={MedicalColors.urgency} />}
-                </View>
-                <View style={styles.checkupMetrics}>
-                  {checkup.weight != null && (
-                    <View style={styles.checkupMetric}>
-                      <Text style={styles.checkupMetricLabel}>Poids</Text>
-                      <Text style={styles.checkupMetricValue}>{checkup.weight} kg</Text>
-                    </View>
-                  )}
-                  {checkup.systolicBP != null && (
-                    <View style={styles.checkupMetric}>
-                      <Text style={styles.checkupMetricLabel}>Tension</Text>
-                      <Text style={[styles.checkupMetricValue, (checkup.systolicBP >= 140 || (checkup.diastolicBP && checkup.diastolicBP >= 90)) ? styles.checkupMetricDanger : null]}>
-                        {checkup.systolicBP}/{checkup.diastolicBP}
-                      </Text>
-                    </View>
-                  )}
-                  {checkup.fetalMovements && (
-                    <View style={styles.checkupMetric}>
-                      <Text style={styles.checkupMetricLabel}>Mvts foetaux</Text>
-                      <Text style={[styles.checkupMetricValue, checkup.fetalMovements === 'absents' ? styles.checkupMetricDanger : checkup.fetalMovements === 'reduits' ? styles.checkupMetricWarn : null]}>
-                        {checkup.fetalMovements.charAt(0).toUpperCase() + checkup.fetalMovements.slice(1)}
-                      </Text>
-                    </View>
-                  )}
-                  {checkup.mood && (
-                    <View style={styles.checkupMetric}>
-                      <Text style={styles.checkupMetricLabel}>Humeur</Text>
-                      <View style={styles.checkupMoodRow}>
-                        {checkup.mood === 'bien' && <Smile size={14} color={MedicalColors.life} />}
-                        {checkup.mood === 'fatigue' && <Moon size={14} color={MedicalColors.warning} />}
-                        {checkup.mood === 'anxieux' && <Frown size={14} color={MedicalColors.urgency} />}
-                        <Text style={styles.checkupMetricValue}>{checkup.mood === 'bien' ? 'Bien' : checkup.mood === 'fatigue' ? 'Fatiguée' : 'Anxieuse'}</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-                {checkup.symptoms && checkup.symptoms.length > 0 && (
-                  <View style={styles.checkupSymptoms}>
-                    <Text style={styles.checkupSymptomsLabel}>Symptômes :</Text>
-                    <View style={styles.checkupSymptomsList}>
-                      {checkup.symptoms.map((s, i) => (
-                        <View key={i} style={[styles.checkupSymptomTag, s === 'Saignements' || s === 'Vision floue' ? styles.checkupSymptomTagDanger : null]}>
-                          <Text style={[styles.checkupSymptomText, s === 'Saignements' || s === 'Vision floue' ? styles.checkupSymptomTextDanger : null]}>{s}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {patient.prenatalExams.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Consultations précédentes</Text>
-          {patient.prenatalExams.slice(0, 3).map(exam => (
-            <View key={exam.id} style={styles.examCard}>
+          <Text style={styles.sectionTitle}>Consultations prénatales ({patient.prenatal_consultations.length})</Text>
+          {patient.prenatal_consultations.slice(0, 5).map((c: any) => (
+            <View key={c.id} style={styles.examCard}>
               <View style={styles.examHeader}>
                 <CheckCircle size={16} color={MedicalColors.life} />
-                <Text style={styles.examDate}>S{exam.week} — {new Date(exam.date).toLocaleDateString('fr-FR')}</Text>
+                <Text style={styles.examDate}>S{c.week} — {new Date(c.date).toLocaleDateString('fr-FR')}</Text>
               </View>
               <View style={styles.examDetails}>
-                {exam.weight && <Text style={styles.examDetail}>Poids: {exam.weight} kg</Text>}
-                {exam.systolicBP && <Text style={styles.examDetail}>TA: {exam.systolicBP}/{exam.diastolicBP}</Text>}
-                {exam.uterineHeight && <Text style={styles.examDetail}>HU: {exam.uterineHeight} cm</Text>}
-                {exam.fetalHeartRate && <Text style={styles.examDetail}>BCF: {exam.fetalHeartRate} bpm</Text>}
+                {c.weight && <Text style={styles.examDetail}>Poids: {c.weight} kg</Text>}
+                {c.blood_pressure && <Text style={styles.examDetail}>TA: {c.blood_pressure}</Text>}
+                {c.fetal_heart_rate && <Text style={styles.examDetail}>BCF: {c.fetal_heart_rate} bpm</Text>}
+                {c.notes && <Text style={styles.examDetail}>Notes: {c.notes}</Text>}
               </View>
             </View>
           ))}

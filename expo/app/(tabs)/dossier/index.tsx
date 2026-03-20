@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
+import { useBackendStore } from '@/store/backendStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import {
   Search, Plus, QrCode, Users, Calendar, FileText, ClipboardList,
@@ -15,57 +16,42 @@ import type { PatientRecord } from '@/types/medical';
 function DoctorDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const allPatients = useMedicalStore((s) => s.patients);
-  const getPatientsByDoctor = useMedicalStore((s) => s.getPatientsByDoctor);
-  const getDoctorStats = useMedicalStore((s) => s.getDoctorStats);
-  const syncPatientsFromBackend = useMedicalStore((s) => s.syncPatientsFromBackend);
+  const patients = useBackendStore(s => s.patients);
   const [search, setSearch] = useState('');
-
-  const patients = useMemo(
-    () => {
-      if (!user) return [];
-      return getPatientsByDoctor(user.id);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, allPatients, getPatientsByDoctor]
-  );
 
   const stats = useMemo(
     () => {
-      if (!user) return { totalPatients: 0, monthConsultations: 0, monthPrescriptions: 0, patientsFollowed: 0 };
-      return getDoctorStats(user.id);
+      return {
+        totalPatients: patients.length,
+        monthConsultations: 0,
+        monthPrescriptions: 0,
+        patientsFollowed: patients.length
+      };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, allPatients, getDoctorStats]
+    [patients]
   );
 
   const filtered = useMemo(() => {
     if (!search.trim()) return patients;
     const q = search.toLowerCase();
     return patients.filter(p =>
-      p.identity.firstName.toLowerCase().includes(q) ||
-      p.identity.lastName.toLowerCase().includes(q) ||
-      p.identity.dossierNumber.toLowerCase().includes(q)
+      p.first_name.toLowerCase().includes(q) ||
+      p.last_name.toLowerCase().includes(q) ||
+      (p.numero_dossier && p.numero_dossier.toLowerCase().includes(q))
     );
   }, [patients, search]);
 
-  // Synchroniser les patients depuis le backend au montage
-  useEffect(() => {
-    console.log('[DoctorDashboard] Syncing patients from backend on mount');
-    syncPatientsFromBackend();
-  }, [syncPatientsFromBackend]);
-
-  const getAlertLevel = useCallback((patient: PatientRecord) => {
-    if (patient.consultations?.length === 0) return 'none';
+  const getAlertLevel = useCallback((patient: any) => {
+    if (!patient.consultations || patient.consultations.length === 0) return 'none';
     const last = patient.consultations[0];
-    if (last.vitalSigns?.systolicBP && last.vitalSigns?.systolicBP >= 140) return 'red';
+    if (last.tension_systolique && last.tension_systolique >= 140) return 'red';
     const lastDate = new Date(last.date);
     const daysSince = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysSince > 90) return 'yellow';
     return 'green';
   }, []);
 
-  const renderPatient = useCallback(({ item }: { item: PatientRecord }) => {
+  const renderPatient = useCallback(({ item }: { item: any }) => {
     const alert = getAlertLevel(item);
     return (
       <TouchableOpacity
@@ -75,14 +61,14 @@ function DoctorDashboard() {
       >
         <View style={[styles.patientAvatar, { backgroundColor: alert === 'red' ? '#FFEBEE' : alert === 'yellow' ? '#FFF8E1' : MedicalColors.medicalLight }]}>
           <Text style={[styles.avatarText, { color: alert === 'red' ? MedicalColors.urgency : alert === 'yellow' ? '#F57F17' : MedicalColors.medical }]}>
-            {item.identity.firstName.charAt(0)}{item.identity.lastName.charAt(0)}
+            {item.first_name.charAt(0)}{item.last_name.charAt(0)}
           </Text>
           {alert === 'red' && <View style={styles.alertDotRed} />}
           {alert === 'yellow' && <View style={styles.alertDotYellow} />}
         </View>
         <View style={styles.patientInfo}>
-          <Text style={styles.patientName}>{item.identity.lastName} {item.identity.firstName}</Text>
-          <Text style={styles.patientDossier}>{item.identity.dossierNumber}</Text>
+          <Text style={styles.patientName}>{item.last_name} {item.first_name}</Text>
+          <Text style={styles.patientDossier}>{item.numero_dossier}</Text>
           {item.consultations?.length > 0 && (
             <Text style={styles.patientLastVisit}>
               Dernière visite : {new Date(item.consultations[0].date).toLocaleDateString('fr-FR')}
@@ -204,73 +190,8 @@ function DoctorDashboard() {
 function PatientDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const allPatients = useMedicalStore((s) => s.patients);
-  const getMyRecord = useMedicalStore((s) => s.getMyRecord);
-  const getMyRecordByEmail = useMedicalStore((s) => s.getMyRecordByEmail);
-  const autoLinkPatientByEmail = useMedicalStore((s) => s.autoLinkPatientByEmail);
-  const syncMyRecordFromBackend = useMedicalStore((s) => s.syncMyRecordFromBackend);
-  const getMyPrescriptions = useMedicalStore((s) => s.getMyPrescriptions);
-  const hasAttemptedAutoLink = React.useRef(false);
-
-  // Synchroniser mon dossier depuis le backend au montage
-  useEffect(() => {
-    if (!user?.id) return;
-    console.log('[PatientDashboard] Syncing my record from backend on mount, userId:', user.id);
-    syncMyRecordFromBackend(user.id);
-  }, [user?.id, syncMyRecordFromBackend]);
-
-  // Synchronisation automatique toutes les 30 secondes
-  useEffect(() => {
-    if (!user?.id) return;
-    const interval = setInterval(() => {
-      console.log('[PatientDashboard] Auto-syncing my record from backend, userId:', user.id);
-      syncMyRecordFromBackend(user.id);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [user?.id, syncMyRecordFromBackend]);
-
-  useEffect(() => {
-    if (!user || hasAttemptedAutoLink.current) return;
-    const byId = getMyRecord(user.id);
-    if (!byId && user.email) {
-      console.log('[PatientDashboard] No record by userId, trying auto-link by email:', user.email);
-      const linked = autoLinkPatientByEmail(user.email, user.id);
-      if (linked) {
-        console.log('[PatientDashboard] Auto-linked patient record:', linked.id);
-      } else {
-        console.log('[PatientDashboard] No record found by email either');
-      }
-      hasAttemptedAutoLink.current = true;
-    }
-  }, [user, allPatients, getMyRecord, autoLinkPatientByEmail]);
-
-  const record = useMemo(() => {
-    if (!user) return null;
-    console.log('[PatientDashboard] Looking for record with userId:', user.id, 'email:', user.email, 'total patients:', allPatients.length);
-    const byId = getMyRecord(user.id);
-    if (byId) {
-      console.log('[PatientDashboard] Found record by userId:', byId.id);
-      return byId;
-    }
-    if (user.email) {
-      const byEmail = getMyRecordByEmail(user.email);
-      if (byEmail) {
-        console.log('[PatientDashboard] Found record by email:', byEmail.id);
-        return byEmail;
-      }
-    }
-    console.log('[PatientDashboard] No record found');
-    return null;
-  }, [user, allPatients, getMyRecord, getMyRecordByEmail]);
-
-  const prescriptions = useMemo(
-    () => {
-      if (!user) return [];
-      return getMyPrescriptions(user.id);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, allPatients, getMyPrescriptions]
-  );
+  const record = useBackendStore(s => s.myRecord);
+  const prescriptions: any[] = [];
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
@@ -359,12 +280,12 @@ function PatientDashboard() {
               <View style={styles.criticalItem}>
                 <Activity size={16} color={MedicalColors.urgency} />
                 <Text style={styles.criticalLabel}>Groupe sanguin</Text>
-                <Text style={styles.criticalValue}>{record.criticalInfo.bloodGroup || 'Non renseigné'}</Text>
+                <Text style={styles.criticalValue}>{record.blood_type || 'Non renseigné'}</Text>
               </View>
               <View style={styles.criticalItem}>
                 <AlertCircle size={16} color={MedicalColors.warning} />
                 <Text style={styles.criticalLabel}>Allergies</Text>
-                <Text style={styles.criticalValue}>{(record.criticalInfo.drugAllergies?.length || 0) + (record.criticalInfo.foodAllergies?.length || 0)}</Text>
+                <Text style={styles.criticalValue}>{record.allergies ? 'Oui' : 'Non'}</Text>
               </View>
             </View>
           </View>
