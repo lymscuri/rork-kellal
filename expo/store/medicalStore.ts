@@ -307,182 +307,157 @@ export const useMedicalStore = create<MedicalStore>()(
           const res = await dossierAPI.listPatients();
           const backendPatients = res.data.data || res.data.results || res.data;
 
-          if (Array.isArray(backendPatients) && backendPatients.length > 0) {
-            set((state) => {
-              const updatedPatients = [...state.patients];
-              let addedCount = 0;
-              let updatedCount = 0;
-
-              backendPatients.forEach((bp: any) => {
-                // ÉTAPE 1 : Trouver le patient existant AVANT de mapper
-                const existing = state.patients.find(p =>
-                  p.id === String(bp.id) ||
-                  (p.linkedEmail && bp.email && p.linkedEmail === bp.email.toLowerCase()) ||
-                  (p.userId && bp.user_id && p.userId === String(bp.user_id))
-                );
-
-                // ÉTAPE 2 : Mapper les arrays du backend
-                // BUG 3 FIX : Consultations avec lab_tests imbriqués
-                const mappedConsultations = (bp.consultations || []).map((c: any) => ({
-                  id: String(c.id || genId()),
-                  patientId: String(bp.id),
-                  date: c.date || '',
-                  motif: c.motif || '',
-                  motifDetail: c.motif_detail || '',
-                  diagnostic: c.diagnostic || '',
-                  traitement: c.traitement || '',
-                  recommandations: c.recommandations || '',
-                  weight: c.poids ?? undefined,
-                  height: c.taille ?? undefined,
-                  systolicBP: c.tension_systolique ?? undefined,
-                  diastolicBP: c.tension_diastolique ?? undefined,
-                  heartRate: c.frequence_cardiaque ?? undefined,
-                  temperature: c.temperature ?? undefined,
-                  spo2: c.spo2 ?? undefined,
-                  nextAppointment: c.prochain_rdv ?? undefined,
-                  // lab_tests imbriqués
-                  labTests: (c.lab_tests || []).map((lt: any) => ({
-                    id: String(lt.id || genId()),
-                    testName: lt.test_name || '',
-                    testType: lt.test_type || '',
-                    status: lt.status || 'pending',
-                    results: lt.results || '',
-                    interpretation: lt.interpretation || '',
-                  })),
-                }));
-                // BUG 1 FIX : Vaccins depuis bp.vaccines (pas bp.vaccinations)
-                const mappedVaccines = (bp.vaccines || bp.vaccinations || []).map((v: any) => ({
-                  id: String(v.id || genId()),
-                  patientId: String(bp.id),
-                  name: v.vaccine_name || v.name || '',
-                  date: v.date_administered || v.date || '',
-                  facility: v.facility || v.etablissement || '',
-                  doctor: v.doctor || v.medecin || '',
-                  nextReminder: v.next_reminder || v.nextReminder || undefined,
-                  status: v.status || 'a_faire',
-                }));
-                // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
-                const mappedLabResults = (bp.consultations || []).flatMap((c: any) =>
-                  (c.lab_tests || []).map((lt: any) => ({
-                    id: String(lt.id || genId()),
-                    patientId: String(bp.id),
-                    consultationId: String(c.id),
-                    testName: lt.test_name || '',
-                    testType: lt.test_type || '',
-                    status: lt.status || 'pending',
-                    orderedDate: lt.ordered_date || '',
-                    completedDate: lt.completed_date || undefined,
-                    results: lt.results || '',
-                    interpretation: lt.interpretation || '',
-                  }))
-                );
-                const mappedSurgeries = (bp.surgeries || bp.chirurgies || []).map((s: any) => ({
-                  id: String(s.id || genId()),
-                  name: s.nom || s.name || '',
-                  date: s.date || '',
-                  hospital: s.hopital || s.hospital || '',
-                }));
-                const mappedHospitalizations = (bp.hospitalisations || []).map((h: any) => ({
-                  id: String(h.id || genId()),
-                  reason: h.motif || h.reason || '',
-                  date: h.date_entree || h.date || '',
-                  duration: h.duree || h.duration || '',
-                  hospital: h.hopital || h.hospital || '',
-                }));
-
-                // ÉTAPE 3 : Créer le patient mergé avec RÈGLES DE MERGE
-                const mergedPatient: PatientRecord = {
-                  id: String(bp.id),
-                  userId: bp.user_id ? String(bp.user_id) : existing?.userId,
-                  linkedEmail: bp.email?.toLowerCase() || existing?.linkedEmail,
-
-                  // RÈGLE 4 — Identité : backend si non vide, sinon local
-                  identity: {
-                    firstName: bp.first_name || existing?.identity?.firstName || '',
-                    lastName: bp.last_name || existing?.identity?.lastName || '',
-                    dossierNumber: bp.dossier_number || existing?.identity?.dossierNumber || `KNY-${Date.now()}`,
-                    emergencyContacts: bp.emergency_contacts || existing?.identity?.emergencyContacts || [],
-                    photo: bp.photo || existing?.identity?.photo,
-                    birthDate: bp.date_of_birth || bp.birth_date || existing?.identity?.birthDate,
-                    sex: (bp.gender === 'M' || bp.gender === 'F' ? bp.gender : undefined) || existing?.identity?.sex,
-                    phone: bp.phone || existing?.identity?.phone,
-                    address: bp.address || existing?.identity?.address,
-                    commune: bp.city || bp.commune || existing?.identity?.commune,
-                    prefecture: bp.prefecture || existing?.identity?.prefecture,
-                  },
-
-                  // RÈGLE 3 — Objets imbriqués : merger champ par champ
-                  criticalInfo: {
-                    bloodGroup: bp.critical_info?.blood_type || bp.blood_type || existing?.criticalInfo?.bloodGroup || '',
-                    rhFactor: bp.critical_info?.rhFactor || existing?.criticalInfo?.rhFactor,
-                    drugAllergies: (bp.critical_info?.drugAllergies || bp.allergies)
-                      ? parseDrugAllergies(bp.critical_info?.drugAllergies || bp.allergies)
-                      : existing?.criticalInfo?.drugAllergies || [],
-                    foodAllergies: bp.critical_info?.foodAllergies || existing?.criticalInfo?.foodAllergies || [],
-                    chronicDiseases: (bp.critical_info?.chronicDiseases || bp.chronic_diseases || bp.chronic_conditions)
-                      ? parseChronicDiseases(bp.critical_info?.chronicDiseases || bp.chronic_diseases || bp.chronic_conditions)
-                      : existing?.criticalInfo?.chronicDiseases || [],
-                    permanentTreatments: (bp.critical_info?.permanentTreatments || bp.permanent_treatments)
-                      ? parsePermanentTreatments(bp.critical_info?.permanentTreatments || bp.permanent_treatments)
-                      : existing?.criticalInfo?.permanentTreatments || [],
-                    handicap: bp.critical_info?.handicap || existing?.criticalInfo?.handicap,
-                    otherChronicDisease: bp.critical_info?.otherChronicDisease || existing?.criticalInfo?.otherChronicDisease,
-                  },
-
-                  personalHistory: {
-                    pastIllnesses: bp.personal_history?.pastIllnesses || bp.personal_history?.past_illnesses || existing?.personalHistory?.pastIllnesses,
-                    surgeries: mergeById(existing?.personalHistory?.surgeries || [], mappedSurgeries),
-                    hospitalizations: mergeById(existing?.personalHistory?.hospitalizations || [], mappedHospitalizations),
-                    bloodTransfusion: bp.personal_history?.bloodTransfusion ?? bp.personal_history?.blood_transfusion ?? existing?.personalHistory?.bloodTransfusion ?? false,
-                    bloodTransfusionDate: bp.personal_history?.bloodTransfusionDate || bp.personal_history?.blood_transfusion_date || existing?.personalHistory?.bloodTransfusionDate,
-                  },
-
-                  familyHistory: bp.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-                  // BUG 4 FIX : lifeHabits avec ?? pour préserver valeurs false
-                  lifeHabits: {
-                    tobacco: bp.life_habits?.tobacco ?? existing?.lifeHabits?.tobacco ?? false,
-                    alcohol: bp.life_habits?.alcohol ?? existing?.lifeHabits?.alcohol ?? false,
-                    physicalActivity: bp.life_habits?.physicalActivity
-                      || bp.life_habits?.physical_activity
-                      || existing?.lifeHabits?.physicalActivity
-                      || 'moderee',
-                    tobaccoQuantity: bp.life_habits?.tobaccoQuantity || existing?.lifeHabits?.tobaccoQuantity,
-                    specialDiet: bp.life_habits?.specialDiet || existing?.lifeHabits?.specialDiet,
-                  },
-
-                  // RÈGLE 2 — Arrays : fusionner par ID
-                  consultations: mergeById(existing?.consultations || [], mappedConsultations),
-                  labResults: mergeById(existing?.labResults || [], mappedLabResults),
-                  vaccines: mergeById(existing?.vaccines || [], mappedVaccines),
-
-                  doctorIds: bp.doctor_ids || (bp.doctor ? [String(bp.doctor)] : []) || existing?.doctorIds || [],
-                  doctorId: String(bp.doctor || bp.doctor_id || bp.created_by || existing?.doctorId),
-                  createdAt: bp.created_at || existing?.createdAt || new Date().toISOString(),
-                  updatedAt: bp.updated_at || new Date().toISOString(),
-                };
-
-                // ÉTAPE 4 : Ajouter ou mettre à jour
-                const existingIndex = updatedPatients.findIndex(p =>
-                  p.id === mergedPatient.id ||
-                  (p.linkedEmail && mergedPatient.linkedEmail && p.linkedEmail === mergedPatient.linkedEmail) ||
-                  (p.userId && mergedPatient.userId && p.userId === mergedPatient.userId)
-                );
-
-                if (existingIndex !== -1) {
-                  updatedPatients[existingIndex] = mergedPatient;
-                  updatedCount++;
-                } else {
-                  updatedPatients.push(mergedPatient);
-                  addedCount++;
-                }
-              });
-
-              console.log(`[MedicalStore] Synced ${backendPatients.length} patients from backend: ${updatedCount} updated, ${addedCount} added`);
-              return { patients: updatedPatients };
-            });
-          } else {
-            console.log('[MedicalStore] No patients from backend or empty response');
+          if (!Array.isArray(backendPatients) || backendPatients.length === 0) {
+            console.log('[MedicalStore] No patients from backend');
+            return;
           }
+
+          const mappedPatients: PatientRecord[] = backendPatients.map((data: any) => {
+            // Mapper consultations
+            const consultations: ConsultationRecord[] = (data.consultations || []).map((c: any) => ({
+              id: String(c.id || genId()),
+              patientId: String(data.id),
+              doctorId: c.doctor_id || '',
+              doctorName: c.doctor_name || '',
+              date: c.date ? c.date.split(' ')[0] : '',
+              time: c.date ? c.date.split(' ')[1] || '' : '',
+              reason: c.motif || '',
+              vitalSigns: {
+                weight: c.poids ?? undefined,
+                height: c.taille ?? undefined,
+                systolicBP: c.tension_systolique ?? undefined,
+                diastolicBP: c.tension_diastolique ?? undefined,
+                heartRate: c.frequence_cardiaque ?? undefined,
+                temperature: c.temperature ?? undefined,
+                spo2: c.spo2 ?? undefined,
+              },
+              clinicalExams: [],
+              mainDiagnosis: c.diagnostic || '',
+              differentialDiagnosis: undefined,
+              treatment: c.traitement || '',
+              prescriptions: [],
+              requestedExams: [],
+              nextAppointment: c.prochain_rdv || undefined,
+              observations: c.recommandations || undefined,
+            }));
+
+            // Mapper vaccins
+            const vaccines: VaccineRecord[] = (data.vaccines || []).map((v: any) => ({
+              id: String(v.id || genId()),
+              patientId: String(data.id),
+              name: v.vaccine_name || '',
+              date: v.date_administered || '',
+              facility: '',
+              doctor: v.notes || '',
+              nextReminder: v.next_dose_date || undefined,
+              status: 'fait' as const,
+            }));
+
+            // Mapper lab results
+            const labResults: LabResult[] = (data.consultations || []).flatMap((c: any) =>
+              (c.lab_tests || []).map((lt: any) => ({
+                id: String(lt.id || genId()),
+                patientId: String(data.id),
+                examType: lt.test_name || '',
+                date: lt.completed_date || lt.ordered_date || '',
+                facility: '',
+                result: lt.results || '',
+                unit: undefined,
+                interpretation: lt.interpretation || undefined,
+                prescribedBy: '',
+              }))
+            );
+
+            // Mapper chirurgies
+            const surgeries: Surgery[] = (data.surgeries || []).map((s: any) => ({
+              id: String(s.id || genId()),
+              name: s.nom || '',
+              date: s.date || '',
+              hospital: s.hopital || undefined,
+            }));
+
+            // Mapper hospitalisations
+            const hospitalizations: Hospitalization[] = (data.hospitalisations || []).map((h: any) => ({
+              id: String(h.id || genId()),
+              reason: h.motif || '',
+              date: h.date_entree || '',
+              duration: h.date_sortie ? `${h.date_entree} - ${h.date_sortie}` : undefined,
+              hospital: h.hopital || undefined,
+            }));
+
+            // Parser criticalInfo
+            const criticalInfo: CriticalInfo = {
+              bloodGroup: data.blood_type || undefined,
+              rhFactor: undefined,
+              drugAllergies: data.allergies ? parseDrugAllergies(data.allergies) : [],
+              foodAllergies: [],
+              chronicDiseases: data.chronic_diseases ? parseChronicDiseases(data.chronic_diseases) : [],
+              otherChronicDisease: undefined,
+              permanentTreatments: data.permanent_treatments ? parsePermanentTreatments(data.permanent_treatments) : [],
+              handicap: undefined,
+            };
+
+            // Parser personalHistory
+            const personalHistory: PersonalHistory = {
+              pastIllnesses: data.personal_history?.past_illnesses || undefined,
+              surgeries,
+              hospitalizations,
+              bloodTransfusion: data.personal_history?.blood_transfusion || false,
+              bloodTransfusionDate: data.personal_history?.blood_transfusion_date || undefined,
+            };
+
+            // Parser familyHistory
+            const familyHistory: FamilyHistory = data.family_history || {
+              diabetes: false,
+              hypertension: false,
+              cancer: false,
+              sickleCell: false,
+              hereditary: false,
+            };
+
+            // Parser lifeHabits
+            const lifeHabits: LifeHabits = {
+              tobacco: data.life_habits?.tobacco ?? false,
+              tobaccoQuantity: data.life_habits?.tobaccoQuantity || undefined,
+              alcohol: data.life_habits?.alcohol ?? false,
+              physicalActivity: data.life_habits?.physical_activity || 'moderee',
+              specialDiet: data.life_habits?.specialDiet || undefined,
+            };
+
+            return {
+              id: String(data.id),
+              userId: data.user_id ? String(data.user_id) : undefined,
+              linkedEmail: data.linked_email?.toLowerCase() || undefined,
+              identity: {
+                firstName: data.first_name || '',
+                lastName: data.last_name || '',
+                birthDate: data.date_of_birth || undefined,
+                sex: (data.gender === 'M' || data.gender === 'F') ? data.gender : undefined,
+                phone: data.phone || undefined,
+                address: data.address || undefined,
+                commune: data.city || undefined,
+                prefecture: data.prefecture || undefined,
+                dossierNumber: data.numero_dossier || `KDY-${Date.now()}`,
+                emergencyContacts: data.emergency_contacts || [],
+                photo: undefined,
+              },
+              criticalInfo,
+              personalHistory,
+              familyHistory,
+              lifeHabits,
+              consultations,
+              labResults,
+              vaccines,
+              doctorIds: [],
+              doctorId: '',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+          });
+
+          // Remplacer tous les patients dans le store
+          set({ patients: mappedPatients });
+          console.log(`[MedicalStore] Synced ${mappedPatients.length} patients from backend`);
         } catch (e) {
           console.warn('[MedicalStore] syncPatientsFromBackend failed:', extractErrorMessage(e));
         } finally {
@@ -501,186 +476,167 @@ export const useMedicalStore = create<MedicalStore>()(
             return;
           }
 
-          // ÉTAPE 1 : Trouver le patient existant AVANT de mapper
-          const existing = get().patients.find(
-            (p) =>
-              p.userId === userId ||
-              p.id === String(data.id) ||
-              (p.linkedEmail && data.email && p.linkedEmail === data.email.toLowerCase())
-          );
-
-          // ÉTAPE 2 : Mapper les arrays du backend
-          // BUG 3 FIX : Consultations avec lab_tests imbriqués
-          const mappedConsultations = (data.consultations || []).map((c: any) => ({
+          // Mapper consultations (backend: motif, motif_detail, diagnostic, traitement, etc.)
+          const consultations: ConsultationRecord[] = (data.consultations || []).map((c: any) => ({
             id: String(c.id || genId()),
             patientId: String(data.id),
-            date: c.date || '',
-            motif: c.motif || '',
-            motifDetail: c.motif_detail || '',
-            diagnostic: c.diagnostic || '',
-            traitement: c.traitement || '',
-            recommandations: c.recommandations || '',
-            weight: c.poids ?? undefined,
-            height: c.taille ?? undefined,
-            systolicBP: c.tension_systolique ?? undefined,
-            diastolicBP: c.tension_diastolique ?? undefined,
-            heartRate: c.frequence_cardiaque ?? undefined,
-            temperature: c.temperature ?? undefined,
-            spo2: c.spo2 ?? undefined,
-            nextAppointment: c.prochain_rdv ?? undefined,
-            // lab_tests imbriqués
-            labTests: (c.lab_tests || []).map((lt: any) => ({
-              id: String(lt.id || genId()),
-              testName: lt.test_name || '',
-              testType: lt.test_type || '',
-              status: lt.status || 'pending',
-              results: lt.results || '',
-              interpretation: lt.interpretation || '',
-            })),
+            doctorId: c.doctor_id || '',
+            doctorName: c.doctor_name || '',
+            date: c.date ? c.date.split(' ')[0] : '',
+            time: c.date ? c.date.split(' ')[1] || '' : '',
+            reason: c.motif || '',
+            vitalSigns: {
+              weight: c.poids ?? undefined,
+              height: c.taille ?? undefined,
+              systolicBP: c.tension_systolique ?? undefined,
+              diastolicBP: c.tension_diastolique ?? undefined,
+              heartRate: c.frequence_cardiaque ?? undefined,
+              temperature: c.temperature ?? undefined,
+              spo2: c.spo2 ?? undefined,
+            },
+            clinicalExams: [],
+            mainDiagnosis: c.diagnostic || '',
+            differentialDiagnosis: undefined,
+            treatment: c.traitement || '',
+            prescriptions: [],
+            requestedExams: [],
+            nextAppointment: c.prochain_rdv || undefined,
+            observations: c.recommandations || undefined,
           }));
-          // BUG 1 FIX : Vaccins depuis data.vaccines (pas data.vaccinations)
-          const mappedVaccines = (data.vaccines || data.vaccinations || []).map((v: any) => ({
+
+          // Mapper vaccins (backend: vaccine_name, date_administered, dose_number, etc.)
+          const vaccines: VaccineRecord[] = (data.vaccines || []).map((v: any) => ({
             id: String(v.id || genId()),
             patientId: String(data.id),
-            name: v.vaccine_name || v.name || '',
-            date: v.date_administered || v.date || '',
-            facility: v.facility || v.etablissement || '',
-            doctor: v.doctor || v.medecin || '',
-            nextReminder: v.next_reminder || v.nextReminder || undefined,
-            status: v.status || 'a_faire',
+            name: v.vaccine_name || '',
+            date: v.date_administered || '',
+            facility: '',
+            doctor: v.notes || '',
+            nextReminder: v.next_dose_date || undefined,
+            status: 'fait' as const,
           }));
-          // BUG 2 FIX : Lab results extraits depuis consultations[].lab_tests[]
-          const mappedLabResults = (data.consultations || []).flatMap((c: any) =>
+
+          // Mapper lab results (backend: consultations[].lab_tests[])
+          const labResults: LabResult[] = (data.consultations || []).flatMap((c: any) =>
             (c.lab_tests || []).map((lt: any) => ({
               id: String(lt.id || genId()),
               patientId: String(data.id),
-              consultationId: String(c.id),
-              testName: lt.test_name || '',
-              testType: lt.test_type || '',
-              status: lt.status || 'pending',
-              orderedDate: lt.ordered_date || '',
-              completedDate: lt.completed_date || undefined,
-              results: lt.results || '',
-              interpretation: lt.interpretation || '',
+              examType: lt.test_name || '',
+              date: lt.completed_date || lt.ordered_date || '',
+              facility: '',
+              result: lt.results || '',
+              unit: undefined,
+              interpretation: lt.interpretation || undefined,
+              prescribedBy: '',
             }))
           );
-          const mappedSurgeries = (data.surgeries || data.chirurgies || []).map((s: any) => ({
+
+          // Mapper chirurgies (backend: nom, date, hopital)
+          const surgeries: Surgery[] = (data.surgeries || []).map((s: any) => ({
             id: String(s.id || genId()),
-            name: s.nom || s.name || '',
+            name: s.nom || '',
             date: s.date || '',
-            hospital: s.hopital || s.hospital || '',
+            hospital: s.hopital || undefined,
           }));
-          const mappedHospitalizations = (data.hospitalisations || []).map((h: any) => ({
+
+          // Mapper hospitalisations (backend: motif, date_entree, date_sortie, hopital)
+          const hospitalizations: Hospitalization[] = (data.hospitalisations || []).map((h: any) => ({
             id: String(h.id || genId()),
-            reason: h.motif || h.reason || '',
-            date: h.date_entree || h.date || '',
-            duration: h.duree || h.duration || '',
-            hospital: h.hopital || h.hospital || '',
+            reason: h.motif || '',
+            date: h.date_entree || '',
+            duration: h.date_sortie ? `${h.date_entree} - ${h.date_sortie}` : undefined,
+            hospital: h.hopital || undefined,
           }));
 
-          // ÉTAPE 3 : Créer le patient mergé avec RÈGLES DE MERGE
-          const mergedRecord: PatientRecord = {
-            id: String(data.id),
-            userId: userId,
-            linkedEmail: data.email?.toLowerCase() || existing?.linkedEmail,
-
-            // RÈGLE 4 — Identité : backend si non vide, sinon local
-            identity: {
-              firstName: data.first_name || existing?.identity?.firstName || '',
-              lastName: data.last_name || existing?.identity?.lastName || '',
-              dossierNumber: data.dossier_number || existing?.identity?.dossierNumber || `KNY-${Date.now()}`,
-              emergencyContacts: data.emergency_contacts || existing?.identity?.emergencyContacts || [],
-              photo: data.photo || existing?.identity?.photo,
-              birthDate: data.date_of_birth || data.birth_date || existing?.identity?.birthDate,
-              sex: (data.gender === 'M' || data.gender === 'F' ? data.gender : undefined) || existing?.identity?.sex,
-              phone: data.phone || existing?.identity?.phone,
-              address: data.address || existing?.identity?.address,
-              commune: data.city || data.commune || existing?.identity?.commune,
-              prefecture: data.prefecture || existing?.identity?.prefecture,
-            },
-
-            // RÈGLE 3 — Objets imbriqués : merger champ par champ
-            criticalInfo: {
-              bloodGroup: data.critical_info?.blood_type || data.blood_type || existing?.criticalInfo?.bloodGroup || '',
-              rhFactor: data.critical_info?.rhFactor || existing?.criticalInfo?.rhFactor,
-              drugAllergies: (data.critical_info?.drugAllergies || data.allergies)
-                ? parseDrugAllergies(data.critical_info?.drugAllergies || data.allergies)
-                : existing?.criticalInfo?.drugAllergies || [],
-              foodAllergies: data.critical_info?.foodAllergies || existing?.criticalInfo?.foodAllergies || [],
-              chronicDiseases: (data.critical_info?.chronicDiseases || data.chronic_diseases || data.chronic_conditions)
-                ? parseChronicDiseases(data.critical_info?.chronicDiseases || data.chronic_diseases || data.chronic_conditions)
-                : existing?.criticalInfo?.chronicDiseases || [],
-              permanentTreatments: (data.critical_info?.permanentTreatments || data.permanent_treatments)
-                ? parsePermanentTreatments(data.critical_info?.permanentTreatments || data.permanent_treatments)
-                : existing?.criticalInfo?.permanentTreatments || [],
-              handicap: data.critical_info?.handicap || existing?.criticalInfo?.handicap,
-              otherChronicDisease: data.critical_info?.otherChronicDisease || existing?.criticalInfo?.otherChronicDisease,
-            },
-
-            personalHistory: {
-              pastIllnesses: data.personal_history?.pastIllnesses || data.personal_history?.past_illnesses || existing?.personalHistory?.pastIllnesses,
-              surgeries: mergeById(existing?.personalHistory?.surgeries || [], mappedSurgeries),
-              hospitalizations: mergeById(existing?.personalHistory?.hospitalizations || [], mappedHospitalizations),
-              bloodTransfusion: data.personal_history?.bloodTransfusion ?? data.personal_history?.blood_transfusion ?? existing?.personalHistory?.bloodTransfusion ?? false,
-              bloodTransfusionDate: data.personal_history?.bloodTransfusionDate || data.personal_history?.blood_transfusion_date || existing?.personalHistory?.bloodTransfusionDate,
-            },
-
-            familyHistory: data.family_history || existing?.familyHistory || { diabetes: false, hypertension: false, cancer: false, sickleCell: false, hereditary: false },
-            // BUG 4 FIX : lifeHabits avec ?? pour préserver valeurs false
-            lifeHabits: {
-              tobacco: data.life_habits?.tobacco ?? existing?.lifeHabits?.tobacco ?? false,
-              alcohol: data.life_habits?.alcohol ?? existing?.lifeHabits?.alcohol ?? false,
-              physicalActivity: data.life_habits?.physicalActivity
-                || data.life_habits?.physical_activity
-                || existing?.lifeHabits?.physicalActivity
-                || 'moderee',
-              tobaccoQuantity: data.life_habits?.tobaccoQuantity || existing?.lifeHabits?.tobaccoQuantity,
-              specialDiet: data.life_habits?.specialDiet || existing?.lifeHabits?.specialDiet,
-            },
-
-            // RÈGLE 2 — Arrays : fusionner par ID
-            consultations: mergeById(existing?.consultations || [], mappedConsultations),
-            labResults: mergeById(existing?.labResults || [], mappedLabResults),
-            vaccines: mergeById(existing?.vaccines || [], mappedVaccines),
-
-            doctorIds: data.doctor_ids || (data.doctor_id ? [String(data.doctor_id)] : []) || existing?.doctorIds || [],
-            doctorId: String(data.doctor_id || data.doctor || data.created_by || existing?.doctorId),
-            createdAt: data.created_at || existing?.createdAt || new Date().toISOString(),
-            updatedAt: data.updated_at || new Date().toISOString(),
+          // Parser criticalInfo depuis le backend
+          const criticalInfo: CriticalInfo = {
+            bloodGroup: data.blood_type || undefined,
+            rhFactor: undefined,
+            drugAllergies: data.allergies ? parseDrugAllergies(data.allergies) : [],
+            foodAllergies: [],
+            chronicDiseases: data.chronic_diseases ? parseChronicDiseases(data.chronic_diseases) : [],
+            otherChronicDisease: undefined,
+            permanentTreatments: data.permanent_treatments ? parsePermanentTreatments(data.permanent_treatments) : [],
+            handicap: undefined,
           };
 
-          // FLUX DE SYNCHRONISATION avec MERGE INTELLIGENT:
-          // 1. Le médecin crée un dossier sur Railway avec le email du patient
-          // 2. Le patient se connecte → on récupère son dossier via GET /dossiers/my-record/
-          // 3. On trouve le dossier existant local et on MERGE intelligemment
-          // 4. Backend gagne sur les champs remplis, local gagne sur les champs vides
-          // 5. Arrays fusionnés par ID pour ne jamais perdre de données
+          // Parser personalHistory
+          const personalHistory: PersonalHistory = {
+            pastIllnesses: data.personal_history?.past_illnesses || undefined,
+            surgeries: surgeries,
+            hospitalizations: hospitalizations,
+            bloodTransfusion: data.personal_history?.blood_transfusion || false,
+            bloodTransfusionDate: data.personal_history?.blood_transfusion_date || undefined,
+          };
+
+          // Parser familyHistory
+          const familyHistory: FamilyHistory = data.family_history || {
+            diabetes: false,
+            hypertension: false,
+            cancer: false,
+            sickleCell: false,
+            hereditary: false,
+          };
+
+          // Parser lifeHabits
+          const lifeHabits: LifeHabits = {
+            tobacco: data.life_habits?.tobacco ?? false,
+            tobaccoQuantity: data.life_habits?.tobaccoQuantity || undefined,
+            alcohol: data.life_habits?.alcohol ?? false,
+            physicalActivity: data.life_habits?.physical_activity || 'moderee',
+            specialDiet: data.life_habits?.specialDiet || undefined,
+          };
+
+          // Créer PatientRecord depuis le backend (source de vérité)
+          const record: PatientRecord = {
+            id: String(data.id),
+            userId: userId,
+            linkedEmail: data.linked_email?.toLowerCase() || undefined,
+            identity: {
+              firstName: data.first_name || '',
+              lastName: data.last_name || '',
+              birthDate: data.date_of_birth || undefined,
+              sex: (data.gender === 'M' || data.gender === 'F') ? data.gender : undefined,
+              phone: data.phone || undefined,
+              address: data.address || undefined,
+              commune: data.city || undefined,
+              prefecture: data.prefecture || undefined,
+              dossierNumber: data.numero_dossier || `KDY-${Date.now()}`,
+              emergencyContacts: data.emergency_contacts || [],
+              photo: undefined,
+            },
+            criticalInfo,
+            personalHistory,
+            familyHistory,
+            lifeHabits,
+            consultations,
+            labResults,
+            vaccines,
+            doctorIds: [],
+            doctorId: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          // Remplacer ou ajouter dans le store
           set((state) => {
             const existingIndex = state.patients.findIndex(
-              (p) =>
-                p.id === mergedRecord.id ||
-                p.userId === mergedRecord.userId ||
-                (p.linkedEmail && mergedRecord.linkedEmail && p.linkedEmail === mergedRecord.linkedEmail)
+              (p) => p.id === record.id || p.userId === userId
             );
 
             if (existingIndex !== -1) {
-              // Dossier existe → Merger intelligemment
-              console.log('[MedicalStore] Merging existing patient record from backend:', mergedRecord.id);
+              console.log('[MedicalStore] Replacing patient record from backend:', record.id);
               const updatedPatients = [...state.patients];
-              updatedPatients[existingIndex] = mergedRecord;
+              updatedPatients[existingIndex] = record;
               return { patients: updatedPatients };
             } else {
-              // Dossier n'existe pas → Ajouter
-              console.log('[MedicalStore] Adding new patient record from backend:', mergedRecord.id);
-              return {
-                patients: [...state.patients, mergedRecord],
-              };
+              console.log('[MedicalStore] Adding new patient record from backend:', record.id);
+              return { patients: [...state.patients, record] };
             }
           });
 
-          console.log('[MedicalStore] My record synced from backend:', mergedRecord.id, 'userId:', userId);
+          console.log('[MedicalStore] My record synced from backend:', record.id);
         } catch (e: any) {
-          // Ignorer silencieusement les 404 (patient sans dossier)
           if (e?.response?.status !== 404) {
             console.warn('[MedicalStore] syncMyRecord failed:', extractErrorMessage(e));
           } else {
@@ -1338,114 +1294,72 @@ export const useMedicalStore = create<MedicalStore>()(
           const res = await maternityAPI.listMaternityPatients();
           const backendPatients = res.data.data || res.data.results || res.data;
 
-          if (Array.isArray(backendPatients) && backendPatients.length > 0) {
-            const mappedPatients: MaternityPatient[] = backendPatients.map(bp => {
-              // PRIORITÉ : utiliser bp.pregnancy si disponible (backend enrichi), sinon construire depuis champs plats
-              const pregnancyId = bp.pregnancy?.id || genId();
+          if (!Array.isArray(backendPatients) || backendPatients.length === 0) {
+            console.log('[MedicalStore] No maternity patients from backend');
+            return;
+          }
 
-              // PRIORITÉ : utiliser bp.prenatal_consultations si disponible (backend enrichi)
-              const consultations: PrenatalConsultation[] = bp.prenatal_consultations && Array.isArray(bp.prenatal_consultations)
-                ? bp.prenatal_consultations.map((pc: any) => ({
-                    id: String(pc.id || genId()),
-                    pregnancyId: pregnancyId,
-                    weekTarget: pc.week_target || pc.weekTarget,
-                    description: pc.description,
-                    status: pc.status || 'a_venir',
-                    scheduledDate: pc.scheduled_date || pc.scheduledDate,
-                    actualDate: pc.actual_date || pc.actualDate,
-                    notes: pc.notes,
-                  }))
-                : DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
-                    ...c,
-                    id: genId(),
-                    pregnancyId,
-                  }));
+          const mappedPatients: MaternityPatient[] = backendPatients.map((data: any) => {
+            // Mapper pregnancy
+            const pregnancy: Pregnancy = {
+              id: data.pregnancy?.id || genId(),
+              patientId: String(data.id),
+              firstName: data.first_name || '',
+              age: data.age || 25,
+              lastPeriodDate: data.pregnancy?.last_period_date,
+              dueDate: data.pregnancy?.due_date,
+              currentWeek: data.pregnancy?.current_week || 1,
+              gravidity: data.pregnancy?.gravidity || 1,
+              parity: data.pregnancy?.parity || 0,
+              previousPregnancies: data.pregnancy?.previous_pregnancies || [],
+              deliveryPlace: data.pregnancy?.delivery_place || '',
+              referentDoctor: data.pregnancy?.referent_doctor,
+              isActive: data.pregnancy?.is_active !== undefined ? data.pregnancy.is_active : true,
+            };
+
+            // Mapper prenatal_consultations vers PrenatalExam
+            const prenatalExams: PrenatalExam[] = (data.prenatal_consultations || []).map((pc: any) => {
+              const bloodPressure = pc.blood_pressure || '';
+              const [systolic, diastolic] = bloodPressure.split('/').map((s: string) => parseInt(s, 10));
 
               return {
-                id: String(bp.id),
-                userId: bp.user_id ? String(bp.user_id) : undefined,
-                linkedEmail: bp.linked_email?.toLowerCase(),
-                pregnancy: bp.pregnancy ? {
-                  id: pregnancyId,
-                  patientId: String(bp.id),
-                  firstName: bp.pregnancy.first_name || bp.first_name || '',
-                  age: bp.pregnancy.age || bp.age || 25,
-                  lastPeriodDate: bp.pregnancy.last_period_date || bp.last_period_date,
-                  dueDate: bp.pregnancy.due_date || bp.due_date,
-                  currentWeek: bp.pregnancy.current_week || bp.current_week || 1,
-                  gravidity: bp.pregnancy.gravidity || bp.gravidity || 1,
-                  parity: bp.pregnancy.parity || bp.parity || 0,
-                  previousPregnancies: bp.pregnancy.previous_pregnancies || bp.previous_pregnancies || [],
-                  deliveryPlace: bp.pregnancy.delivery_place || bp.delivery_place,
-                  referentDoctor: bp.pregnancy.referent_doctor || bp.referent_doctor,
-                  isActive: bp.pregnancy.is_active !== undefined ? bp.pregnancy.is_active : true,
-                } : {
-                  id: pregnancyId,
-                  patientId: String(bp.id),
-                  firstName: bp.first_name || '',
-                  age: bp.age || 25,
-                  lastPeriodDate: bp.last_period_date,
-                  dueDate: bp.due_date,
-                  currentWeek: bp.current_week || 1,
-                  gravidity: bp.gravidity || 1,
-                  parity: bp.parity || 0,
-                  previousPregnancies: bp.previous_pregnancies || [],
-                  deliveryPlace: bp.delivery_place,
-                  referentDoctor: bp.referent_doctor,
-                  isActive: true,
-                },
-                weeklyCheckups: (bp.weekly_checkups || bp.checkups || []).map((wc: any) => ({
-                  id: String(wc.id || genId()),
-                  pregnancyId: pregnancyId,
-                  date: wc.date,
-                  week: wc.week,
-                  weight: wc.weight,
-                  systolicBP: wc.systolic_bp,
-                  diastolicBP: wc.diastolic_bp,
-                  fetalMovements: wc.fetal_movements,
-                  symptoms: wc.symptoms || [],
-                  mood: wc.mood,
-                })),
-                prenatalConsultations: consultations,
-                prenatalExams: [],
-                children: [],
-                childGrowth: [],
-                childVaccines: [],
-                alertLevel: 'vert',
-                soignantId: bp.doctor || bp.soignant_id || bp.created_by,
+                id: String(pc.id || genId()),
+                pregnancyId: pregnancy.id,
+                date: pc.date || '',
+                week: pc.week || 1,
+                weight: pc.weight || undefined,
+                systolicBP: systolic || undefined,
+                diastolicBP: diastolic || undefined,
+                uterineHeight: undefined,
+                fetalHeartRate: pc.fetal_heart_rate || undefined,
+                fetalPresentation: undefined,
+                labResults: [],
+                ultrasound: undefined,
+                prescriptions: [],
+                observations: pc.notes || undefined,
+                markedDone: true,
               };
             });
 
-            set((state) => {
-              const updatedPatients = [...state.maternityPatients];
-              let addedCount = 0;
-              let updatedCount = 0;
+            return {
+              id: String(data.id),
+              userId: data.user_id ? String(data.user_id) : undefined,
+              linkedEmail: data.linked_email?.toLowerCase(),
+              pregnancy,
+              weeklyCheckups: [],
+              prenatalConsultations: [],
+              prenatalExams,
+              children: [],
+              childGrowth: [],
+              childVaccines: [],
+              alertLevel: 'vert',
+              soignantId: undefined,
+            };
+          });
 
-              mappedPatients.forEach(backendPatient => {
-                // Chercher si le patient existe déjà localement (par id, linkedEmail, ou userId)
-                const existingIndex = updatedPatients.findIndex(p =>
-                  p.id === backendPatient.id ||
-                  (p.linkedEmail && backendPatient.linkedEmail && p.linkedEmail === backendPatient.linkedEmail) ||
-                  (p.userId && backendPatient.userId && p.userId === backendPatient.userId)
-                );
-
-                if (existingIndex !== -1) {
-                  // Patient existe → Mettre à jour avec les données du backend (source de vérité)
-                  updatedPatients[existingIndex] = backendPatient;
-                  updatedCount++;
-                } else {
-                  // Patient n'existe pas → Ajouter
-                  updatedPatients.push(backendPatient);
-                  addedCount++;
-                }
-              });
-
-              console.log(`[MedicalStore] Synced ${mappedPatients.length} maternity patients from backend: ${updatedCount} updated, ${addedCount} added`);
-              return { maternityPatients: updatedPatients };
-            });
-          } else {
-            console.log('[MedicalStore] No maternity patients from backend or empty response');
-          }
+          // Remplacer tous les patients maternité dans le store
+          set({ maternityPatients: mappedPatients });
+          console.log(`[MedicalStore] Synced ${mappedPatients.length} maternity patients from backend`);
         } catch (e) {
           console.warn('[MedicalStore] syncMaternityPatientsFromBackend failed:', extractErrorMessage(e));
         } finally {
@@ -1464,115 +1378,82 @@ export const useMedicalStore = create<MedicalStore>()(
             return;
           }
 
-          // Mapper vers MaternityPatient
-          // PRIORITÉ : utiliser data.pregnancy si disponible (backend enrichi), sinon construire depuis champs plats
-          const pregnancyId = data.pregnancy?.id || genId();
+          // Mapper pregnancy depuis backend
+          const pregnancy: Pregnancy = {
+            id: data.pregnancy?.id || genId(),
+            patientId: String(data.id),
+            firstName: data.first_name || '',
+            age: data.age || 25,
+            lastPeriodDate: data.pregnancy?.last_period_date,
+            dueDate: data.pregnancy?.due_date,
+            currentWeek: data.pregnancy?.current_week || 1,
+            gravidity: data.pregnancy?.gravidity || 1,
+            parity: data.pregnancy?.parity || 0,
+            previousPregnancies: data.pregnancy?.previous_pregnancies || [],
+            deliveryPlace: data.pregnancy?.delivery_place || '',
+            referentDoctor: data.pregnancy?.referent_doctor,
+            isActive: data.pregnancy?.is_active !== undefined ? data.pregnancy.is_active : true,
+          };
 
-          // PRIORITÉ : utiliser data.prenatal_consultations si disponible (backend enrichi)
-          const consultations: PrenatalConsultation[] = data.prenatal_consultations && Array.isArray(data.prenatal_consultations)
-            ? data.prenatal_consultations.map((pc: any) => ({
-                id: String(pc.id || genId()),
-                pregnancyId: pregnancyId,
-                weekTarget: pc.week_target || pc.weekTarget,
-                description: pc.description,
-                status: pc.status || 'a_venir',
-                scheduledDate: pc.scheduled_date || pc.scheduledDate,
-                actualDate: pc.actual_date || pc.actualDate,
-                notes: pc.notes,
-              }))
-            : DEFAULT_PRENATAL_CONSULTATIONS.map(c => ({
-                ...c,
-                id: genId(),
-                pregnancyId,
-              }));
+          // Mapper prenatal_consultations vers PrenatalExam
+          const prenatalExams: PrenatalExam[] = (data.prenatal_consultations || []).map((pc: any) => {
+            const bloodPressure = pc.blood_pressure || '';
+            const [systolic, diastolic] = bloodPressure.split('/').map((s: string) => parseInt(s, 10));
 
-          const mappedRecord: MaternityPatient = {
+            return {
+              id: String(pc.id || genId()),
+              pregnancyId: pregnancy.id,
+              date: pc.date || '',
+              week: pc.week || 1,
+              weight: pc.weight || undefined,
+              systolicBP: systolic || undefined,
+              diastolicBP: diastolic || undefined,
+              uterineHeight: undefined,
+              fetalHeartRate: pc.fetal_heart_rate || undefined,
+              fetalPresentation: undefined,
+              labResults: [],
+              ultrasound: undefined,
+              prescriptions: [],
+              observations: pc.notes || undefined,
+              markedDone: true,
+            };
+          });
+
+          // Créer MaternityPatient depuis backend (source de vérité)
+          const record: MaternityPatient = {
             id: String(data.id),
             userId: userId,
-            linkedEmail: data.email?.toLowerCase() || data.linked_email?.toLowerCase(),
-            pregnancy: data.pregnancy ? {
-              id: pregnancyId,
-              patientId: String(data.id),
-              firstName: data.pregnancy.first_name || data.first_name || '',
-              age: data.pregnancy.age || data.age || 25,
-              lastPeriodDate: data.pregnancy.last_period_date || data.last_period_date,
-              dueDate: data.pregnancy.due_date || data.due_date,
-              currentWeek: data.pregnancy.current_week || data.current_week || 1,
-              gravidity: data.pregnancy.gravidity || data.gravidity || 1,
-              parity: data.pregnancy.parity || data.parity || 0,
-              previousPregnancies: data.pregnancy.previous_pregnancies || data.previous_pregnancies || [],
-              deliveryPlace: data.pregnancy.delivery_place || data.delivery_place,
-              referentDoctor: data.pregnancy.referent_doctor || data.referent_doctor,
-              isActive: data.pregnancy.is_active !== undefined ? data.pregnancy.is_active : (data.is_active !== undefined ? data.is_active : true),
-            } : {
-              id: pregnancyId,
-              patientId: String(data.id),
-              firstName: data.first_name || '',
-              age: data.age || 25,
-              lastPeriodDate: data.last_period_date,
-              dueDate: data.due_date,
-              currentWeek: data.current_week || 1,
-              gravidity: data.gravidity || 1,
-              parity: data.parity || 0,
-              previousPregnancies: data.previous_pregnancies || [],
-              deliveryPlace: data.delivery_place,
-              referentDoctor: data.referent_doctor,
-              isActive: data.is_active !== undefined ? data.is_active : true,
-            },
-            weeklyCheckups: (data.weekly_checkups || data.checkups || []).map((wc: any) => ({
-              id: String(wc.id || genId()),
-              pregnancyId: pregnancyId,
-              date: wc.date,
-              week: wc.week,
-              weight: wc.weight,
-              systolicBP: wc.systolic_bp,
-              diastolicBP: wc.diastolic_bp,
-              fetalMovements: wc.fetal_movements,
-              symptoms: wc.symptoms || [],
-              mood: wc.mood,
-            })),
-            prenatalConsultations: consultations,
-            prenatalExams: [],
+            linkedEmail: data.linked_email?.toLowerCase(),
+            pregnancy,
+            weeklyCheckups: [],
+            prenatalConsultations: [],
+            prenatalExams,
             children: [],
             childGrowth: [],
             childVaccines: [],
             alertLevel: 'vert',
-            soignantId: data.soignant_id || data.created_by,
+            soignantId: undefined,
           };
 
-          // FLUX DE SYNCHRONISATION MATERNITÉ:
-          // 1. Le soignant crée un dossier maternité sur Railway avec le email de la patiente
-          // 2. La patiente se connecte → on récupère son dossier via GET /maternity/my-record/
-          // 3. On assigne userId au dossier récupéré
-          // 4. On cherche si ce dossier existe déjà localement (par id backend, userId, OU linkedEmail)
-          // 5. Si trouvé → TOUJOURS mettre à jour avec les données du backend (source de vérité)
-          // 6. Si pas trouvé → Ajouter le nouveau dossier
+          // Remplacer ou ajouter dans le store
           set((state) => {
             const existingIndex = state.maternityPatients.findIndex(
-              (p) =>
-                p.id === mappedRecord.id ||
-                p.userId === mappedRecord.userId ||
-                (p.linkedEmail && mappedRecord.linkedEmail && p.linkedEmail === mappedRecord.linkedEmail)
+              (p) => p.id === record.id || p.userId === userId
             );
 
             if (existingIndex !== -1) {
-              // Dossier existe → Mettre à jour avec les données du backend
-              console.log('[MedicalStore] Updating existing maternity record from backend:', mappedRecord.id);
+              console.log('[MedicalStore] Replacing maternity record from backend:', record.id);
               const updatedPatients = [...state.maternityPatients];
-              updatedPatients[existingIndex] = mappedRecord;
+              updatedPatients[existingIndex] = record;
               return { maternityPatients: updatedPatients };
             } else {
-              // Dossier n'existe pas → Ajouter
-              console.log('[MedicalStore] Adding new maternity record from backend:', mappedRecord.id);
-              return {
-                maternityPatients: [...state.maternityPatients, mappedRecord],
-              };
+              console.log('[MedicalStore] Adding new maternity record from backend:', record.id);
+              return { maternityPatients: [...state.maternityPatients, record] };
             }
           });
 
-          console.log('[MedicalStore] My maternity record synced from backend:', mappedRecord.id, 'userId:', userId);
+          console.log('[MedicalStore] My maternity record synced from backend:', record.id);
         } catch (e: any) {
-          // Ignorer silencieusement les 404 (patient sans dossier maternité)
           if (e?.response?.status !== 404) {
             console.warn('[MedicalStore] syncMyMaternity failed:', extractErrorMessage(e));
           } else {
