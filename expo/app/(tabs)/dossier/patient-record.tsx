@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Text, Button } from 'react-native-paper';
+import { Text, Button, TextInput, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useBackendStore } from '@/store/backendStore';
+import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
 import {
   User, History, Stethoscope, FlaskConical, Syringe, Plus
@@ -15,7 +16,18 @@ export default function PatientRecordScreen() {
   const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
+  const store = useMedicalStore();
   const [activeTab, setActiveTab] = useState(0);
+  const isReadOnly = user?.role !== 'medecin';
+
+  // États locaux pour formulaires médecin
+  const [surgeryName, setSurgeryName] = useState('');
+  const [surgeryDate, setSurgeryDate] = useState('');
+  const [surgeryHospital, setSurgeryHospital] = useState('');
+  const [hospReason, setHospReason] = useState('');
+  const [hospDateEntree, setHospDateEntree] = useState('');
+  const [hospDateSortie, setHospDateSortie] = useState('');
+  const [hospHopital, setHospHopital] = useState('');
 
   // Médecin : chercher dans patients
   // Patient : chercher dans myRecord
@@ -96,6 +108,8 @@ export default function PatientRecordScreen() {
           <Text style={styles.readValue}>{patient.permanent_treatments}</Text>
         </View>
       )}
+
+      {/* TODO: Créer la page edit-critical-info pour le médecin */}
     </View>
   );
 
@@ -125,6 +139,61 @@ export default function PatientRecordScreen() {
             </View>
           ))
         )}
+
+        {!isReadOnly && (
+          <View style={styles.addForm}>
+            <TextInput
+              label="Nom chirurgie"
+              value={surgeryName}
+              onChangeText={setSurgeryName}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Date (ex: 2022-03)"
+              value={surgeryDate}
+              onChangeText={setSurgeryDate}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Hôpital"
+              value={surgeryHospital}
+              onChangeText={setSurgeryHospital}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <Button
+              mode="contained"
+              onPress={async () => {
+                if (!surgeryName.trim() || !surgeryDate.trim()) return;
+                await store.addSurgery(patient.id, {
+                  name: surgeryName.trim(),
+                  date: surgeryDate.trim(),
+                  hospital: surgeryHospital.trim() || undefined,
+                });
+                setSurgeryName('');
+                setSurgeryDate('');
+                setSurgeryHospital('');
+                // Re-sync après ajout
+                await useBackendStore.getState().syncPatients();
+              }}
+              buttonColor={MedicalColors.medical}
+              style={{ marginTop: 8 }}
+            >
+              Ajouter chirurgie
+            </Button>
+          </View>
+        )}
       </View>
 
       <View style={styles.fieldGroup}>
@@ -141,26 +210,204 @@ export default function PatientRecordScreen() {
             </View>
           ))
         )}
+
+        {!isReadOnly && (
+          <View style={styles.addForm}>
+            <TextInput
+              label="Motif"
+              value={hospReason}
+              onChangeText={setHospReason}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Date entrée (ex: 2022-03-15)"
+              value={hospDateEntree}
+              onChangeText={setHospDateEntree}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Date sortie (optionnel)"
+              value={hospDateSortie}
+              onChangeText={setHospDateSortie}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Hôpital"
+              value={hospHopital}
+              onChangeText={setHospHopital}
+              mode="outlined"
+              dense
+              style={styles.input}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <Button
+              mode="contained"
+              onPress={async () => {
+                if (!hospReason.trim() || !hospDateEntree.trim()) return;
+                await store.addHospitalisation(patient.id, {
+                  reason: hospReason.trim(),
+                  date: hospDateEntree.trim(),
+                  duration: hospDateSortie.trim() || undefined,
+                  hospital: hospHopital.trim() || undefined,
+                });
+                setHospReason('');
+                setHospDateEntree('');
+                setHospDateSortie('');
+                setHospHopital('');
+                // Re-sync après ajout
+                await useBackendStore.getState().syncPatients();
+              }}
+              buttonColor={MedicalColors.medical}
+              style={{ marginTop: 8 }}
+            >
+              Ajouter hospitalisation
+            </Button>
+          </View>
+        )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents familiaux</Text>
-        {patient.family_history?.diabetes && <Text style={styles.listItem}>• Diabète</Text>}
-        {patient.family_history?.hypertension && <Text style={styles.listItem}>• Hypertension</Text>}
-        {patient.family_history?.cancer && <Text style={styles.listItem}>• Cancer</Text>}
-        {patient.family_history?.sickleCell && <Text style={styles.listItem}>• Drépanocytose</Text>}
-        {patient.family_history?.hereditary && <Text style={styles.listItem}>• Maladies héréditaires</Text>}
-        {!patient.family_history?.diabetes && !patient.family_history?.hypertension && !patient.family_history?.cancer && !patient.family_history?.sickleCell && !patient.family_history?.hereditary && (
-          <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>
+        {isReadOnly ? (
+          <>
+            {patient.family_history?.diabetes && <Text style={styles.listItem}>• Diabète</Text>}
+            {patient.family_history?.hypertension && <Text style={styles.listItem}>• Hypertension</Text>}
+            {patient.family_history?.cancer && <Text style={styles.listItem}>• Cancer</Text>}
+            {patient.family_history?.sickleCell && <Text style={styles.listItem}>• Drépanocytose</Text>}
+            {patient.family_history?.hereditary && <Text style={styles.listItem}>• Maladies héréditaires</Text>}
+            {!patient.family_history?.diabetes && !patient.family_history?.hypertension && !patient.family_history?.cancer && !patient.family_history?.sickleCell && !patient.family_history?.hereditary && (
+              <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>
+            )}
+          </>
+        ) : (
+          <View style={styles.chipRow}>
+            {([
+              ['diabetes', 'Diabète'],
+              ['hypertension', 'Hypertension'],
+              ['cancer', 'Cancer'],
+              ['sickleCell', 'Drépanocytose'],
+              ['hereditary', 'Maladies héréditaires']
+            ] as const).map(([key, label]) => (
+              <Chip
+                key={key}
+                selected={patient.family_history?.[key] || false}
+                onPress={async () => {
+                  await store.updateFamilyHistory(patient.id, {
+                    [key]: !patient.family_history?.[key]
+                  });
+                  await useBackendStore.getState().syncPatients();
+                }}
+                style={[
+                  styles.chip,
+                  patient.family_history?.[key] && styles.chipSelected
+                ]}
+                textStyle={{
+                  fontSize: 11,
+                  color: patient.family_history?.[key] ? MedicalColors.white : MedicalColors.text
+                }}
+              >
+                {label}
+              </Chip>
+            ))}
+          </View>
         )}
       </View>
 
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Habitudes de vie</Text>
-        <InfoRow label="Tabac" value={patient.life_habits?.tobacco ? 'Oui' : 'Non'} />
-        <InfoRow label="Alcool" value={patient.life_habits?.alcohol ? 'Oui' : 'Non'} />
-        <InfoRow label="Activité physique" value={patient.life_habits?.physical_activity || 'Non renseigné'} />
-        {patient.life_habits?.specialDiet && <InfoRow label="Régime spécial" value={patient.life_habits?.specialDiet} />}
+        {isReadOnly ? (
+          <>
+            <InfoRow label="Tabac" value={patient.life_habits?.tobacco ? 'Oui' : 'Non'} />
+            <InfoRow label="Alcool" value={patient.life_habits?.alcohol ? 'Oui' : 'Non'} />
+            <InfoRow label="Activité physique" value={patient.life_habits?.physical_activity || 'Non renseigné'} />
+            {patient.life_habits?.specialDiet && <InfoRow label="Régime spécial" value={patient.life_habits?.specialDiet} />}
+          </>
+        ) : (
+          <>
+            <Text style={styles.subLabel}>Tabac</Text>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={patient.life_habits?.tobacco === true}
+                onPress={async () => {
+                  await store.updateLifeHabits(patient.id, { tobacco: true });
+                  await useBackendStore.getState().syncPatients();
+                }}
+                style={[styles.chip, patient.life_habits?.tobacco === true && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.life_habits?.tobacco === true ? MedicalColors.white : MedicalColors.text }}
+              >
+                Oui
+              </Chip>
+              <Chip
+                selected={patient.life_habits?.tobacco === false}
+                onPress={async () => {
+                  await store.updateLifeHabits(patient.id, { tobacco: false });
+                  await useBackendStore.getState().syncPatients();
+                }}
+                style={[styles.chip, patient.life_habits?.tobacco === false && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.life_habits?.tobacco === false ? MedicalColors.white : MedicalColors.text }}
+              >
+                Non
+              </Chip>
+            </View>
+
+            <Text style={[styles.subLabel, { marginTop: 12 }]}>Alcool</Text>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={patient.life_habits?.alcohol === true}
+                onPress={async () => {
+                  await store.updateLifeHabits(patient.id, { alcohol: true });
+                  await useBackendStore.getState().syncPatients();
+                }}
+                style={[styles.chip, patient.life_habits?.alcohol === true && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.life_habits?.alcohol === true ? MedicalColors.white : MedicalColors.text }}
+              >
+                Oui
+              </Chip>
+              <Chip
+                selected={patient.life_habits?.alcohol === false}
+                onPress={async () => {
+                  await store.updateLifeHabits(patient.id, { alcohol: false });
+                  await useBackendStore.getState().syncPatients();
+                }}
+                style={[styles.chip, patient.life_habits?.alcohol === false && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: patient.life_habits?.alcohol === false ? MedicalColors.white : MedicalColors.text }}
+              >
+                Non
+              </Chip>
+            </View>
+
+            <Text style={[styles.subLabel, { marginTop: 12 }]}>Activité physique</Text>
+            <View style={styles.chipRow}>
+              {(['sedentaire', 'moderee', 'active'] as const).map(level => (
+                <Chip
+                  key={level}
+                  selected={patient.life_habits?.physical_activity === level}
+                  onPress={async () => {
+                    await store.updateLifeHabits(patient.id, { physicalActivity: level });
+                    await useBackendStore.getState().syncPatients();
+                  }}
+                  style={[styles.chip, patient.life_habits?.physical_activity === level && styles.chipSelected]}
+                  textStyle={{ fontSize: 12, color: patient.life_habits?.physical_activity === level ? MedicalColors.white : MedicalColors.text }}
+                >
+                  {level === 'sedentaire' ? 'Sédentaire' : level === 'moderee' ? 'Modérée' : 'Active'}
+                </Chip>
+              ))}
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -346,6 +593,17 @@ const styles = StyleSheet.create({
   fieldGroup: { backgroundColor: MedicalColors.white, borderRadius: 12, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: MedicalColors.border },
   readValue: { fontSize: 14, color: MedicalColors.text, lineHeight: 20 },
   subLabel: { fontSize: 13, fontWeight: '600' as const, color: MedicalColors.textSecondary, marginTop: 10, marginBottom: 4 },
+  addForm: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: MedicalColors.border,
+    gap: 8,
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  chip: { backgroundColor: MedicalColors.background },
+  chipSelected: { backgroundColor: MedicalColors.medical },
+  input: { marginBottom: 4 },
   historyItem: { backgroundColor: MedicalColors.background, borderRadius: 8, padding: 10, marginBottom: 6 },
   historyItemTitle: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   historyItemSub: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
