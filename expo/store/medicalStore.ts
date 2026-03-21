@@ -1241,6 +1241,13 @@ export const useMedicalStore = create<MedicalStore>()(
             linked_email: linkedEmail?.toLowerCase(),
             first_name: pregnancy.firstName,
             age: pregnancy.age,
+            date_of_birth: pregnancy.age
+              ? new Date(
+                  new Date().getFullYear() - pregnancy.age,
+                  new Date().getMonth(),
+                  new Date().getDate()
+                ).toISOString().split('T')[0]
+              : undefined,
             last_period_date: pregnancy.lastPeriodDate,
             due_date: pregnancy.dueDate,
             current_week: pregnancy.currentWeek,
