@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { zustandStorage } from './storage';
 import { dossierAPI, maternityAPI, remindersAPI, extractErrorMessage } from './api';
+import { useBackendStore } from './backendStore';
 import type {
   PatientRecord,
   PatientIdentity,
@@ -841,22 +842,29 @@ export const useMedicalStore = create<MedicalStore>()(
 
       addConsultation: async (patientId, consultation) => {
         try {
-          // Mapper les champs frontend vers backend
+          // Mapper les champs frontend vers backend (snake_case)
           const res = await dossierAPI.createConsultation(patientId, {
-            patient: patientId,
-            date: consultation.date,
-            reason: consultation.reason,
-            vital_signs: consultation.vitalSigns,
-            symptoms: consultation.clinicalExams
+            motif: consultation.reason || '',
+            motif_detail: consultation.clinicalExams
               ?.map(exam => `${exam.system}: ${exam.observation || (exam.checked ? 'Normal' : 'Non examiné')}`)
               .join('\n') || '',
-            diagnosis: consultation.mainDiagnosis || '',
-            treatment: consultation.treatment || '',
-            notes: consultation.observations || '',
+            diagnostic: consultation.mainDiagnosis || '',
+            traitement: consultation.treatment || '',
+            recommandations: consultation.observations || '',
+            poids: consultation.vitalSigns?.weight || null,
+            taille: consultation.vitalSigns?.height || null,
+            tension_systolique: consultation.vitalSigns?.systolicBP || null,
+            tension_diastolique: consultation.vitalSigns?.diastolicBP || null,
+            frequence_cardiaque: consultation.vitalSigns?.heartRate || null,
+            temperature: consultation.vitalSigns?.temperature || null,
+            spo2: consultation.vitalSigns?.spo2 || null,
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
           console.log('[MedicalStore] Backend consultation created with ID:', backendId);
+
+          // Sync backend pour affichage immédiat
+          await useBackendStore.getState().syncPatients();
 
           set((state) => ({
             patients: state.patients.map(p =>
