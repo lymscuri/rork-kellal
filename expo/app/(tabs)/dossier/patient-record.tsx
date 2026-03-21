@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Text, Button, TextInput, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useBackendStore } from '@/store/backendStore';
 import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
+import { dossierAPI } from '@/store/api';
 import {
   User, History, Stethoscope, FlaskConical, Syringe, Plus
 } from 'lucide-react-native';
@@ -28,6 +29,10 @@ export default function PatientRecordScreen() {
   const [hospDateEntree, setHospDateEntree] = useState('');
   const [hospDateSortie, setHospDateSortie] = useState('');
   const [hospHopital, setHospHopital] = useState('');
+  const [editBloodType, setEditBloodType] = useState('');
+  const [editAllergies, setEditAllergies] = useState('');
+  const [editChronicDiseases, setEditChronicDiseases] = useState('');
+  const [editTreatments, setEditTreatments] = useState('');
 
   // Médecin : chercher dans patients
   // Patient : chercher dans myRecord
@@ -109,7 +114,87 @@ export default function PatientRecordScreen() {
         </View>
       )}
 
-      {/* TODO: Créer la page edit-critical-info pour le médecin */}
+      {!isReadOnly && (
+        <View style={styles.fieldGroup}>
+          <View style={styles.addForm}>
+            <Text style={styles.subLabel}>Modifier les informations</Text>
+            <TextInput
+              label="Groupe sanguin (ex: O+, A-, B+...)"
+              value={editBloodType}
+              onChangeText={setEditBloodType}
+              mode="outlined"
+              dense
+              style={styles.input}
+              placeholder={patient.blood_type || 'Non renseigné'}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Allergies (séparées par virgule)"
+              value={editAllergies}
+              onChangeText={setEditAllergies}
+              mode="outlined"
+              dense
+              style={styles.input}
+              multiline
+              placeholder={patient.allergies || 'Aucune'}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Maladies chroniques (séparées par virgule)"
+              value={editChronicDiseases}
+              onChangeText={setEditChronicDiseases}
+              mode="outlined"
+              dense
+              style={styles.input}
+              multiline
+              placeholder={patient.chronic_diseases || 'Aucune'}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <TextInput
+              label="Traitements permanents"
+              value={editTreatments}
+              onChangeText={setEditTreatments}
+              mode="outlined"
+              dense
+              style={styles.input}
+              multiline
+              placeholder={patient.permanent_treatments || 'Aucun'}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+            <Button
+              mode="contained"
+              buttonColor={MedicalColors.medical}
+              style={{ marginTop: 8 }}
+              onPress={async () => {
+                try {
+                  // Envoyer directement au backend sans mapping
+                  await dossierAPI.updatePatient(patient.id, {
+                    blood_type: editBloodType.trim() || patient.blood_type,
+                    allergies: editAllergies.trim() || patient.allergies,
+                    chronic_diseases: editChronicDiseases.trim() || patient.chronic_diseases,
+                    permanent_treatments: editTreatments.trim() || patient.permanent_treatments,
+                  });
+                  setEditBloodType('');
+                  setEditAllergies('');
+                  setEditChronicDiseases('');
+                  setEditTreatments('');
+                  await useBackendStore.getState().syncPatients();
+                  Alert.alert('Succès', 'Infos critiques mises à jour');
+                } catch (e: any) {
+                  console.error('[CriticalInfo] Error:', e?.message, e?.response?.data);
+                  Alert.alert('Erreur', e?.message || 'Échec mise à jour');
+                }
+              }}
+            >
+              Enregistrer les infos critiques
+            </Button>
+          </View>
+        </View>
+      )}
     </View>
   );
 
@@ -176,16 +261,21 @@ export default function PatientRecordScreen() {
               mode="contained"
               onPress={async () => {
                 if (!surgeryName.trim() || !surgeryDate.trim()) return;
-                await store.addSurgery(patient.id, {
-                  name: surgeryName.trim(),
-                  date: surgeryDate.trim(),
-                  hospital: surgeryHospital.trim() || undefined,
-                });
-                setSurgeryName('');
-                setSurgeryDate('');
-                setSurgeryHospital('');
-                // Re-sync après ajout
-                await useBackendStore.getState().syncPatients();
+                try {
+                  await store.addSurgery(patient.id, {
+                    name: surgeryName.trim(),
+                    date: surgeryDate.trim(),
+                    hospital: surgeryHospital.trim() || undefined,
+                  });
+                  setSurgeryName('');
+                  setSurgeryDate('');
+                  setSurgeryHospital('');
+                  await useBackendStore.getState().syncPatients();
+                  Alert.alert('Succès', 'Chirurgie ajoutée');
+                } catch (e: any) {
+                  console.error('[Surgery] Error:', e?.message, e?.response?.data);
+                  Alert.alert('Erreur', e?.message || 'Échec ajout chirurgie');
+                }
               }}
               buttonColor={MedicalColors.medical}
               style={{ marginTop: 8 }}
@@ -257,18 +347,23 @@ export default function PatientRecordScreen() {
               mode="contained"
               onPress={async () => {
                 if (!hospReason.trim() || !hospDateEntree.trim()) return;
-                await store.addHospitalisation(patient.id, {
-                  reason: hospReason.trim(),
-                  date: hospDateEntree.trim(),
-                  duration: hospDateSortie.trim() || undefined,
-                  hospital: hospHopital.trim() || undefined,
-                });
-                setHospReason('');
-                setHospDateEntree('');
-                setHospDateSortie('');
-                setHospHopital('');
-                // Re-sync après ajout
-                await useBackendStore.getState().syncPatients();
+                try {
+                  await store.addHospitalisation(patient.id, {
+                    reason: hospReason.trim(),
+                    date: hospDateEntree.trim(),
+                    duration: hospDateSortie.trim() || undefined,
+                    hospital: hospHopital.trim() || undefined,
+                  });
+                  setHospReason('');
+                  setHospDateEntree('');
+                  setHospDateSortie('');
+                  setHospHopital('');
+                  await useBackendStore.getState().syncPatients();
+                  Alert.alert('Succès', 'Hospitalisation ajoutée');
+                } catch (e: any) {
+                  console.error('[Hospitalisation] Error:', e?.message, e?.response?.data);
+                  Alert.alert('Erreur', e?.message || 'Échec ajout hospitalisation');
+                }
               }}
               buttonColor={MedicalColors.medical}
               style={{ marginTop: 8 }}
