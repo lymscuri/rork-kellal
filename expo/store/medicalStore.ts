@@ -842,22 +842,24 @@ export const useMedicalStore = create<MedicalStore>()(
 
       addConsultation: async (patientId, consultation) => {
         try {
-          // Mapper les champs frontend vers backend (snake_case)
+          // Mapper les champs frontend vers backend
           const res = await dossierAPI.createConsultation(patientId, {
-            motif: consultation.reason || '',
-            motif_detail: consultation.clinicalExams
+            patient: patientId,
+            date: new Date().toISOString(),
+            reason: consultation.reason || '',
+            symptoms: consultation.clinicalExams
               ?.map(exam => `${exam.system}: ${exam.observation || (exam.checked ? 'Normal' : 'Non examiné')}`)
               .join('\n') || '',
-            diagnostic: consultation.mainDiagnosis || '',
-            traitement: consultation.treatment || '',
-            recommandations: consultation.observations || '',
-            poids: consultation.vitalSigns?.weight || null,
-            taille: consultation.vitalSigns?.height || null,
-            tension_systolique: consultation.vitalSigns?.systolicBP || null,
-            tension_diastolique: consultation.vitalSigns?.diastolicBP || null,
-            frequence_cardiaque: consultation.vitalSigns?.heartRate || null,
+            diagnosis: consultation.mainDiagnosis || '',
+            treatment: consultation.treatment || '',
+            notes: consultation.observations || '',
             temperature: consultation.vitalSigns?.temperature || null,
-            spo2: consultation.vitalSigns?.spo2 || null,
+            blood_pressure_systolic: consultation.vitalSigns?.systolicBP || null,
+            blood_pressure_diastolic: consultation.vitalSigns?.diastolicBP || null,
+            heart_rate: consultation.vitalSigns?.heartRate || null,
+            weight: consultation.vitalSigns?.weight || null,
+            height: consultation.vitalSigns?.height || null,
+            lab_tests: [],
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
