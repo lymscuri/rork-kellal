@@ -95,12 +95,24 @@ export interface BackendHospitalisation {
 
 export interface BackendMaternityPatient {
   id: string;
-  linked_email: string;
+  maternity_id?: string;
   first_name: string;
+  last_name?: string;
+  full_name?: string;
   age: number | null;
+  date_of_birth?: string;
+  gender?: string;
+  phone?: string;
+  email?: string;
+  doctor?: string;
+  linked_email: string;
+  created_at?: string;
   pregnancy: BackendPregnancy | null;
+  weekly_checkups?: any[];
   prenatal_consultations: BackendPrenatalConsultation[];
-  vaccinations_pev: any[];
+  children?: any[];
+  alert_level?: string;
+  vaccinations_pev?: any[];
 }
 
 export interface BackendPregnancy {

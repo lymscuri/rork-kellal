@@ -4,7 +4,6 @@ import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useBackendStore } from '@/store/backendStore';
-import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
 import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays, Activity, AlertTriangle, Smile, Moon, Frown } from 'lucide-react-native';
 

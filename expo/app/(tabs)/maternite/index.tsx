@@ -6,12 +6,10 @@ import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { useBackendStore } from '@/store/backendStore';
-import { useMedicalStore } from '@/store/medicalStore';
 import {
   Baby, Calendar, Heart, Plus, ChevronRight,
   Users, BarChart3, MessageSquare, CalendarDays, User
 } from 'lucide-react-native';
-import type { MaternityPatient } from '@/types/medical';
 
 function PatientView() {
   const router = useRouter();
@@ -148,16 +146,24 @@ function SoignantView() {
   const maternityPatients = useBackendStore(s => s.maternityPatients);
   const [activeFilter, setActiveFilter] = useState<FilterTab>('toutes');
 
+  // Dédupliquer par linked_email
+  const uniquePatients = useMemo(() => {
+    return maternityPatients.filter(
+      (p, index, self) =>
+        index === self.findIndex(t => t.linked_email === p.linked_email)
+    );
+  }, [maternityPatients]);
+
   const filterCounts = useMemo(() => {
     return {
-      toutes: maternityPatients.length,
-      aJour: maternityPatients.length,
+      toutes: uniquePatients.length,
+      aJour: uniquePatients.length,
       enRetard: 0,
       alertes: 0
     };
-  }, [maternityPatients]);
+  }, [uniquePatients]);
 
-  const filtered = maternityPatients;
+  const filtered = uniquePatients;
 
   const handleLogout = useCallback(() => {
     Alert.alert('Déconnexion', 'Voulez-vous vous déconnecter ?', [
