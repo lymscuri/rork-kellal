@@ -123,12 +123,24 @@ function PatientView() {
           )}
 
 
-          {!pregnancy && (
+          {!myMaternity && (
             <View style={styles.emptyCard}>
               <Baby size={48} color={MedicalColors.border} />
-              <Text style={styles.emptyTitle}>Pas de grossesse en cours</Text>
+              <Text style={styles.emptyTitle}>Aucun dossier maternité</Text>
               <Text style={styles.emptySubtext}>
-                Votre sage-femme ou médecin créera votre suivi de grossesse lors de votre première consultation.
+                Votre dossier sera créé par votre médecin
+              </Text>
+            </View>
+          )}
+
+          {myMaternity && !pregnancy && (
+            <View style={styles.pregnancyCard}>
+              <Text style={styles.pregnancyName}>
+                {myMaternity.first_name}, {myMaternity.age || 'N/A'} ans
+              </Text>
+              <Text style={styles.emptySubtext}>
+                Aucune grossesse enregistrée pour le moment.
+                Votre médecin mettra à jour votre dossier.
               </Text>
             </View>
           )}
