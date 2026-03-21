@@ -262,10 +262,11 @@ export default function PatientRecordScreen() {
               onPress={async () => {
                 if (!surgeryName.trim() || !surgeryDate.trim()) return;
                 try {
-                  await store.addSurgery(patient.id, {
-                    name: surgeryName.trim(),
+                  await dossierAPI.createSurgery(patient.id, {
+                    nom: surgeryName.trim(),
                     date: surgeryDate.trim(),
-                    hospital: surgeryHospital.trim() || undefined,
+                    hopital: surgeryHospital.trim() || '',
+                    notes: '',
                   });
                   setSurgeryName('');
                   setSurgeryDate('');
@@ -273,8 +274,8 @@ export default function PatientRecordScreen() {
                   await useBackendStore.getState().syncPatients();
                   Alert.alert('Succès', 'Chirurgie ajoutée');
                 } catch (e: any) {
-                  console.error('[Surgery] Error:', e?.message, e?.response?.data);
-                  Alert.alert('Erreur', e?.message || 'Échec ajout chirurgie');
+                  console.error('[Surgery]', e?.response?.data || e?.message);
+                  Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
                 }
               }}
               buttonColor={MedicalColors.medical}
@@ -437,8 +438,14 @@ export default function PatientRecordScreen() {
               <Chip
                 selected={patient.life_habits?.tobacco === true}
                 onPress={async () => {
-                  await store.updateLifeHabits(patient.id, { tobacco: true });
-                  await useBackendStore.getState().syncPatients();
+                  try {
+                    await dossierAPI.updatePatient(patient.id, {
+                      life_habits: { ...patient.life_habits, tobacco: true }
+                    });
+                    await useBackendStore.getState().syncPatients();
+                  } catch (e: any) {
+                    Alert.alert('Erreur', e?.message);
+                  }
                 }}
                 style={[styles.chip, patient.life_habits?.tobacco === true && styles.chipSelected]}
                 textStyle={{ fontSize: 12, color: patient.life_habits?.tobacco === true ? MedicalColors.white : MedicalColors.text }}
@@ -448,8 +455,14 @@ export default function PatientRecordScreen() {
               <Chip
                 selected={patient.life_habits?.tobacco === false}
                 onPress={async () => {
-                  await store.updateLifeHabits(patient.id, { tobacco: false });
-                  await useBackendStore.getState().syncPatients();
+                  try {
+                    await dossierAPI.updatePatient(patient.id, {
+                      life_habits: { ...patient.life_habits, tobacco: false }
+                    });
+                    await useBackendStore.getState().syncPatients();
+                  } catch (e: any) {
+                    Alert.alert('Erreur', e?.message);
+                  }
                 }}
                 style={[styles.chip, patient.life_habits?.tobacco === false && styles.chipSelected]}
                 textStyle={{ fontSize: 12, color: patient.life_habits?.tobacco === false ? MedicalColors.white : MedicalColors.text }}
@@ -463,8 +476,14 @@ export default function PatientRecordScreen() {
               <Chip
                 selected={patient.life_habits?.alcohol === true}
                 onPress={async () => {
-                  await store.updateLifeHabits(patient.id, { alcohol: true });
-                  await useBackendStore.getState().syncPatients();
+                  try {
+                    await dossierAPI.updatePatient(patient.id, {
+                      life_habits: { ...patient.life_habits, alcohol: true }
+                    });
+                    await useBackendStore.getState().syncPatients();
+                  } catch (e: any) {
+                    Alert.alert('Erreur', e?.message);
+                  }
                 }}
                 style={[styles.chip, patient.life_habits?.alcohol === true && styles.chipSelected]}
                 textStyle={{ fontSize: 12, color: patient.life_habits?.alcohol === true ? MedicalColors.white : MedicalColors.text }}
@@ -474,8 +493,14 @@ export default function PatientRecordScreen() {
               <Chip
                 selected={patient.life_habits?.alcohol === false}
                 onPress={async () => {
-                  await store.updateLifeHabits(patient.id, { alcohol: false });
-                  await useBackendStore.getState().syncPatients();
+                  try {
+                    await dossierAPI.updatePatient(patient.id, {
+                      life_habits: { ...patient.life_habits, alcohol: false }
+                    });
+                    await useBackendStore.getState().syncPatients();
+                  } catch (e: any) {
+                    Alert.alert('Erreur', e?.message);
+                  }
                 }}
                 style={[styles.chip, patient.life_habits?.alcohol === false && styles.chipSelected]}
                 textStyle={{ fontSize: 12, color: patient.life_habits?.alcohol === false ? MedicalColors.white : MedicalColors.text }}
@@ -491,8 +516,14 @@ export default function PatientRecordScreen() {
                   key={level}
                   selected={patient.life_habits?.physical_activity === level}
                   onPress={async () => {
-                    await store.updateLifeHabits(patient.id, { physicalActivity: level });
-                    await useBackendStore.getState().syncPatients();
+                    try {
+                      await dossierAPI.updatePatient(patient.id, {
+                        life_habits: { ...patient.life_habits, physical_activity: level }
+                      });
+                      await useBackendStore.getState().syncPatients();
+                    } catch (e: any) {
+                      Alert.alert('Erreur', e?.message);
+                    }
                   }}
                   style={[styles.chip, patient.life_habits?.physical_activity === level && styles.chipSelected]}
                   textStyle={{ fontSize: 12, color: patient.life_habits?.physical_activity === level ? MedicalColors.white : MedicalColors.text }}
