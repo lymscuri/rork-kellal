@@ -3,8 +3,9 @@ import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } f
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
-import { useMedicalStore } from '@/store/medicalStore';
 import { useAuthStore } from '@/store/authStore';
+import { useBackendStore } from '@/store/backendStore';
+import { dossierAPI } from '@/store/api';
 
 const EXAM_TYPES = [
   'NFS', 'Glycémie', 'Créatinine', 'Goutte épaisse', 'TDR Palu',
@@ -19,7 +20,6 @@ export default function NewLabResultScreen() {
   const { patientId } = useLocalSearchParams<{ patientId: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
-  const { addLabResult } = useMedicalStore();
 
   const [examType, setExamType] = useState('');
   const [customExamType, setCustomExamType] = useState('');
@@ -38,7 +38,7 @@ export default function NewLabResultScreen() {
     }
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     const finalExamType = examType || customExamType.trim();
     if (!finalExamType) {
       Alert.alert('Erreur', "Le type d'examen est requis");
@@ -50,20 +50,32 @@ export default function NewLabResultScreen() {
     }
     if (!patientId || !user) return;
 
-    addLabResult(patientId, {
-      examType: finalExamType,
-      date: new Date().toISOString(),
-      facility: facility.trim() || 'Non précisé',
-      result: result.trim(),
-      unit: unit.trim() || undefined,
-      interpretation: interpretation || undefined,
-      prescribedBy: `Dr. ${user.lastName} ${user.firstName}`,
-    });
+    try {
+      await dossierAPI.addLabTestDirect(patientId, {
+        test_name: finalExamType,
+        test_type: finalExamType,
+        status: 'completed',
+        ordered_date: new Date().toISOString().split('T')[0],
+        completed_date: new Date().toISOString().split('T')[0],
+        results: result.trim(),
+        interpretation: interpretation || '',
+      });
 
-    Alert.alert('Succès', "Résultat d'examen enregistré", [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
-  }, [examType, customExamType, result, facility, unit, interpretation, patientId, user, addLabResult, router]);
+      // Sync pour affichage immédiat
+      if (user.role === 'medecin') {
+        await useBackendStore.getState().syncPatients();
+      } else {
+        await useBackendStore.getState().syncMyRecord(user.id);
+      }
+
+      Alert.alert('Succès', "Résultat d'examen enregistré", [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      console.error('[LabResult]', e?.response?.data || e?.message);
+      Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
+    }
+  }, [examType, customExamType, result, interpretation, patientId, user, router]);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>

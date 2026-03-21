@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Kendeya",
-    "slug": "jm6yof5nlybu0vv1hh0ta",
+    "slug": "kendeya",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -55,9 +55,9 @@
         "origin": "https://rork.com/"
       },
       "eas": {
-        "projectId": "be72e9f9-73f2-48ad-a9ba-e29faf189299"
+        "projectId": "c4caace0-e38a-4c56-9a08-edd5b02d615d"
       }
     },
-    "owner": "lyms"
+    "owner": "nobodyinconito"
   }
 }

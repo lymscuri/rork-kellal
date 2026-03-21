@@ -33,6 +33,9 @@ export default function PatientRecordScreen() {
   const [editAllergies, setEditAllergies] = useState('');
   const [editChronicDiseases, setEditChronicDiseases] = useState('');
   const [editTreatments, setEditTreatments] = useState('');
+  const [editPastIllnesses, setEditPastIllnesses] = useState('');
+  const [editBloodTransfusion, setEditBloodTransfusion] = useState<boolean | null>(null);
+  const [editTransfusionDate, setEditTransfusionDate] = useState('');
 
   // Médecin : chercher dans patients
   // Patient : chercher dans myRecord
@@ -209,6 +212,89 @@ export default function PatientRecordScreen() {
             <Text style={[styles.subLabel, { marginTop: 12 }]}>Transfusion sanguine</Text>
             <Text style={styles.readValue}>Oui{patient.personal_history?.blood_transfusion_date ? ` (${patient.personal_history?.blood_transfusion_date})` : ''}</Text>
           </>
+        )}
+
+        {!isReadOnly && (
+          <View style={styles.addForm}>
+            <Text style={styles.subLabel}>Modifier les antécédents personnels</Text>
+            <TextInput
+              label="Maladies passées"
+              value={editPastIllnesses}
+              onChangeText={setEditPastIllnesses}
+              mode="outlined"
+              dense
+              multiline
+              style={styles.input}
+              placeholder={patient.personal_history?.past_illnesses || 'Aucune'}
+              outlineColor={MedicalColors.border}
+              activeOutlineColor={MedicalColors.medical}
+            />
+
+            <Text style={[styles.subLabel, { marginTop: 8 }]}>Transfusion sanguine</Text>
+            <View style={styles.chipRow}>
+              <Chip
+                selected={editBloodTransfusion === true}
+                onPress={() => setEditBloodTransfusion(true)}
+                style={[styles.chip, editBloodTransfusion === true && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: editBloodTransfusion === true ? MedicalColors.white : MedicalColors.text }}
+              >
+                Oui
+              </Chip>
+              <Chip
+                selected={editBloodTransfusion === false}
+                onPress={() => setEditBloodTransfusion(false)}
+                style={[styles.chip, editBloodTransfusion === false && styles.chipSelected]}
+                textStyle={{ fontSize: 12, color: editBloodTransfusion === false ? MedicalColors.white : MedicalColors.text }}
+              >
+                Non
+              </Chip>
+            </View>
+
+            {editBloodTransfusion === true && (
+              <TextInput
+                label="Date de transfusion"
+                value={editTransfusionDate}
+                onChangeText={setEditTransfusionDate}
+                mode="outlined"
+                dense
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                outlineColor={MedicalColors.border}
+                activeOutlineColor={MedicalColors.medical}
+              />
+            )}
+
+            <Button
+              mode="contained"
+              buttonColor={MedicalColors.medical}
+              style={{ marginTop: 8 }}
+              onPress={async () => {
+                try {
+                  const updatedPersonalHistory = {
+                    ...patient.personal_history,
+                    ...(editPastIllnesses.trim() && { past_illnesses: editPastIllnesses.trim() }),
+                    ...(editBloodTransfusion !== null && { blood_transfusion: editBloodTransfusion }),
+                    ...(editBloodTransfusion === true && editTransfusionDate.trim() && { blood_transfusion_date: editTransfusionDate.trim() }),
+                  };
+
+                  await dossierAPI.updatePatient(patient.id, {
+                    personal_history: updatedPersonalHistory,
+                  });
+
+                  setEditPastIllnesses('');
+                  setEditBloodTransfusion(null);
+                  setEditTransfusionDate('');
+                  await useBackendStore.getState().syncPatients();
+                  Alert.alert('Succès', 'Antécédents personnels mis à jour');
+                } catch (e: any) {
+                  console.error('[PersonalHistory] Error:', e?.message, e?.response?.data);
+                  Alert.alert('Erreur', e?.message || 'Échec mise à jour');
+                }
+              }}
+            >
+              Enregistrer les antécédents personnels
+            </Button>
+          </View>
         )}
       </View>
 
@@ -574,14 +660,33 @@ export default function PatientRecordScreen() {
   );
 
   const renderExams = () => {
-    const labTests = patient.consultations?.flatMap(c => c.lab_tests || []) || [];
+    // Examens dans consultations
+    const consultationLabTests = patient.consultations?.flatMap(
+      c => (c.lab_tests || []).map(lt => ({ ...lt, source: 'consultation' }))
+    ) || [];
+
+    // Examens standalone (créés via addLabTestDirect)
+    const standaloneLabTests = (patient.lab_tests || []).map(
+      lt => ({ ...lt, source: 'standalone' })
+    );
+
+    const allLabTests = [...consultationLabTests, ...standaloneLabTests];
+
+    // Trier par date décroissante
+    allLabTests.sort((a, b) =>
+      new Date(b.ordered_date || b.completed_date || '').getTime() -
+      new Date(a.ordered_date || a.completed_date || '').getTime()
+    );
 
     return (
       <View style={styles.tabContent}>
         {user?.role === 'medecin' && (
           <Button
             mode="contained"
-            onPress={() => router.push({ pathname: '/(tabs)/dossier/new-lab-result', params: { patientId: patient.id } })}
+            onPress={() => router.push({
+              pathname: '/(tabs)/dossier/new-lab-result',
+              params: { patientId: patient.id }
+            })}
             buttonColor={MedicalColors.medical}
             icon={() => <Plus size={18} color={MedicalColors.white} />}
             style={styles.addBtn}
@@ -589,18 +694,22 @@ export default function PatientRecordScreen() {
             Nouveau résultat d'examen
           </Button>
         )}
-        {labTests.length === 0 ? (
+        {allLabTests.length === 0 ? (
           <View style={styles.emptySection}>
             <FlaskConical size={32} color={MedicalColors.border} />
             <Text style={styles.emptySectionText}>Aucun résultat d'examen</Text>
           </View>
         ) : (
-          labTests.map(r => (
+          allLabTests.map(r => (
             <View key={r.id} style={styles.examCard}>
               <Text style={styles.examType}>{r.test_name}</Text>
-              <Text style={styles.examDate}>{new Date(r.ordered_date).toLocaleDateString('fr-FR')}</Text>
+              <Text style={styles.examDate}>
+                {r.ordered_date ? new Date(r.ordered_date).toLocaleDateString('fr-FR') : ''}
+              </Text>
               <Text style={styles.examResult}>Résultat : {r.results || 'En attente'}</Text>
-              {r.interpretation && <Text style={styles.examInterp}>{r.interpretation}</Text>}
+              {r.interpretation && (
+                <Text style={styles.examInterp}>{r.interpretation}</Text>
+              )}
               <Text style={styles.examStatus}>Statut : {r.status}</Text>
             </View>
           ))
