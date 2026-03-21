@@ -1266,7 +1266,7 @@ export const useMedicalStore = create<MedicalStore>()(
           console.log('[MedicalStore] Maternity patient ID for pregnancy:', maternityPatientId);
 
           // Créer la grossesse associée
-          await maternityAPI.createPregnancy(maternityPatientId, {
+          await maternityAPI.createPregnancy(backendId, {
             last_menstrual_period: pregnancy.lastPeriodDate,
             expected_delivery_date: pregnancy.dueDate,
             weeks_of_gestation: pregnancy.currentWeek,
