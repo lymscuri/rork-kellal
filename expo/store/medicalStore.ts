@@ -1260,11 +1260,13 @@ export const useMedicalStore = create<MedicalStore>()(
           });
 
           const backendId = res.data?.data?.id || res.data?.id || genId();
+          const maternityPatientId = res.data?.data?.maternity_id || res.data?.maternity_id || backendId;
           const pregnancyId = genId();
           console.log('[MedicalStore] Backend maternity patient created with ID:', backendId);
+          console.log('[MedicalStore] Maternity patient ID for pregnancy:', maternityPatientId);
 
           // Créer la grossesse associée
-          await maternityAPI.createPregnancy(backendId, {
+          await maternityAPI.createPregnancy(maternityPatientId, {
             last_menstrual_period: pregnancy.lastPeriodDate,
             expected_delivery_date: pregnancy.dueDate,
             weeks_of_gestation: pregnancy.currentWeek,
