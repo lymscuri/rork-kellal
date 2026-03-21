@@ -666,7 +666,7 @@ export default function PatientRecordScreen() {
     ) || [];
 
     // Examens standalone (créés via addLabTestDirect)
-    const standaloneLabTests = (patient.lab_tests || []).map(
+    const standaloneLabTests = (patient.direct_lab_tests || []).map(
       lt => ({ ...lt, source: 'standalone' })
     );
 

@@ -31,7 +31,7 @@ export interface BackendPatient {
   vaccines: BackendVaccine[];
   surgeries: BackendSurgery[];
   hospitalisations: BackendHospitalisation[];
-  lab_tests?: BackendLabTest[];
+  direct_lab_tests?: BackendLabTest[];
   doctor: string;
   created_at: string;
   updated_at: string;
