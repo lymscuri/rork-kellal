@@ -342,20 +342,23 @@ export const maternityAPI = {
     apiClient.post(`/maternity/patients/${patientId}/pregnancies/`, data),
 
   // Suivis hebdomadaires
-  createWeeklyCheckup: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/weekly-checkups/`, data),
+  createWeeklyCheckup: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/weekly-checkups/`, data),
 
   listWeeklyCheckups: (patientId: string) =>
     apiClient.get(`/maternity/patients/${patientId}/weekly-checkups/`),
 
   // Examens prénataux
-  createPrenatalExam: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/prenatal-exams/`, data),
+  createPrenatalExam: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-exams/`, data),
 
   listPrenatalExams: (patientId: string) =>
     apiClient.get(`/maternity/patients/${patientId}/prenatal-exams/`),
 
   // Consultations prénatales
+  createPrenatalConsultation: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/`, data),
+
   schedulePrenatalConsultation: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
     apiClient.patch(`/maternity/patients/${patientId}/consultations/${consultationId}/schedule/`, data),
 

@@ -1562,7 +1562,7 @@ export const useMedicalStore = create<MedicalStore>()(
         }));
 
         // Sync backend en arrière-plan
-        maternityAPI.createWeeklyCheckup(patientId, {
+        maternityAPI.createWeeklyCheckup(patientId, patient.pregnancy.id, {
           date: checkup.date,
           week: checkup.week,
           weight: checkup.weight,

@@ -33,8 +33,10 @@ export default function WeeklyCheckupScreen() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!myMaternity?.pregnancy) {
-      Alert.alert('Erreur', 'Aucune grossesse en cours');
+    const pregnancyId = myMaternity?.pregnancy?.id;
+
+    if (!myMaternity?.pregnancy || !pregnancyId) {
+      Alert.alert('Erreur', 'Aucune grossesse active');
       return;
     }
 
@@ -52,7 +54,7 @@ export default function WeeklyCheckupScreen() {
     }
 
     try {
-      await maternityAPI.createWeeklyCheckup(myMaternity.id, {
+      await maternityAPI.createWeeklyCheckup(myMaternity.id, pregnancyId, {
         week: currentWeek,
         weight: weight ? parseFloat(weight) : null,
         systolic_bp: sys || null,

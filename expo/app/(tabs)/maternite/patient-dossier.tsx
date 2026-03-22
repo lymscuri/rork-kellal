@@ -109,14 +109,14 @@ export default function PatientDossierScreen() {
   }, []);
 
   const handleSaveExam = useCallback(async () => {
-    if (!patient || !patient.pregnancy) {
+    if (!patient || !patient.pregnancy || !patient.pregnancy.id) {
       Alert.alert('Erreur', 'Aucune grossesse active');
       return;
     }
 
     try {
       // Créer un examen prénatal
-      await maternityAPI.createPrenatalExam(patient.id, {
+      await maternityAPI.createPrenatalExam(patient.id, patient.pregnancy.id, {
         date: new Date().toISOString().split('T')[0],
         week: patient.pregnancy.current_week || 0,
         weight: weight ? parseFloat(weight) : null,
