@@ -4,6 +4,7 @@ import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
 import { useBackendStore } from '@/store/backendStore';
+import { maternityAPI } from '@/store/api';
 import { useAuthStore } from '@/store/authStore';
 import { Heart, Stethoscope, CheckCircle, Calendar, CalendarDays, Activity, AlertTriangle, Smile, Moon, Frown } from 'lucide-react-native';
 
@@ -107,9 +108,33 @@ export default function PatientDossierScreen() {
     // TODO: Implémenter via medicalStore
   }, []);
 
-  const handleSaveExam = useCallback(() => {
-    Alert.alert('Info', 'Enregistrement des examens via medicalStore à implémenter');
-  }, []);
+  const handleSaveExam = useCallback(async () => {
+    if (!patient || !patient.pregnancy) {
+      Alert.alert('Erreur', 'Aucune grossesse active');
+      return;
+    }
+
+    try {
+      // Créer un examen prénatal
+      await maternityAPI.createPrenatalExam(patient.id, {
+        date: new Date().toISOString().split('T')[0],
+        week: patient.pregnancy.current_week || 0,
+        weight: weight ? parseFloat(weight) : null,
+        blood_pressure: systolic && diastolic ? `${systolic}/${diastolic}` : null,
+        fetal_heart_rate: fetalHR ? parseInt(fetalHR) : null,
+        notes: observations.trim() || null,
+      });
+
+      await useBackendStore.getState().syncMaternityPatients();
+
+      Alert.alert('Succès', 'Consultation prénatale enregistrée', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (e: any) {
+      console.error('[PatientDossier]', e?.response?.data || e?.message);
+      Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
+    }
+  }, [patient, weight, systolic, diastolic, fetalHR, observations, router]);
 
   if (!patient) {
     return (

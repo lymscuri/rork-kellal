@@ -3,7 +3,8 @@ import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } f
 import { Text, TextInput, Button, Chip } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { MedicalColors } from '@/constants/colors';
-import { useMedicalStore } from '@/store/medicalStore';
+import { useBackendStore } from '@/store/backendStore';
+import { maternityAPI } from '@/store/api';
 import { useAuthStore } from '@/store/authStore';
 import { Heart, AlertTriangle } from 'lucide-react-native';
 
@@ -16,23 +17,9 @@ const SYMPTOMS = [
 export default function WeeklyCheckupScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { maternityPatients, addWeeklyCheckup } = useMedicalStore();
+  const myMaternity = useBackendStore(s => s.myMaternity);
 
-  const myData = useMemo(() => {
-    if (!user) return null;
-    return maternityPatients.find(p => p.userId === user.id) || null;
-  }, [maternityPatients, user]);
-
-  const currentWeek = useMemo(() => {
-    if (!myData?.pregnancy?.lastPeriodDate)
-      return myData?.pregnancy?.currentWeek || 0;
-    const lastPeriod = new Date(myData.pregnancy.lastPeriodDate);
-    const today = new Date();
-    const diffDays = Math.floor(
-      (today.getTime() - lastPeriod.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return Math.min(Math.floor(diffDays / 7), 40);
-  }, [myData?.pregnancy?.lastPeriodDate, myData?.pregnancy?.currentWeek]);
+  const currentWeek = myMaternity?.pregnancy?.current_week || 0;
 
   const [weight, setWeight] = useState('');
   const [systolic, setSystolic] = useState('');
@@ -45,8 +32,8 @@ export default function WeeklyCheckupScreen() {
     setSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   }, []);
 
-  const handleSave = useCallback(() => {
-    if (!myData) {
+  const handleSave = useCallback(async () => {
+    if (!myMaternity?.pregnancy) {
       Alert.alert('Erreur', 'Aucune grossesse en cours');
       return;
     }
@@ -64,29 +51,37 @@ export default function WeeklyCheckupScreen() {
       Alert.alert('🚨 URGENCE', 'Mouvements fœtaux absents — appelez le 442 ou rendez-vous aux urgences immédiatement !', [{ text: 'Compris' }]);
     }
 
-    addWeeklyCheckup(myData.id, {
-      week: currentWeek,
-      date: new Date().toISOString(),
-      weight: weight ? parseFloat(weight) : undefined,
-      systolicBP: sys,
-      diastolicBP: dia,
-      symptoms,
-      fetalMovements: fetalMovements || undefined,
-      mood: mood || undefined,
-    });
+    try {
+      await maternityAPI.createWeeklyCheckup(myMaternity.id, {
+        week: currentWeek,
+        weight: weight ? parseFloat(weight) : null,
+        systolic_bp: sys || null,
+        diastolic_bp: dia || null,
+        symptoms: symptoms,
+        fetal_movements: fetalMovements || null,
+        mood: mood || null,
+      });
 
-    Alert.alert('Enregistré', 'Votre suivi hebdomadaire a été enregistré.', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
-  }, [myData, weight, systolic, diastolic, symptoms, fetalMovements, mood, currentWeek, addWeeklyCheckup, router]);
+      if (user) {
+        await useBackendStore.getState().syncMyMaternity(user.id);
+      }
+
+      Alert.alert('Succès', 'Suivi enregistré', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      console.error('[WeeklyCheckup]', e?.response?.data || e?.message);
+      Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
+    }
+  }, [myMaternity, weight, systolic, diastolic, symptoms, fetalMovements, mood, currentWeek, user, router]);
 
   const weightHistory = useMemo(() => {
-    if (!myData) return [];
-    return myData.weeklyCheckups
-      .filter(c => c.weight)
-      .sort((a, b) => a.week - b.week)
+    const checkups = myMaternity?.weekly_checkups || [];
+    return checkups
+      .filter((c: any) => c.weight)
+      .sort((a: any, b: any) => a.week - b.week)
       .slice(-8);
-  }, [myData]);
+  }, [myMaternity]);
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
