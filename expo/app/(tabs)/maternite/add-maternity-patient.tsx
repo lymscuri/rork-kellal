@@ -36,7 +36,7 @@ export default function AddMaternityPatientScreen() {
       if (parts.length === 3) {
         const date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
         date.setDate(date.getDate() + 280);
-        return date.toISOString();
+        return date.toISOString().split('T')[0];
       }
     } catch {}
     return undefined;

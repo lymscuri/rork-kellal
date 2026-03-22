@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Kendeya",
-    "slug": "kendeya",
+    "slug": "kendaya",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -55,9 +55,9 @@
         "origin": "https://rork.com/"
       },
       "eas": {
-        "projectId": "c4caace0-e38a-4c56-9a08-edd5b02d615d"
+        "projectId": "8a780c3e-b423-47fb-8532-540ce78aef08"
       }
     },
-    "owner": "nobodyinconito"
+    "owner": "alimou190"
   }
 }

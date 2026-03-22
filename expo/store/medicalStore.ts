@@ -1236,6 +1236,18 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       addMaternityPatient: async (soignantId, pregnancy, userId, linkedEmail) => {
+        // Convertir JJ/MM/AAAA → YYYY-MM-DD si nécessaire
+        const formatDate = (d: string | undefined): string | undefined => {
+          if (!d) return undefined;
+          if (d.includes('/')) {
+            const parts = d.split('/');
+            if (parts.length === 3) {
+              return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+            }
+          }
+          return d.split('T')[0]; // Enlever l'heure si ISO complet
+        };
+
         try {
           const res = await maternityAPI.createMaternityPatient({
             linked_email: linkedEmail?.toLowerCase(),
@@ -1248,8 +1260,8 @@ export const useMedicalStore = create<MedicalStore>()(
                   new Date().getDate()
                 ).toISOString().split('T')[0]
               : undefined,
-            last_period_date: pregnancy.lastPeriodDate,
-            due_date: pregnancy.dueDate,
+            last_period_date: formatDate(pregnancy.lastPeriodDate),
+            due_date: formatDate(pregnancy.dueDate),
             current_week: pregnancy.currentWeek,
             gravidity: pregnancy.gravidity,
             parity: pregnancy.parity,
@@ -1267,8 +1279,8 @@ export const useMedicalStore = create<MedicalStore>()(
 
           // Créer la grossesse associée
           await maternityAPI.createPregnancy(backendId, {
-            last_menstrual_period: pregnancy.lastPeriodDate,
-            expected_delivery_date: pregnancy.dueDate,
+            last_menstrual_period: formatDate(pregnancy.lastPeriodDate),
+            expected_delivery_date: formatDate(pregnancy.dueDate),
             weeks_of_gestation: pregnancy.currentWeek,
             pregnancy_number: pregnancy.gravidity || 1,
             status: 'ongoing',
