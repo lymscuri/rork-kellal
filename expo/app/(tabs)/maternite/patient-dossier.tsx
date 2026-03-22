@@ -118,6 +118,7 @@ export default function PatientDossierScreen() {
       // Créer une consultation prénatale
       await maternityAPI.createPrenatalConsultation(patient.id, patient.pregnancy.id, {
         consultation_date: new Date().toISOString().split('T')[0],
+        consultation_number: (patient.prenatal_consultations?.length || 0) + 1,
         week_of_gestation: patient.pregnancy.current_week || 0,
         weight: weight ? parseFloat(weight) : null,
         blood_pressure_systolic: systolic ? parseInt(systolic) : null,
