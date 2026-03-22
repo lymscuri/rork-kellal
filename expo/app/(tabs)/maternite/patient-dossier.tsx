@@ -115,14 +115,17 @@ export default function PatientDossierScreen() {
     }
 
     try {
-      // Créer un examen prénatal
-      await maternityAPI.createPrenatalExam(patient.id, patient.pregnancy.id, {
-        date: new Date().toISOString().split('T')[0],
-        week: patient.pregnancy.current_week || 0,
+      // Créer une consultation prénatale
+      await maternityAPI.createPrenatalConsultation(patient.id, patient.pregnancy.id, {
+        consultation_date: new Date().toISOString().split('T')[0],
+        week_of_gestation: patient.pregnancy.current_week || 0,
         weight: weight ? parseFloat(weight) : null,
-        blood_pressure: systolic && diastolic ? `${systolic}/${diastolic}` : null,
+        blood_pressure_systolic: systolic ? parseInt(systolic) : null,
+        blood_pressure_diastolic: diastolic ? parseInt(diastolic) : null,
         fetal_heart_rate: fetalHR ? parseInt(fetalHR) : null,
-        notes: observations.trim() || null,
+        fetal_presentation: presentation || null,
+        complaints: observations.trim() || null,
+        recommendations: observations.trim() || null,
       });
 
       await useBackendStore.getState().syncMaternityPatients();
@@ -134,7 +137,7 @@ export default function PatientDossierScreen() {
       console.error('[PatientDossier]', e?.response?.data || e?.message);
       Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
     }
-  }, [patient, weight, systolic, diastolic, fetalHR, observations, router]);
+  }, [patient, weight, systolic, diastolic, fetalHR, presentation, observations, router]);
 
   if (!patient) {
     return (

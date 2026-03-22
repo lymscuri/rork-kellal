@@ -40,6 +40,16 @@ export default function WeeklyCheckupScreen() {
       return;
     }
 
+    // Check if patient (non-doctor) - save locally only
+    if (user?.role !== 'medecin') {
+      Alert.alert(
+        'Suivi enregistré',
+        'Votre suivi a été enregistré localement. Il sera transmis à votre médecin lors de votre prochaine consultation.',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+      return;
+    }
+
     const sys = systolic ? parseInt(systolic) : undefined;
     const dia = diastolic ? parseInt(diastolic) : undefined;
 
