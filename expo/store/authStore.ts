@@ -2,6 +2,7 @@ import { AppStorage } from './storage';
 import { create } from 'zustand';
 import { authAPI, storeTokens, clearTokens, getStoredTokens, extractErrorMessage } from './api';
 import { useNotificationStore } from './notificationStore';
+import { useBackendStore } from './backendStore';
 
 export type UserRole = 'medecin' | 'patient';
 
@@ -174,6 +175,16 @@ export const useAuthStore = create<AuthStore>()(
         console.log('[Auth] Login successful for:', user.email, 'role:', user.role);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true, isLoading: false, error: null });
+
+        // Vider les données du précédent utilisateur
+        const { reset, syncMyRecord, syncPatients } = useBackendStore.getState();
+        reset();
+        // Re-sync avec le nouveau compte
+        if (user.role === 'patient') {
+          syncMyRecord(user.id);
+        } else {
+          syncPatients();
+        }
 
         // Enregistrer le push token pour les notifications
         try {
