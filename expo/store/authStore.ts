@@ -236,6 +236,15 @@ export const useAuthStore = create<AuthStore>()(
         console.log('[Auth] Signup successful for:', user.email);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true, isLoading: false, error: null });
+
+        // Enregistrer le push token pour les notifications
+        try {
+          const { registerForPushNotifications } = useNotificationStore.getState();
+          await registerForPushNotifications(user.id, user.role);
+        } catch (e) {
+          console.warn('[Auth] Push token registration failed:', e);
+        }
+
         return true;
       } catch (error) {
         const message = extractErrorMessage(error);
