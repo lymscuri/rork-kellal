@@ -1,6 +1,7 @@
 import { AppStorage } from './storage';
 import { create } from 'zustand';
 import { authAPI, storeTokens, clearTokens, getStoredTokens, extractErrorMessage } from './api';
+import { useNotificationStore } from './notificationStore';
 
 export type UserRole = 'medecin' | 'patient';
 
@@ -173,6 +174,15 @@ export const useAuthStore = create<AuthStore>()(
         console.log('[Auth] Login successful for:', user.email, 'role:', user.role);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true, isLoading: false, error: null });
+
+        // Enregistrer le push token pour les notifications
+        try {
+          const { registerForPushNotifications } = useNotificationStore.getState();
+          await registerForPushNotifications(user.id, user.role);
+        } catch (e) {
+          console.warn('[Auth] Push token registration failed:', e);
+        }
+
         return true;
       } catch (error) {
         const message = extractErrorMessage(error);
