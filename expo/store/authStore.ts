@@ -179,12 +179,14 @@ export const useAuthStore = create<AuthStore>()(
         // Vider les données du précédent utilisateur
         const { reset, syncMyRecord, syncPatients } = useBackendStore.getState();
         reset();
-        // Re-sync avec le nouveau compte
-        if (user.role === 'patient') {
-          syncMyRecord(user.id);
-        } else {
-          syncPatients();
-        }
+        // Délai pour s'assurer que le token est bien stocké
+        setTimeout(() => {
+          if (user.role === 'patient') {
+            syncMyRecord(user.id);
+          } else {
+            syncPatients();
+          }
+        }, 500);
 
         // Enregistrer le push token pour les notifications
         try {
