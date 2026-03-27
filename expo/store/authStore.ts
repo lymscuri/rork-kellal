@@ -1,8 +1,6 @@
 import { AppStorage } from './storage';
 import { create } from 'zustand';
 import { authAPI, storeTokens, clearTokens, getStoredTokens, extractErrorMessage } from './api';
-import { useNotificationStore } from './notificationStore';
-import { useBackendStore } from './backendStore';
 
 export type UserRole = 'medecin' | 'patient';
 
@@ -175,27 +173,6 @@ export const useAuthStore = create<AuthStore>()(
         console.log('[Auth] Login successful for:', user.email, 'role:', user.role);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true, isLoading: false, error: null });
-
-        // Vider les données du précédent utilisateur
-        const { reset, syncMyRecord, syncPatients } = useBackendStore.getState();
-        reset();
-        // Délai pour s'assurer que le token est bien stocké
-        setTimeout(() => {
-          if (user.role === 'patient') {
-            syncMyRecord(user.id);
-          } else {
-            syncPatients();
-          }
-        }, 500);
-
-        // Enregistrer le push token pour les notifications
-        try {
-          const { registerForPushNotifications } = useNotificationStore.getState();
-          await registerForPushNotifications(user.id, user.role);
-        } catch (e) {
-          console.warn('[Auth] Push token registration failed:', e);
-        }
-
         return true;
       } catch (error) {
         const message = extractErrorMessage(error);
@@ -249,15 +226,6 @@ export const useAuthStore = create<AuthStore>()(
         console.log('[Auth] Signup successful for:', user.email);
         await saveAuthState(user, true);
         set({ user, isAuthenticated: true, isLoading: false, error: null });
-
-        // Enregistrer le push token pour les notifications
-        try {
-          const { registerForPushNotifications } = useNotificationStore.getState();
-          await registerForPushNotifications(user.id, user.role);
-        } catch (e) {
-          console.warn('[Auth] Push token registration failed:', e);
-        }
-
         return true;
       } catch (error) {
         const message = extractErrorMessage(error);
