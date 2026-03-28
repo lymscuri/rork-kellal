@@ -58,7 +58,7 @@ function mapBackendUser(data: Record<string, unknown>): User {
     firstName: safeStr(data.first_name) || safeStr(data.firstName),
     lastName: safeStr(data.last_name) || safeStr(data.lastName),
     phone: safeStr(data.phone) || undefined,
-    role: (data.role === 'medecin' ? 'medecin' : 'patient') as UserRole,
+    role: (data.role === 'doctor' || data.role === 'medecin') ? 'medecin' : 'patient' as UserRole,
     dossierNumber: safeStr(data.dossier_number) || undefined,
   };
 }

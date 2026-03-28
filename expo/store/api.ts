@@ -307,17 +307,17 @@ export const emergencyAPI = {
     apiClient.get('/emergency/alerts/list/'),
 
   takeAlert: (alertId: string) =>
-    apiClient.patch(`/emergency/alerts/${alertId}/take/`),
+    apiClient.patch(`/emergency/alerts/${alertId}/assign/`),
 
   resolveAlert: (alertId: string) =>
-    apiClient.patch(`/emergency/alerts/${alertId}/resolve/`),
+    apiClient.patch(`/emergency/alerts/${alertId}/status/`, { status: 'resolved' }),
 
   // Secouristes
   listSecourists: () =>
     apiClient.get('/emergency/secourists/'),
 
   updateSecouristLocation: (data: Record<string, unknown>) =>
-    apiClient.patch('/emergency/secourists/me/location/', data),
+    apiClient.patch('/emergency/secourist/profile/detail/', data),
 
   // Hôpitaux
   listHospitals: () =>
@@ -359,15 +359,12 @@ export const maternityAPI = {
   createPrenatalConsultation: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
     apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/`, data),
 
-  schedulePrenatalConsultation: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/patients/${patientId}/consultations/${consultationId}/schedule/`, data),
-
-  markPrenatalConsultationDone: (patientId: string, consultationId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/patients/${patientId}/consultations/${consultationId}/done/`, data),
+  updatePrenatalConsultation: (patientId: string, pregnancyId: string, consultationId: string, data: Record<string, unknown>) =>
+    apiClient.patch(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/prenatal-consultations/${consultationId}/`, data),
 
   // Enfants
-  createChild: (patientId: string, data: Record<string, unknown>) =>
-    apiClient.post(`/maternity/patients/${patientId}/children/`, data),
+  createChild: (patientId: string, pregnancyId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/patients/${patientId}/pregnancies/${pregnancyId}/children/`, data),
 
   listChildren: (patientId: string) =>
     apiClient.get(`/maternity/patients/${patientId}/children/`),
@@ -380,8 +377,8 @@ export const maternityAPI = {
     apiClient.get(`/maternity/children/${childId}/growth/`),
 
   // Vaccins des enfants
-  markChildVaccineDone: (vaccineId: string, data: Record<string, unknown>) =>
-    apiClient.patch(`/maternity/children/vaccines/${vaccineId}/done/`, data),
+  addChildVaccine: (childId: string, data: Record<string, unknown>) =>
+    apiClient.post(`/maternity/children/${childId}/vaccines/`, data),
 };
 
 export const remindersAPI = {
