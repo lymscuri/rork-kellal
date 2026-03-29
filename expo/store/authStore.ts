@@ -1,6 +1,8 @@
 import { AppStorage } from './storage';
 import { create } from 'zustand';
 import { authAPI, storeTokens, clearTokens, getStoredTokens, extractErrorMessage } from './api';
+import { useBackendStore } from './backendStore';
+import { useMedicalStore } from './medicalStore';
 
 export type UserRole = 'medecin' | 'patient';
 
@@ -141,6 +143,12 @@ export const useAuthStore = create<AuthStore>()(
     login: async (email: string, password: string) => {
       set({ isLoading: true, error: null });
       try {
+        // Reset des stores pour éviter fuite de données entre utilisateurs
+        const { reset: resetBackend } = useBackendStore.getState();
+        const { reset: resetMedical } = useMedicalStore.getState();
+        resetBackend();
+        resetMedical();
+
         console.log('[Auth] Attempting login for:', email);
         const res = await authAPI.login({ email: email.toLowerCase(), password });
 
@@ -237,6 +245,12 @@ export const useAuthStore = create<AuthStore>()(
 
     logout: async () => {
       try {
+        // Reset des stores pour éviter fuite de données entre utilisateurs
+        const { reset: resetBackend } = useBackendStore.getState();
+        const { reset: resetMedical } = useMedicalStore.getState();
+        resetBackend();
+        resetMedical();
+
         const tokens = await getStoredTokens();
         if (tokens?.refresh) {
           try {

@@ -290,6 +290,7 @@ interface MedicalStore {
   addSmsReminder: (reminder: Omit<SmsReminder, 'id'>) => void;
   updateReminderStatus: (id: string, status: SmsReminder['status']) => void;
   getSmsReminders: () => SmsReminder[];
+  reset: () => void;
 }
 
 export const useMedicalStore = create<MedicalStore>()(
@@ -299,6 +300,13 @@ export const useMedicalStore = create<MedicalStore>()(
       maternityPatients: [],
       smsReminders: [],
       isSyncing: false,
+
+      reset: () => set({
+        patients: [],
+        maternityPatients: [],
+        smsReminders: [],
+        isSyncing: false,
+      }),
 
       syncPatientsFromBackend: async () => {
         if (get().isSyncing) return;

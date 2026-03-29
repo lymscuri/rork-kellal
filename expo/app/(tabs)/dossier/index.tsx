@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, TextInput as RNTextInput, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, TextInput as RNTextInput, Alert, ActivityIndicator } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -191,6 +191,8 @@ function PatientDashboard() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const record = useBackendStore(s => s.myRecord);
+  const isSyncing = useBackendStore(s => s.isSyncing);
+  const lastSyncAt = useBackendStore(s => s.lastSyncAt);
   const prescriptions: any[] = [];
 
   const handleLogout = useCallback(() => {
@@ -199,6 +201,26 @@ function PatientDashboard() {
       { text: 'Déconnexion', style: 'destructive', onPress: () => logout() },
     ]);
   }, [logout]);
+
+  // Afficher un loader tant que la sync post-login n'est pas terminée
+  if (isSyncing || lastSyncAt === null) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.headerPatient}>
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.greeting}>Mon Dossier Médical</Text>
+              <Text style={styles.doctorName}>{user?.firstName} {user?.lastName}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={MedicalColors.medical} />
+          <Text style={[styles.emptyText, { marginTop: 16 }]}>Chargement de votre dossier...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
