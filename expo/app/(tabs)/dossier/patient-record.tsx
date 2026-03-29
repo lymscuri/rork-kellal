@@ -201,34 +201,50 @@ export default function PatientRecordScreen() {
     </View>
   );
 
+  const PERSONAL_HISTORY_LABELS: Record<string, string> = {
+    hypertension: 'Hypertension artérielle',
+    diabete: 'Diabète',
+    asthme: 'Asthme / BPCO',
+    cardiopathie: 'Cardiopathie',
+    insuffisance_renale: 'Insuffisance rénale',
+    vih_hepatite: 'VIH / Hépatite',
+    drepanocytose: 'Drépanocytose',
+    epilepsie: 'Épilepsie',
+  };
+
+  const FAMILY_HISTORY_LABELS: Record<string, string> = {
+    diabete: 'Diabète familial',
+    hypertension: 'Hypertension familiale',
+    cancer: 'Cancer',
+    cardiovasculaire: 'Maladies cardiovasculaires',
+    hereditaire: 'Maladies héréditaires',
+    psychiatrique: 'Troubles psychiatriques',
+  };
+
+  const renderCheckboxFields = (obj: Record<string, any>, labels: Record<string, string>) => {
+    if (!obj) return <Text style={styles.readValue}>Aucun antécédent renseigné</Text>;
+    const trueFields = Object.entries(obj)
+      .filter(([k, v]) => v === true && labels[k])
+      .map(([k]) => labels[k]);
+    if (trueFields.length === 0 && !obj.autres) {
+      return <Text style={styles.readValue}>Aucun antécédent renseigné</Text>;
+    }
+    return (
+      <>
+        {trueFields.map(label => (
+          <Text key={label} style={styles.antecedentItem}>✓ {label}</Text>
+        ))}
+        {obj.autres ? <Text style={styles.antecedentItem}>Autres : {obj.autres}</Text> : null}
+      </>
+    );
+  };
+
   const renderHistory = () => (
     <View style={styles.tabContent}>
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents personnels</Text>
         {isReadOnly ? (
-          <>
-            {patient.personal_history?.past_illnesses && (
-              <Text style={styles.listItem}>Maladies passées : {patient.personal_history.past_illnesses}</Text>
-            )}
-            {patient.personal_history?.blood_transfusion && (
-              <Text style={styles.listItem}>✓ Transfusion sanguine{patient.personal_history.blood_transfusion_date ? ` (${patient.personal_history.blood_transfusion_date})` : ''}</Text>
-            )}
-            {patient.personal_history?.diabetes && <Text style={styles.listItem}>✓ Diabète</Text>}
-            {patient.personal_history?.hypertension && <Text style={styles.listItem}>✓ Hypertension</Text>}
-            {patient.personal_history?.asthma && <Text style={styles.listItem}>✓ Asthme</Text>}
-            {patient.personal_history?.heart_disease && <Text style={styles.listItem}>✓ Maladie cardiaque</Text>}
-            {patient.personal_history?.epilepsy && <Text style={styles.listItem}>✓ Épilepsie</Text>}
-            {patient.personal_history?.hiv && <Text style={styles.listItem}>✓ VIH/SIDA</Text>}
-            {patient.personal_history?.tuberculosis && <Text style={styles.listItem}>✓ Tuberculose</Text>}
-            {patient.personal_history?.hepatitis && <Text style={styles.listItem}>✓ Hépatite</Text>}
-            {patient.personal_history?.sickle_cell && <Text style={styles.listItem}>✓ Drépanocytose</Text>}
-            {patient.personal_history?.other && (
-              <Text style={styles.listItem}>Autres : {patient.personal_history.other}</Text>
-            )}
-            {!patient.personal_history?.past_illnesses && !patient.personal_history?.blood_transfusion && !patient.personal_history?.diabetes && !patient.personal_history?.hypertension && !patient.personal_history?.asthma && !patient.personal_history?.heart_disease && !patient.personal_history?.other && (
-              <Text style={styles.readValue}>Aucun antécédent personnel renseigné</Text>
-            )}
-          </>
+          renderCheckboxFields(patient.personal_history, PERSONAL_HISTORY_LABELS)
         ) : (
           <>
             <Text style={styles.readValue}>{patient.personal_history?.past_illnesses || 'Aucun'}</Text>
@@ -491,24 +507,7 @@ export default function PatientRecordScreen() {
       <View style={styles.fieldGroup}>
         <Text style={styles.subSectionTitle}>Antécédents familiaux</Text>
         {isReadOnly ? (
-          <>
-            {patient.family_history?.diabetes && <Text style={styles.listItem}>✓ Diabète</Text>}
-            {patient.family_history?.hypertension && <Text style={styles.listItem}>✓ Hypertension</Text>}
-            {patient.family_history?.cancer && <Text style={styles.listItem}>✓ Cancer</Text>}
-            {patient.family_history?.sickleCell && <Text style={styles.listItem}>✓ Drépanocytose</Text>}
-            {patient.family_history?.sickle_cell && <Text style={styles.listItem}>✓ Drépanocytose</Text>}
-            {patient.family_history?.hereditary && <Text style={styles.listItem}>✓ Maladies héréditaires</Text>}
-            {patient.family_history?.heart_disease && <Text style={styles.listItem}>✓ Maladie cardiaque</Text>}
-            {patient.family_history?.epilepsy && <Text style={styles.listItem}>✓ Épilepsie</Text>}
-            {patient.family_history?.asthma && <Text style={styles.listItem}>✓ Asthme</Text>}
-            {patient.family_history?.tuberculosis && <Text style={styles.listItem}>✓ Tuberculose</Text>}
-            {patient.family_history?.other && (
-              <Text style={styles.listItem}>Autres : {patient.family_history.other}</Text>
-            )}
-            {!patient.family_history?.diabetes && !patient.family_history?.hypertension && !patient.family_history?.cancer && !patient.family_history?.sickleCell && !patient.family_history?.sickle_cell && !patient.family_history?.hereditary && !patient.family_history?.heart_disease && !patient.family_history?.other && (
-              <Text style={styles.readValue}>Aucun antécédent familial renseigné</Text>
-            )}
-          </>
+          renderCheckboxFields(patient.family_history, FAMILY_HISTORY_LABELS)
         ) : (
           <View style={styles.chipRow}>
             {([
@@ -547,15 +546,11 @@ export default function PatientRecordScreen() {
         <Text style={styles.subSectionTitle}>Habitudes de vie</Text>
         {isReadOnly ? (
           <>
-            <InfoRow label="Tabac" value={patient.life_habits?.tobacco ? '✓ Oui' : 'Non'} />
-            <InfoRow label="Alcool" value={patient.life_habits?.alcohol ? '✓ Oui' : 'Non'} />
-            <InfoRow label="Activité physique" value={patient.life_habits?.physical_activity || 'Non renseigné'} />
-            {patient.life_habits?.specialDiet && <InfoRow label="Régime spécial" value={patient.life_habits.specialDiet} />}
-            {patient.life_habits?.special_diet && <InfoRow label="Régime spécial" value={patient.life_habits.special_diet} />}
-            {patient.life_habits?.drug_use && <Text style={styles.listItem}>✓ Usage de drogues</Text>}
-            {patient.life_habits?.diet_type && <InfoRow label="Type de régime" value={patient.life_habits.diet_type} />}
-            {patient.life_habits?.other && (
-              <Text style={[styles.listItem, { marginTop: 4 }]}>Autres : {patient.life_habits.other}</Text>
+            <InfoRow label="Tabac" value={patient.life_habits?.tabac === 'oui' ? 'Oui' : 'Non'} />
+            <InfoRow label="Alcool" value={patient.life_habits?.alcool === 'oui' ? 'Oui' : 'Non'} />
+            <InfoRow label="Activité physique" value={patient.life_habits?.activite || 'Non renseigné'} />
+            {patient.life_habits?.autres && (
+              <Text style={styles.antecedentItem}>Autres : {patient.life_habits.autres}</Text>
             )}
           </>
         ) : (
@@ -884,6 +879,8 @@ const styles = StyleSheet.create({
   historyItemTitle: { fontSize: 14, fontWeight: '600' as const, color: MedicalColors.text },
   historyItemSub: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
   listItem: { fontSize: 13, color: MedicalColors.text, paddingVertical: 2 },
+  antecedentItem: { fontSize: 14, color: '#374151', paddingVertical: 2 },
+  sectionDivider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 12 },
   emptySection: { alignItems: 'center', paddingVertical: 40 },
   emptySectionText: { fontSize: 14, color: MedicalColors.textSecondary, marginTop: 8 },
   addBtn: { borderRadius: 8, marginBottom: 16 },
