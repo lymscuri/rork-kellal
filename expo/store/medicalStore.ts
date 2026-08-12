@@ -1678,16 +1678,19 @@ export const useMedicalStore = create<MedicalStore>()(
           ),
         }));
 
-        // Sync backend en arrière-plan
+        // Sync backend en arrière-plan.
+        // Payload aligné sur WeeklyCheckupSerializer
+        // (apps/maternite/serializers.py:73). checkup_date est obligatoire
+        // côté serveur.
         maternityAPI.createWeeklyCheckup(patientId, patient.pregnancy.id, {
-          date: checkup.date,
-          week: checkup.week,
+          checkup_date: checkup.date || new Date().toISOString(),
+          week_number: checkup.week,
           weight: checkup.weight,
-          systolic_bp: checkup.systolicBP,
-          diastolic_bp: checkup.diastolicBP,
-          fetal_movements: checkup.fetalMovements,
+          blood_pressure_systolic: checkup.systolicBP,
+          blood_pressure_diastolic: checkup.diastolicBP,
+          fetal_movements: checkup.fetalMovements || '',
           symptoms: checkup.symptoms,
-          mood: checkup.mood,
+          mood: checkup.mood || '',
         }).then(() => {
           console.log('[MedicalStore] Weekly checkup saved, syncing maternity patients from backend');
           // Forcer la synchronisation pour que le médecin voit le nouveau checkup

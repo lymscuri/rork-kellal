@@ -40,16 +40,10 @@ export default function WeeklyCheckupScreen() {
       return;
     }
 
-    // Check if patient (non-doctor) - save locally only
-    if (user?.role !== 'medecin') {
-      Alert.alert(
-        'Suivi enregistré',
-        'Votre suivi a été enregistré localement. Il sera transmis à votre médecin lors de votre prochaine consultation.',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
-      return;
-    }
-
+    // Alertes cliniques : déclenchées AVANT toute logique réseau ni tout
+    // branchement sur le rôle. Une urgence obstétrique doit s'afficher
+    // même si le backend est injoignable ou si l'utilisateur est la
+    // patiente elle-même.
     const sys = systolic ? parseInt(systolic) : undefined;
     const dia = diastolic ? parseInt(diastolic) : undefined;
 
@@ -64,14 +58,17 @@ export default function WeeklyCheckupScreen() {
     }
 
     try {
+      // Payload aligné sur WeeklyCheckupSerializer (apps/maternite/serializers.py:73).
+      // checkup_date est obligatoire côté serializer.
       await maternityAPI.createWeeklyCheckup(myMaternity.id, pregnancyId, {
-        week: currentWeek,
+        checkup_date: new Date().toISOString(),
+        week_number: currentWeek,
         weight: weight ? parseFloat(weight) : null,
-        systolic_bp: sys || null,
-        diastolic_bp: dia || null,
-        symptoms: symptoms,
-        fetal_movements: fetalMovements || null,
-        mood: mood || null,
+        blood_pressure_systolic: sys ?? null,
+        blood_pressure_diastolic: dia ?? null,
+        symptoms,
+        fetal_movements: fetalMovements || '',
+        mood: mood || '',
       });
 
       if (user) {
@@ -83,7 +80,14 @@ export default function WeeklyCheckupScreen() {
       ]);
     } catch (e: any) {
       console.error('[WeeklyCheckup]', e?.response?.data || e?.message);
-      Alert.alert('Erreur', JSON.stringify(e?.response?.data) || e?.message);
+      const detail = e?.response?.data?.error?.message
+        || (e?.response?.data ? JSON.stringify(e.response.data) : null)
+        || e?.message
+        || 'Enregistrement impossible.';
+      Alert.alert(
+        "Suivi non enregistré",
+        `${detail}\n\nVotre suivi n'a PAS été envoyé au serveur. Réessayez quand vous aurez du réseau.`,
+      );
     }
   }, [myMaternity, weight, systolic, diastolic, symptoms, fetalMovements, mood, currentWeek, user, router]);
 
