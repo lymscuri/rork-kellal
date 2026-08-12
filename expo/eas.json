@@ -8,13 +8,15 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://172.20.10.6:8000/api/v1"
+        "EXPO_PUBLIC_API_URL": "http://172.20.10.6:8000/api/v1",
+        "EXPO_ALLOW_CLEARTEXT": "1"
       }
     },
     "local": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://172.20.10.6:8000/api/v1"
+        "EXPO_PUBLIC_API_URL": "http://172.20.10.6:8000/api/v1",
+        "EXPO_ALLOW_CLEARTEXT": "1"
       }
     },
     "preview": {
