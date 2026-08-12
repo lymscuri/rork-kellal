@@ -65,6 +65,12 @@ function mapBackendUser(data: Record<string, unknown>): User {
   };
 }
 
+// Le backend accounts utilise 'doctor'/'patient'. L'app utilise 'medecin'/'patient'
+// en interne (25 écrans). On traduit uniquement à la frontière sortante.
+function toBackendRole(role: UserRole): 'doctor' | 'patient' {
+  return role === 'medecin' ? 'doctor' : 'patient';
+}
+
 async function saveAuthState(user: User | null, isAuthenticated: boolean): Promise<void> {
   try {
     const data = JSON.stringify({ user, isAuthenticated });
@@ -202,7 +208,7 @@ export const useAuthStore = create<AuthStore>()(
           first_name: userData.firstName,
           last_name: userData.lastName,
           phone: userData.phone || undefined,
-          role: userData.role,
+          role: toBackendRole(userData.role),
         });
 
         // Le backend enveloppe la réponse dans {success, message, data}
