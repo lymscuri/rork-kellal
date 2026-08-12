@@ -225,6 +225,13 @@ export interface WeeklyCheckup {
   symptoms: string[];
   fetalMovements?: 'actifs' | 'normaux' | 'reduits' | 'absents';
   mood?: 'bien' | 'fatigue' | 'anxieux';
+  // Champs backend snake_case (source de vérité serveur)
+  uterine_height?: number;
+  fetal_heart_rate?: number;
+  complaints?: string;
+  observations?: string;
+  recommendations?: string;
+  next_appointment?: string | null;
 }
 
 export interface PrenatalConsultation {
@@ -232,10 +239,15 @@ export interface PrenatalConsultation {
   pregnancyId: string;
   weekTarget: number;
   description: string;
-  status: 'a_venir' | 'effectuee' | 'en_retard';
+  status: 'a_venir' | 'effectuee' | 'en_retard' | 'planifiee' | 'annulee';
   scheduledDate?: string;
   actualDate?: string;
   notes?: string;
+  // Champs backend snake_case (source de vérité serveur)
+  consultation_number?: number;
+  week_of_gestation?: number;
+  scheduled_date?: string | null;
+  consultation_date?: string | null;
 }
 
 export interface PrenatalExam {
@@ -254,6 +266,15 @@ export interface PrenatalExam {
   prescriptions: string[];
   observations?: string;
   markedDone: boolean;
+  // Champs backend snake_case (source de vérité serveur)
+  exam_name?: string;
+  exam_type?: string;
+  status?: 'pending' | 'completed' | 'cancelled';
+  ordered_date?: string;
+  completed_date?: string | null;
+  results?: string;
+  interpretation?: string;
+  prenatal_consultation?: string | null;
 }
 
 export interface ChildProfile {
@@ -265,6 +286,13 @@ export interface ChildProfile {
   birthHeight?: number;
   headCircumference?: number;
   apgarScore?: number;
+  // Champs backend snake_case (source de vérité serveur)
+  last_name?: string;
+  gender?: 'M' | 'F';
+  apgar_score_1min?: number | null;
+  apgar_score_5min?: number | null;
+  complications?: string;
+  notes?: string;
 }
 
 export interface ChildGrowthRecord {
@@ -275,6 +303,14 @@ export interface ChildGrowthRecord {
   height?: number;
   headCircumference?: number;
   notes?: string;
+  // Champs backend snake_case (source de vérité serveur)
+  checkup_date?: string;
+  age_in_months?: number;
+  nutritional_status?: string;
+  developmental_milestones?: string;
+  observations?: string;
+  recommendations?: string;
+  next_appointment?: string | null;
 }
 
 export interface PEVVaccine {
@@ -286,6 +322,16 @@ export interface PEVVaccine {
   doneDate?: string;
   facility?: string;
   note?: string;
+  // Champs backend snake_case (source de vérité serveur)
+  vaccine_name?: string;
+  vaccine_type?: string;
+  dose_number?: number;
+  date_administered?: string;
+  next_dose_date?: string | null;
+  batch_number?: string;
+  manufacturer?: string;
+  site?: string;
+  notes?: string;
 }
 
 export interface MaternityPatient {

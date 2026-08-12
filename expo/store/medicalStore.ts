@@ -1356,42 +1356,151 @@ export const useMedicalStore = create<MedicalStore>()(
               isActive: data.pregnancy?.is_active !== undefined ? data.pregnancy.is_active : true,
             };
 
-            // Mapper prenatal_consultations vers PrenatalExam
-            const prenatalExams: PrenatalExam[] = (data.prenatal_consultations || []).map((pc: any) => {
-              const bloodPressure = pc.blood_pressure || '';
-              const [systolic, diastolic] = bloodPressure.split('/').map((s: string) => parseInt(s, 10));
+            const patientId = String(data.id);
 
-              return {
-                id: String(pc.id || genId()),
-                pregnancyId: pregnancy.id,
-                date: pc.date || '',
-                week: pc.week || 1,
-                weight: pc.weight || undefined,
-                systolicBP: systolic || undefined,
-                diastolicBP: diastolic || undefined,
-                uterineHeight: undefined,
-                fetalHeartRate: pc.fetal_heart_rate || undefined,
-                fetalPresentation: undefined,
-                labResults: [],
-                ultrasound: undefined,
-                prescriptions: [],
-                observations: pc.notes || undefined,
-                markedDone: true,
-              };
-            });
+            // WeeklyCheckup : mapping 1:1 des champs backend, avec équivalents
+            // camelCase pour compatibilité des écrans existants. Le backend
+            // n'expose ni "symptoms" (array) ni "fetalMovements" (enum) — ils
+            // restent à leur valeur vide/undefined.
+            const weeklyCheckups: WeeklyCheckup[] = (data.weekly_checkups || []).map((wc: any) => ({
+              id: String(wc.id),
+              pregnancyId: pregnancy.id,
+              week: wc.week_number ?? 0,
+              date: wc.checkup_date || '',
+              weight: wc.weight ?? undefined,
+              systolicBP: wc.blood_pressure_systolic ?? undefined,
+              diastolicBP: wc.blood_pressure_diastolic ?? undefined,
+              symptoms: [],
+              fetalMovements: undefined,
+              mood: undefined,
+              uterine_height: wc.uterine_height ?? undefined,
+              fetal_heart_rate: wc.fetal_heart_rate ?? undefined,
+              complaints: wc.complaints ?? '',
+              observations: wc.observations ?? '',
+              recommendations: wc.recommendations ?? '',
+              next_appointment: wc.next_appointment ?? null,
+            }));
+
+            // PrenatalConsultation : mapping 1:1 des vrais champs backend
+            // (consultation_number, week_of_gestation, status, scheduled_date,
+            // consultation_date). Les alias camelCase historiques sont
+            // remplis pour compatibilité écran.
+            const prenatalConsultations: PrenatalConsultation[] = (data.prenatal_consultations || []).map((pc: any) => ({
+              id: String(pc.id),
+              pregnancyId: pregnancy.id,
+              weekTarget: pc.week_of_gestation ?? pc.consultation_number ?? 0,
+              description: '',
+              status: pc.status ?? 'planifiee',
+              scheduledDate: pc.scheduled_date ?? undefined,
+              actualDate: pc.consultation_date ?? undefined,
+              notes: undefined,
+              consultation_number: pc.consultation_number ?? undefined,
+              week_of_gestation: pc.week_of_gestation ?? undefined,
+              scheduled_date: pc.scheduled_date ?? null,
+              consultation_date: pc.consultation_date ?? null,
+            }));
+
+            // PrenatalExam : mapping des vrais examens prénataux (échographie,
+            // analyse, etc.) exposés par le backend. Le type local historique
+            // portait des champs vitaux (weight/BP) qui ne correspondent à
+            // rien dans le modèle PrenatalExam — on ne les remplit pas.
+            const prenatalExams: PrenatalExam[] = (data.prenatal_exams || []).map((e: any) => ({
+              id: String(e.id),
+              pregnancyId: pregnancy.id,
+              date: e.ordered_date || '',
+              week: 0,
+              weight: undefined,
+              systolicBP: undefined,
+              diastolicBP: undefined,
+              uterineHeight: undefined,
+              fetalHeartRate: undefined,
+              fetalPresentation: undefined,
+              labResults: [],
+              ultrasound: undefined,
+              prescriptions: [],
+              observations: e.interpretation || undefined,
+              markedDone: e.status === 'completed',
+              exam_name: e.exam_name,
+              exam_type: e.exam_type,
+              status: e.status,
+              ordered_date: e.ordered_date,
+              completed_date: e.completed_date ?? null,
+              results: e.results ?? '',
+              interpretation: e.interpretation ?? '',
+              prenatal_consultation: e.prenatal_consultation ?? null,
+            }));
+
+            // Enfants : mapping 1:1 avec last_name, gender, apgar_1/5, etc.
+            const children: ChildProfile[] = (data.children || []).map((c: any) => ({
+              id: String(c.id),
+              parentId: patientId,
+              firstName: c.first_name || '',
+              birthDate: c.birth_date || '',
+              birthWeight: c.birth_weight ?? undefined,
+              birthHeight: c.birth_height ?? undefined,
+              headCircumference: c.head_circumference ?? undefined,
+              apgarScore: c.apgar_score_1min ?? undefined,
+              last_name: c.last_name ?? '',
+              gender: c.gender ?? undefined,
+              apgar_score_1min: c.apgar_score_1min ?? null,
+              apgar_score_5min: c.apgar_score_5min ?? null,
+              complications: c.complications ?? '',
+              notes: c.notes ?? '',
+            }));
+
+            // Suivis de croissance : mapping 1:1
+            const childGrowth: ChildGrowthRecord[] = (data.child_growth || []).map((g: any) => ({
+              id: String(g.id),
+              childId: String(g.child),
+              date: g.checkup_date || '',
+              weight: g.weight ?? undefined,
+              height: g.height ?? undefined,
+              headCircumference: g.head_circumference ?? undefined,
+              notes: g.observations ?? undefined,
+              checkup_date: g.checkup_date,
+              age_in_months: g.age_in_months,
+              nutritional_status: g.nutritional_status ?? '',
+              developmental_milestones: g.developmental_milestones ?? '',
+              observations: g.observations ?? '',
+              recommendations: g.recommendations ?? '',
+              next_appointment: g.next_appointment ?? null,
+            }));
+
+            // Vaccins enfant : mapping 1:1. Les alias historiques
+            // (name/targetAge/status) sont dérivés au mieux pour ne pas
+            // casser les écrans qui les lisaient encore.
+            const childVaccines: PEVVaccine[] = (data.child_vaccines || []).map((v: any) => ({
+              id: String(v.id),
+              childId: String(v.child),
+              name: v.vaccine_name || '',
+              targetAge: v.vaccine_type || '',
+              status: 'fait',
+              doneDate: v.date_administered,
+              facility: v.site || undefined,
+              note: v.notes || undefined,
+              vaccine_name: v.vaccine_name,
+              vaccine_type: v.vaccine_type,
+              dose_number: v.dose_number,
+              date_administered: v.date_administered,
+              next_dose_date: v.next_dose_date ?? null,
+              batch_number: v.batch_number ?? '',
+              manufacturer: v.manufacturer ?? '',
+              site: v.site ?? '',
+              notes: v.notes ?? '',
+            }));
 
             return {
-              id: String(data.id),
+              id: patientId,
               userId: data.user_id ? String(data.user_id) : undefined,
               linkedEmail: data.linked_email?.toLowerCase(),
               pregnancy,
-              weeklyCheckups: [],
-              prenatalConsultations: [],
+              weeklyCheckups,
+              prenatalConsultations,
               prenatalExams,
-              children: [],
-              childGrowth: [],
-              childVaccines: [],
-              alertLevel: 'vert',
+              children,
+              childGrowth,
+              childVaccines,
+              alertLevel: data.alert_level || 'vert',
               soignantId: undefined,
             };
           });
