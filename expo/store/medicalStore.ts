@@ -1616,7 +1616,8 @@ export const useMedicalStore = create<MedicalStore>()(
 
         // Sync backend en arrière-plan (PATCH sur la consultation existante)
         maternityAPI.updatePrenatalConsultation(patientId, patient.pregnancy.id, consultationId, {
-          consultation_date: scheduledDate,
+          scheduled_date: scheduledDate,
+          status: 'planifiee',
         }).then(() => {
           console.log('[MedicalStore] Consultation scheduled, syncing maternity patients from backend');
           get().syncMaternityPatientsFromBackend();
@@ -1650,12 +1651,12 @@ export const useMedicalStore = create<MedicalStore>()(
           ),
         }));
 
-        // Sync backend en arrière-plan (PATCH sur la consultation existante)
-        // Le backend ne modélise pas de champ 'status'/'notes'/'actual_date' :
-        // on écrit la date effective dans consultation_date et les notes dans clinical_findings.
+        // Sync backend en arrière-plan (PATCH sur la consultation existante).
+        // consultation_date = date réelle de l'acte, distincte de scheduled_date.
         maternityAPI.updatePrenatalConsultation(patientId, patient.pregnancy.id, consultationId, {
           consultation_date: date,
           clinical_findings: notes || '',
+          status: 'effectuee',
         }).then(() => {
           console.log('[MedicalStore] Consultation marked done, syncing maternity patients from backend');
           get().syncMaternityPatientsFromBackend();
@@ -1709,11 +1710,35 @@ export const useMedicalStore = create<MedicalStore>()(
           ),
         }));
 
+        // ChildProfile ne porte PAS de sexe. Aucun écran actuel n'en fournit
+        // (vérifié : app/(tabs)/maternite/child-tracking.tsx et les autres écrans
+        // maternité ne collectent pas cette information). Plutôt qu'inventer
+        // une valeur ('M' par défaut est inacceptable dans un dossier médical),
+        // on n'appelle pas le backend et on logue l'anomalie. L'enfant reste
+        // créé en local ; il devra être resynchronisé quand un formulaire
+        // exposera le champ sexe.
+        const childGender = (child as unknown as { gender?: string }).gender;
+        if (!childGender) {
+          console.error(
+            '[MedicalStore] addChild: sexe manquant — création backend annulée pour éviter une valeur inventée. patientId=',
+            patientId,
+            ' childId=',
+            id,
+          );
+          return id;
+        }
+
+        // Nom de famille : celui de la mère (patient parent).
+        // MaternityPatient ne porte pas d'identité — on le retrouve dans
+        // la collection patients qui a le même id.
+        const motherRecord = get().patients.find(p => p.id === patientId);
+        const motherLastName = motherRecord?.identity.lastName || '';
+
         // Sync backend en arrière-plan
         maternityAPI.createChild(patientId, patient.pregnancy.id, {
           first_name: child.firstName,
-          last_name: '',
-          gender: 'M',
+          last_name: motherLastName,
+          gender: childGender,
           birth_date: child.birthDate,
           birth_weight: child.birthWeight,
           birth_height: child.birthHeight,
