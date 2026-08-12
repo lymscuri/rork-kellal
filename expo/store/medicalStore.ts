@@ -1591,6 +1591,12 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       schedulePrenatalConsultation: (patientId, consultationId, scheduledDate) => {
+        const patient = get().maternityPatients.find(p => p.id === patientId);
+        if (!patient) {
+          console.warn('[MedicalStore] schedulePrenatalConsultation: patient introuvable', patientId);
+          return;
+        }
+
         // Mise à jour optimiste du state local
         set((state) => ({
           maternityPatients: state.maternityPatients.map(p =>
@@ -1608,9 +1614,12 @@ export const useMedicalStore = create<MedicalStore>()(
         }));
         console.log('[MedicalStore] Scheduled consultation', consultationId, 'for', scheduledDate);
 
-        // Sync backend en arrière-plan
-        maternityAPI.schedulePrenatalConsultation(patientId, consultationId, {
-          scheduled_date: scheduledDate,
+        // Sync backend en arrière-plan (PATCH sur la consultation existante)
+        maternityAPI.updatePrenatalConsultation(patientId, patient.pregnancy.id, consultationId, {
+          consultation_date: scheduledDate,
+        }).then(() => {
+          console.log('[MedicalStore] Consultation scheduled, syncing maternity patients from backend');
+          get().syncMaternityPatientsFromBackend();
         }).catch((e) => {
           const errorMsg = extractErrorMessage(e);
           console.warn('[MedicalStore] Backend schedulePrenatalConsultation failed:', errorMsg);
@@ -1619,6 +1628,12 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       markPrenatalConsultationDone: (patientId, consultationId, date, notes) => {
+        const patient = get().maternityPatients.find(p => p.id === patientId);
+        if (!patient) {
+          console.warn('[MedicalStore] markPrenatalConsultationDone: patient introuvable', patientId);
+          return;
+        }
+
         // Mise à jour optimiste du state local
         set((state) => ({
           maternityPatients: state.maternityPatients.map(p =>
@@ -1635,10 +1650,15 @@ export const useMedicalStore = create<MedicalStore>()(
           ),
         }));
 
-        // Sync backend en arrière-plan
-        maternityAPI.markPrenatalConsultationDone(patientId, consultationId, {
-          actual_date: date,
-          notes: notes || '',
+        // Sync backend en arrière-plan (PATCH sur la consultation existante)
+        // Le backend ne modélise pas de champ 'status'/'notes'/'actual_date' :
+        // on écrit la date effective dans consultation_date et les notes dans clinical_findings.
+        maternityAPI.updatePrenatalConsultation(patientId, patient.pregnancy.id, consultationId, {
+          consultation_date: date,
+          clinical_findings: notes || '',
+        }).then(() => {
+          console.log('[MedicalStore] Consultation marked done, syncing maternity patients from backend');
+          get().syncMaternityPatientsFromBackend();
         }).catch((e) => {
           const errorMsg = extractErrorMessage(e);
           console.warn('[MedicalStore] Backend markPrenatalConsultationDone failed:', errorMsg);
@@ -1663,6 +1683,12 @@ export const useMedicalStore = create<MedicalStore>()(
       },
 
       addChild: (patientId, child) => {
+        const patient = get().maternityPatients.find(p => p.id === patientId);
+        if (!patient) {
+          console.warn('[MedicalStore] addChild: patient introuvable', patientId);
+          return genId();
+        }
+
         const id = genId();
         const vaccines: PEVVaccine[] = GUINEA_PEV_VACCINES.map(v => ({
           ...v,
@@ -1684,12 +1710,17 @@ export const useMedicalStore = create<MedicalStore>()(
         }));
 
         // Sync backend en arrière-plan
-        maternityAPI.createChild(patientId, {
+        maternityAPI.createChild(patientId, patient.pregnancy.id, {
           first_name: child.firstName,
+          last_name: '',
+          gender: 'M',
           birth_date: child.birthDate,
-          // sex: child.sex, // Property does not exist on Omit<ChildProfile, "id"|"parentId">
           birth_weight: child.birthWeight,
           birth_height: child.birthHeight,
+          head_circumference: child.headCircumference,
+        }).then(() => {
+          console.log('[MedicalStore] Child created, syncing maternity patients from backend');
+          get().syncMaternityPatientsFromBackend();
         }).catch((e) => {
           const errorMsg = extractErrorMessage(e);
           console.warn('[MedicalStore] Backend createChild failed:', errorMsg);
