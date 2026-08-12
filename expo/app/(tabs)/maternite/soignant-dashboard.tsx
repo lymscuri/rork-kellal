@@ -40,7 +40,10 @@ export default function SoignantDashboardScreen() {
   const stats = useMemo(() => {
     const total = doctorPatients.length;
     const pregnancyActive = doctorPatients.filter(p => p.pregnancy.isActive).length;
-    const alerts = doctorPatients.filter(p => p.alertLevel === 'rouge').length;
+    // Toute alerte non-verte est signalée dans le badge principal.
+    const alerts = doctorPatients.filter(
+      p => p.alertLevel === 'rouge' || p.alertLevel === 'orange' || p.alertLevel === 'jaune'
+    ).length;
 
     let consultsDone = 0;
     let consultsTotal = 0;
@@ -66,13 +69,14 @@ export default function SoignantDashboardScreen() {
   }, [doctorPatients]);
 
   const sortedPatients = useMemo(() => {
+    const rank: Record<string, number> = { rouge: 0, orange: 1, jaune: 2, vert: 3 };
     return [...doctorPatients].sort((a, b) => {
+      const ra = rank[a.alertLevel] ?? 3;
+      const rb = rank[b.alertLevel] ?? 3;
+      if (ra !== rb) return ra - rb;
       const pa = getPatientConsultProgress(a);
       const pb = getPatientConsultProgress(b);
-      if (pa.overdue !== pb.overdue) return pb.overdue - pa.overdue;
-      if (a.alertLevel === 'rouge' && b.alertLevel !== 'rouge') return -1;
-      if (b.alertLevel === 'rouge' && a.alertLevel !== 'rouge') return 1;
-      return 0;
+      return pb.overdue - pa.overdue;
     });
   }, [doctorPatients]);
 
@@ -194,11 +198,15 @@ export default function SoignantDashboardScreen() {
             sortedPatients.map(p => {
               const progress = getPatientConsultProgress(p);
               const pct = progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
-              const statusColor = p.alertLevel === 'rouge'
-                ? MedicalColors.urgency
-                : progress.isUpToDate
-                  ? MedicalColors.life
-                  : MedicalColors.warning;
+              // Couleurs distinctes pour les 4 niveaux d'alerte serveur,
+              // avec fallback sur l'avancement des consultations pour le vert.
+              const alertColorMap: Record<string, string> = {
+                rouge: MedicalColors.urgency,
+                orange: '#FF7043',
+                jaune: MedicalColors.warning,
+              };
+              const statusColor = alertColorMap[p.alertLevel] ??
+                (progress.isUpToDate ? MedicalColors.life : MedicalColors.warning);
 
               return (
                 <TouchableOpacity
@@ -254,10 +262,11 @@ export default function SoignantDashboardScreen() {
 
                   {p.weeklyCheckups.length > 0 && (() => {
                     const last = p.weeklyCheckups[p.weeklyCheckups.length - 1];
-                    const hasAlert = (last.systolicBP && last.systolicBP >= 140) ||
-                      (last.diastolicBP && last.diastolicBP >= 90) ||
-                      last.fetalMovements === 'absents' ||
-                      last.symptoms?.includes('Saignements');
+                    // Le niveau et les raisons viennent du serveur, pas
+                    // d'un recalcul local — la règle vit dans
+                    // apps/maternite/alerts.py.
+                    const alertColor = alertColorMap[p.alertLevel];
+                    const hasAlert = p.alertLevel !== 'vert';
                     return (
                       <View style={[styles.lastCheckupBox, hasAlert ? styles.lastCheckupBoxAlert : null]}>
                         <View style={styles.lastCheckupRow}>
@@ -265,22 +274,33 @@ export default function SoignantDashboardScreen() {
                           <Text style={styles.lastCheckupDate}>
                             {new Date(last.date).toLocaleDateString('fr-FR')}
                           </Text>
-                          {hasAlert && <AlertTriangle size={14} color={MedicalColors.urgency} />}
+                          {hasAlert && alertColor && (
+                            <AlertTriangle size={14} color={alertColor} />
+                          )}
                         </View>
                         <View style={styles.lastCheckupDetails}>
                           {last.weight != null && <Text style={styles.lastCheckupDetail}>Poids: {last.weight}kg</Text>}
                           {last.systolicBP != null && (
-                            <Text style={[styles.lastCheckupDetail, (last.systolicBP >= 140 || (last.diastolicBP && last.diastolicBP >= 90)) ? styles.lastCheckupDetailAlert : null]}>
+                            <Text style={styles.lastCheckupDetail}>
                               TA: {last.systolicBP}/{last.diastolicBP}
                             </Text>
                           )}
                           {last.fetalMovements && (
-                            <Text style={[styles.lastCheckupDetail, last.fetalMovements === 'absents' ? styles.lastCheckupDetailAlert : null]}>
+                            <Text style={styles.lastCheckupDetail}>
                               Mvts: {last.fetalMovements}
                             </Text>
                           )}
                           {last.mood && <Text style={styles.lastCheckupDetail}>Humeur: {last.mood}</Text>}
                         </View>
+                        {p.alertReasons && p.alertReasons.length > 0 && (
+                          <View style={styles.alertReasonsBox}>
+                            {p.alertReasons.map((r, i) => (
+                              <Text key={i} style={[styles.alertReasonText, alertColor ? { color: alertColor } : null]}>
+                                • {r}
+                              </Text>
+                            ))}
+                          </View>
+                        )}
                         {last.symptoms && last.symptoms.length > 0 && (
                           <Text style={styles.lastCheckupSymptoms} numberOfLines={1}>
                             Symptômes: {last.symptoms.join(', ')}
@@ -392,6 +412,8 @@ const styles = StyleSheet.create({
   lastCheckupDetailAlert: { color: MedicalColors.urgency, backgroundColor: '#FFEBEE' },
   lastCheckupSymptoms: { fontSize: 10, color: MedicalColors.warning, marginTop: 4, fontStyle: 'italic' as const },
   lastCheckupCount: { fontSize: 10, color: MedicalColors.textSecondary, marginTop: 4 },
+  alertReasonsBox: { marginTop: 6, gap: 2 },
+  alertReasonText: { fontSize: 11, fontWeight: '600' as const },
   emptySection: { alignItems: 'center' as const, paddingVertical: 60 },
   emptyText: { fontSize: 15, color: MedicalColors.textSecondary, marginTop: 12 },
 });

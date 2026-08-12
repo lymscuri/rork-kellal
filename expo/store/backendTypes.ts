@@ -127,7 +127,8 @@ export interface BackendMaternityPatient {
   weekly_checkups?: any[];
   prenatal_consultations: BackendPrenatalConsultation[];
   children?: any[];
-  alert_level?: string;
+  alert_level?: 'vert' | 'jaune' | 'orange' | 'rouge';
+  alert_reasons?: string[];
   vaccinations_pev?: any[];
 }
 

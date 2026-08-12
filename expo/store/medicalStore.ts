@@ -1390,6 +1390,7 @@ export const useMedicalStore = create<MedicalStore>()(
             childGrowth: [],
             childVaccines: [],
             alertLevel: 'vert',
+            alertReasons: [],
             soignantId: soignantId || undefined,
           };
 
@@ -1579,6 +1580,7 @@ export const useMedicalStore = create<MedicalStore>()(
               childGrowth,
               childVaccines,
               alertLevel: data.alert_level || 'vert',
+              alertReasons: data.alert_reasons || [],
               soignantId: undefined,
             };
           });
@@ -1657,7 +1659,8 @@ export const useMedicalStore = create<MedicalStore>()(
             children: [],
             childGrowth: [],
             childVaccines: [],
-            alertLevel: 'vert',
+            alertLevel: (data.alert_level as MaternityPatient['alertLevel']) || 'vert',
+            alertReasons: data.alert_reasons || [],
             soignantId: undefined,
           };
 
@@ -1740,18 +1743,14 @@ export const useMedicalStore = create<MedicalStore>()(
           pregnancyId: patient.pregnancy.id,
         };
 
-        let alertLevel: MaternityPatient['alertLevel'] = 'vert';
-        if (checkup.systolicBP && checkup.systolicBP >= 140) alertLevel = 'rouge';
-        else if (checkup.diastolicBP && checkup.diastolicBP >= 90) alertLevel = 'rouge';
-        else if (checkup.fetalMovements === 'absents') alertLevel = 'rouge';
-        else if (checkup.fetalMovements === 'reduits') alertLevel = 'jaune';
-        else if (checkup.symptoms?.includes('Saignements')) alertLevel = 'rouge';
-
-        // Mise à jour optimiste du state local
+        // On ne calcule plus alertLevel côté client — c'est le serveur qui
+        // applique la règle (apps/maternite/alerts.py). On conserve la
+        // valeur précédente en attendant que syncMaternityPatientsFromBackend
+        // ramène le vrai niveau après le POST.
         set((state) => ({
           maternityPatients: state.maternityPatients.map(p =>
             p.id === patientId
-              ? { ...p, weeklyCheckups: [...p.weeklyCheckups, newCheckup], alertLevel }
+              ? { ...p, weeklyCheckups: [...p.weeklyCheckups, newCheckup] }
               : p
           ),
         }));

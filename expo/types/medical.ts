@@ -345,7 +345,8 @@ export interface MaternityPatient {
   children: ChildProfile[];
   childGrowth: ChildGrowthRecord[];
   childVaccines: PEVVaccine[];
-  alertLevel: 'vert' | 'jaune' | 'rouge';
+  alertLevel: 'vert' | 'jaune' | 'orange' | 'rouge';
+  alertReasons: string[];
   soignantId?: string;
 }
 
