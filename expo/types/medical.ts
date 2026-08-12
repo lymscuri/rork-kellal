@@ -123,7 +123,7 @@ export interface PrescriptionItem {
   unit: string;
   frequency: string[];
   duration: string;
-  route: 'oral' | 'injectable' | 'topique';
+  route?: 'oral' | 'injectable' | 'topique';
   instructions?: string;
   allergyAlert?: boolean;
 }

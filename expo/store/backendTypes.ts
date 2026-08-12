@@ -40,20 +40,36 @@ export interface BackendPatient {
 export interface BackendConsultation {
   id: string;
   date: string;
-  motif: string;
-  motif_detail: string;
-  diagnostic: string;
-  traitement: string;
-  recommandations: string;
-  poids: number | null;
-  taille: number | null;
-  tension_systolique: number | null;
-  tension_diastolique: number | null;
-  frequence_cardiaque: number | null;
+  // Vocabulaire aligné sur le modèle Django Consultation (anglais).
+  // ConsultationNestedSerializer n'expose plus d'alias français.
+  reason: string;
+  symptoms: string;
+  diagnosis: string;
+  treatment: string;
+  notes: string;
+  weight: number | null;
+  height: number | null;
+  blood_pressure_systolic: number | null;
+  blood_pressure_diastolic: number | null;
+  heart_rate: number | null;
   temperature: number | null;
-  spo2: number | null;
-  prochain_rdv: string | null;
+  oxygen_saturation: number | null;
+  respiratory_rate: number | null;
+  next_appointment: string | null;
   lab_tests: BackendLabTest[];
+  prescriptions?: BackendPrescription[];
+}
+
+export interface BackendPrescription {
+  id: string;
+  consultation: string;
+  medication_name: string;
+  commercial_name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  route: string;
+  instructions: string;
 }
 
 export interface BackendLabTest {

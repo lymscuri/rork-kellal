@@ -322,7 +322,9 @@ export const useMedicalStore = create<MedicalStore>()(
           }
 
           const mappedPatients: PatientRecord[] = backendPatients.map((data: any) => {
-            // Mapper consultations
+            // Mapper consultations — vocabulaire strictement aligné sur le
+            // modèle backend (anglais). ConsultationNestedSerializer
+            // n'expose plus d'alias français.
             const consultations: ConsultationRecord[] = (data.consultations || []).map((c: any) => ({
               id: String(c.id || genId()),
               patientId: String(data.id),
@@ -330,24 +332,23 @@ export const useMedicalStore = create<MedicalStore>()(
               doctorName: c.doctor_name || '',
               date: c.date ? c.date.split(' ')[0] : '',
               time: c.date ? c.date.split(' ')[1] || '' : '',
-              reason: c.motif || '',
+              reason: c.reason || '',
               vitalSigns: {
-                weight: c.poids ?? undefined,
-                height: c.taille ?? undefined,
-                systolicBP: c.tension_systolique ?? undefined,
-                diastolicBP: c.tension_diastolique ?? undefined,
-                heartRate: c.frequence_cardiaque ?? undefined,
+                weight: c.weight ?? undefined,
+                height: c.height ?? undefined,
+                systolicBP: c.blood_pressure_systolic ?? undefined,
+                diastolicBP: c.blood_pressure_diastolic ?? undefined,
+                heartRate: c.heart_rate ?? undefined,
                 temperature: c.temperature ?? undefined,
-                spo2: c.spo2 ?? undefined,
+                spo2: c.oxygen_saturation ?? undefined,
+                respiratoryRate: c.respiratory_rate ?? undefined,
               },
               clinicalExams: [],
-              mainDiagnosis: c.diagnostic || c.diagnosis || '',
+              mainDiagnosis: c.diagnosis || '',
               differentialDiagnosis: undefined,
-              treatment: c.traitement || c.treatment || '',
-              // Mapper les prescriptions envoyées par le backend
-              // (PrescriptionSerializer : medication_name, dosage, frequency,
-              // duration, instructions). Le champ 'unit' local est absorbé
-              // dans dosage côté serveur ; on ne le reconstitue pas.
+              treatment: c.treatment || '',
+              // PrescriptionSerializer : medication_name, commercial_name,
+              // dosage, frequency, duration, route, instructions.
               prescriptions: (c.prescriptions || []).map((pr: any) => ({
                 id: String(pr.id),
                 nameDCI: pr.medication_name || '',
@@ -358,12 +359,12 @@ export const useMedicalStore = create<MedicalStore>()(
                 duration: pr.duration || '',
                 route: (pr.route === 'oral' || pr.route === 'injectable' || pr.route === 'topique')
                   ? pr.route
-                  : 'oral' as const,
+                  : undefined,
                 instructions: pr.instructions || undefined,
               })),
               requestedExams: [],
-              nextAppointment: c.prochain_rdv || undefined,
-              observations: c.recommandations || undefined,
+              nextAppointment: c.next_appointment || undefined,
+              observations: c.notes || undefined,
             }));
 
             // Mapper vaccins
@@ -501,7 +502,8 @@ export const useMedicalStore = create<MedicalStore>()(
             return;
           }
 
-          // Mapper consultations (backend: motif, motif_detail, diagnostic, traitement, etc.)
+          // Mapper consultations — vocabulaire aligné sur le modèle backend
+          // (anglais). ConsultationNestedSerializer n'a plus d'alias français.
           const consultations: ConsultationRecord[] = (data.consultations || []).map((c: any) => ({
             id: String(c.id || genId()),
             patientId: String(data.id),
@@ -509,23 +511,21 @@ export const useMedicalStore = create<MedicalStore>()(
             doctorName: c.doctor_name || '',
             date: c.date ? c.date.split(' ')[0] : '',
             time: c.date ? c.date.split(' ')[1] || '' : '',
-            reason: c.motif || '',
+            reason: c.reason || '',
             vitalSigns: {
-              weight: c.poids ?? undefined,
-              height: c.taille ?? undefined,
-              systolicBP: c.tension_systolique ?? undefined,
-              diastolicBP: c.tension_diastolique ?? undefined,
-              heartRate: c.frequence_cardiaque ?? undefined,
+              weight: c.weight ?? undefined,
+              height: c.height ?? undefined,
+              systolicBP: c.blood_pressure_systolic ?? undefined,
+              diastolicBP: c.blood_pressure_diastolic ?? undefined,
+              heartRate: c.heart_rate ?? undefined,
               temperature: c.temperature ?? undefined,
-              spo2: c.spo2 ?? undefined,
+              spo2: c.oxygen_saturation ?? undefined,
+              respiratoryRate: c.respiratory_rate ?? undefined,
             },
             clinicalExams: [],
-            mainDiagnosis: c.diagnostic || c.diagnosis || '',
+            mainDiagnosis: c.diagnosis || '',
             differentialDiagnosis: undefined,
-            treatment: c.traitement || c.treatment || '',
-            // Mapper les prescriptions envoyées par le backend
-            // (PrescriptionSerializer : medication_name, dosage, frequency,
-            // duration, instructions).
+            treatment: c.treatment || '',
             prescriptions: (c.prescriptions || []).map((pr: any) => ({
               id: String(pr.id),
               nameDCI: pr.medication_name || '',
@@ -536,12 +536,12 @@ export const useMedicalStore = create<MedicalStore>()(
               duration: pr.duration || '',
               route: (pr.route === 'oral' || pr.route === 'injectable' || pr.route === 'topique')
                 ? pr.route
-                : 'oral' as const,
+                : undefined,
               instructions: pr.instructions || undefined,
             })),
             requestedExams: [],
-            nextAppointment: c.prochain_rdv || undefined,
-            observations: c.recommandations || undefined,
+            nextAppointment: c.next_appointment || undefined,
+            observations: c.notes || undefined,
           }));
 
           // Mapper vaccins (backend: vaccine_name, date_administered, dose_number, etc.)
@@ -881,7 +881,8 @@ export const useMedicalStore = create<MedicalStore>()(
 
       addConsultation: async (patientId, consultation) => {
         try {
-          // Mapper les champs frontend vers backend
+          // Mapper les champs frontend vers backend (vocabulaire anglais
+          // du modèle Consultation).
           const res = await dossierAPI.createConsultation(patientId, {
             patient: patientId,
             date: new Date().toISOString(),
@@ -896,8 +897,11 @@ export const useMedicalStore = create<MedicalStore>()(
             blood_pressure_systolic: consultation.vitalSigns?.systolicBP || null,
             blood_pressure_diastolic: consultation.vitalSigns?.diastolicBP || null,
             heart_rate: consultation.vitalSigns?.heartRate || null,
+            oxygen_saturation: consultation.vitalSigns?.spo2 || null,
+            respiratory_rate: consultation.vitalSigns?.respiratoryRate || null,
             weight: consultation.vitalSigns?.weight || null,
             height: consultation.vitalSigns?.height || null,
+            next_appointment: consultation.nextAppointment || null,
             lab_tests: [],
           });
 

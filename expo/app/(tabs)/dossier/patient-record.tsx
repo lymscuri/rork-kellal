@@ -684,11 +684,11 @@ export default function PatientRecordScreen() {
             <View style={styles.consultHeader}>
               <Text style={styles.consultDate}>{new Date(c.date).toLocaleDateString('fr-FR')}</Text>
             </View>
-            <Text style={styles.consultDiag}>{c.diagnostic}</Text>
-            <Text style={styles.consultReason}>Motif : {c.motif}</Text>
-            {c.traitement && <Text style={styles.consultTreatment}>Traitement : {c.traitement}</Text>}
-            {c.poids && <Text style={styles.consultVital}>Poids : {c.poids} kg</Text>}
-            {c.tension_systolique && <Text style={styles.consultVital}>TA : {c.tension_systolique}/{c.tension_diastolique}</Text>}
+            <Text style={styles.consultDiag}>{c.diagnosis}</Text>
+            <Text style={styles.consultReason}>Motif : {c.reason}</Text>
+            {c.treatment && <Text style={styles.consultTreatment}>Traitement : {c.treatment}</Text>}
+            {c.weight && <Text style={styles.consultVital}>Poids : {c.weight} kg</Text>}
+            {c.blood_pressure_systolic && <Text style={styles.consultVital}>TA : {c.blood_pressure_systolic}/{c.blood_pressure_diastolic}</Text>}
           </View>
         ))
       )}
