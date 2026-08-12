@@ -228,7 +228,15 @@ export default function PatientDossierScreen() {
             <View key={c.id} style={styles.examCard}>
               <View style={styles.examHeader}>
                 <CheckCircle size={16} color={MedicalColors.life} />
-                <Text style={styles.examDate}>S{c.week} — {new Date(c.date).toLocaleDateString('fr-FR')}</Text>
+                <Text style={styles.examDate}>
+                  S{c.week} — {
+                    c.date
+                      ? new Date(c.date).toLocaleDateString('fr-FR')
+                      : c.scheduled_date
+                        ? `Prévue le ${new Date(c.scheduled_date).toLocaleDateString('fr-FR')}`
+                        : c.status === 'annulee' ? 'Annulée' : 'Non réalisée'
+                  }
+                </Text>
               </View>
               <View style={styles.examDetails}>
                 {c.weight && <Text style={styles.examDetail}>Poids: {c.weight} kg</Text>}
