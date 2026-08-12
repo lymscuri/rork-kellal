@@ -341,10 +341,26 @@ export const useMedicalStore = create<MedicalStore>()(
                 spo2: c.spo2 ?? undefined,
               },
               clinicalExams: [],
-              mainDiagnosis: c.diagnostic || '',
+              mainDiagnosis: c.diagnostic || c.diagnosis || '',
               differentialDiagnosis: undefined,
-              treatment: c.traitement || '',
-              prescriptions: [],
+              treatment: c.traitement || c.treatment || '',
+              // Mapper les prescriptions envoyées par le backend
+              // (PrescriptionSerializer : medication_name, dosage, frequency,
+              // duration, instructions). Le champ 'unit' local est absorbé
+              // dans dosage côté serveur ; on ne le reconstitue pas.
+              prescriptions: (c.prescriptions || []).map((pr: any) => ({
+                id: String(pr.id),
+                nameDCI: pr.medication_name || '',
+                nameCommercial: pr.commercial_name || undefined,
+                dose: pr.dosage || '',
+                unit: '',
+                frequency: pr.frequency ? String(pr.frequency).split(/\s*,\s*/) : [],
+                duration: pr.duration || '',
+                route: (pr.route === 'oral' || pr.route === 'injectable' || pr.route === 'topique')
+                  ? pr.route
+                  : 'oral' as const,
+                instructions: pr.instructions || undefined,
+              })),
               requestedExams: [],
               nextAppointment: c.prochain_rdv || undefined,
               observations: c.recommandations || undefined,
@@ -504,10 +520,25 @@ export const useMedicalStore = create<MedicalStore>()(
               spo2: c.spo2 ?? undefined,
             },
             clinicalExams: [],
-            mainDiagnosis: c.diagnostic || '',
+            mainDiagnosis: c.diagnostic || c.diagnosis || '',
             differentialDiagnosis: undefined,
-            treatment: c.traitement || '',
-            prescriptions: [],
+            treatment: c.traitement || c.treatment || '',
+            // Mapper les prescriptions envoyées par le backend
+            // (PrescriptionSerializer : medication_name, dosage, frequency,
+            // duration, instructions).
+            prescriptions: (c.prescriptions || []).map((pr: any) => ({
+              id: String(pr.id),
+              nameDCI: pr.medication_name || '',
+              nameCommercial: pr.commercial_name || undefined,
+              dose: pr.dosage || '',
+              unit: '',
+              frequency: pr.frequency ? String(pr.frequency).split(/\s*,\s*/) : [],
+              duration: pr.duration || '',
+              route: (pr.route === 'oral' || pr.route === 'injectable' || pr.route === 'topique')
+                ? pr.route
+                : 'oral' as const,
+              instructions: pr.instructions || undefined,
+            })),
             requestedExams: [],
             nextAppointment: c.prochain_rdv || undefined,
             observations: c.recommandations || undefined,
@@ -870,10 +901,47 @@ export const useMedicalStore = create<MedicalStore>()(
             lab_tests: [],
           });
 
-          const backendId = res.data?.data?.id || res.data?.id || genId();
+          const backendId = res.data?.data?.id || res.data?.id;
+          if (!backendId) {
+            throw new Error('Le serveur n\'a pas renvoyé d\'identifiant de consultation.');
+          }
           console.log('[MedicalStore] Backend consultation created with ID:', backendId);
 
-          // Sync backend pour affichage immédiat
+          // Envoyer chaque ordonnance au backend maintenant qu'on connaît
+          // l'id serveur de la consultation. Mapping :
+          //  - PrescriptionItem.nameDCI       → medication_name (obligatoire)
+          //  - PrescriptionItem.nameCommercial → commercial_name
+          //  - PrescriptionItem.dose + unit   → dosage (obligatoire)
+          //  - PrescriptionItem.frequency[]   → frequency string (obligatoire)
+          //  - PrescriptionItem.duration      → duration (obligatoire)
+          //  - PrescriptionItem.route         → route (choix oral/injectable/topique)
+          //  - PrescriptionItem.instructions  → instructions
+          // Si UNE seule ordonnance échoue, on remonte l'erreur — perdre une
+          // ordonnance silencieusement est exactement le bug à corriger.
+          const failed: string[] = [];
+          for (const p of consultation.prescriptions || []) {
+            const dosage = [p.dose, p.unit].filter(Boolean).join(' ').trim();
+            const frequencyStr = Array.isArray(p.frequency)
+              ? p.frequency.join(', ')
+              : String(p.frequency ?? '');
+            try {
+              await dossierAPI.addPrescription(patientId, backendId, {
+                medication_name: p.nameDCI || '',
+                commercial_name: p.nameCommercial || '',
+                dosage,
+                frequency: frequencyStr,
+                duration: p.duration || '',
+                route: p.route || '',
+                instructions: p.instructions || '',
+              });
+            } catch (prescErr) {
+              const msg = extractErrorMessage(prescErr);
+              console.warn('[MedicalStore] Prescription failed:', p.nameDCI, msg);
+              failed.push(`${p.nameDCI || 'sans nom'} (${msg})`);
+            }
+          }
+
+          // Synchronisation seulement après que tout soit parti
           await useBackendStore.getState().syncPatients();
 
           set((state) => ({
@@ -887,6 +955,12 @@ export const useMedicalStore = create<MedicalStore>()(
                 : p
             ),
           }));
+
+          if (failed.length > 0) {
+            throw new Error(
+              `Consultation enregistrée, mais ${failed.length} ordonnance(s) n'ont pas pu être envoyées : ${failed.join(' ; ')}`,
+            );
+          }
 
           return backendId;
         } catch (error) {
