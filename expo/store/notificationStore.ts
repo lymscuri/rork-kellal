@@ -15,6 +15,7 @@ type NotificationState = {
   sendTokenToBackend: (token: string, role?: string) => Promise<void>;
   setupNotificationHandlers: () => void;
   checkPermissionStatus: () => Promise<Notifications.NotificationPermissionsStatus>;
+  reset: () => void;
 };
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -89,7 +90,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     try {
       console.log('[Notifications] Envoi du token au backend:', { token, role });
 
-      const response = await apiClient.post('/api/v1/notifications/register/', {
+      const response = await apiClient.post('/notifications/register/', {
         token,
         role: role || 'patient',
         platform: Platform.OS,
@@ -157,6 +158,12 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     set({ notificationPermission: permissionStatus });
     return permissionStatus;
   },
+
+  reset: () => set({
+    expoPushToken: null,
+    notificationPermission: null,
+    isRegistered: false,
+  }),
 }));
 
 /**

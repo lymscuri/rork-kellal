@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { authAPI, storeTokens, clearTokens, getStoredTokens, extractErrorMessage } from './api';
 import { useBackendStore } from './backendStore';
 import { useMedicalStore } from './medicalStore';
+import { useEmergencyStore } from './emergencyStore';
+import { useNotificationStore } from './notificationStore';
 
 export type UserRole = 'medecin' | 'patient';
 
@@ -152,8 +154,12 @@ export const useAuthStore = create<AuthStore>()(
         // Reset des stores pour éviter fuite de données entre utilisateurs
         const { reset: resetBackend } = useBackendStore.getState();
         const { reset: resetMedical } = useMedicalStore.getState();
+        const { reset: resetEmergency } = useEmergencyStore.getState();
+        const { reset: resetNotification } = useNotificationStore.getState();
         resetBackend();
         resetMedical();
+        resetEmergency();
+        resetNotification();
 
         console.log('[Auth] Attempting login for:', email);
         const res = await authAPI.login({ email: email.toLowerCase(), password });
@@ -254,8 +260,12 @@ export const useAuthStore = create<AuthStore>()(
         // Reset des stores pour éviter fuite de données entre utilisateurs
         const { reset: resetBackend } = useBackendStore.getState();
         const { reset: resetMedical } = useMedicalStore.getState();
+        const { reset: resetEmergency } = useEmergencyStore.getState();
+        const { reset: resetNotification } = useNotificationStore.getState();
         resetBackend();
         resetMedical();
+        resetEmergency();
+        resetNotification();
 
         const tokens = await getStoredTokens();
         if (tokens?.refresh) {

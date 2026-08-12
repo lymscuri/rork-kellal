@@ -35,7 +35,7 @@ export default function PrescriptionsScreen() {
       {item.prescriptions?.map((p, i) => (
         <View key={p.id} style={styles.medItem}>
           <Text style={styles.medName}>{i + 1}. {p.nameDCI} {p.nameCommercial ? `(${p.nameCommercial})` : ''}</Text>
-          <Text style={styles.medDetail}>{p.dose} — {p.frequency.join(', ')} — {p.duration} — voie {p.route}</Text>
+          <Text style={styles.medDetail}>{p.dose} — {p.frequency.join(', ')} — {p.duration}{p.route ? ` — voie ${p.route}` : ''}</Text>
           {p.instructions && <Text style={styles.medInstructions}>{p.instructions}</Text>}
         </View>
       ))}
@@ -77,7 +77,7 @@ export default function PrescriptionsScreen() {
                 <View key={p.id} style={styles.fullscreenMed}>
                   <Text style={styles.fullscreenMedName}>{i + 1}. {p.nameDCI}</Text>
                   <Text style={styles.fullscreenMedDetail}>{p.dose} — {p.frequency.join(', ')}</Text>
-                  <Text style={styles.fullscreenMedDetail}>Durée : {p.duration} — Voie : {p.route}</Text>
+                  <Text style={styles.fullscreenMedDetail}>Durée : {p.duration}{p.route ? ` — Voie : ${p.route}` : ''}</Text>
                   {p.instructions && <Text style={styles.fullscreenMedInstr}>{p.instructions}</Text>}
                 </View>
               ))}

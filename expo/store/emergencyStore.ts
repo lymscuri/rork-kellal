@@ -29,6 +29,8 @@ interface EmergencyState {
   updateSecouristLocation: (latitude: number, longitude: number) => void;
 
   syncSecouristsFromBackend: () => Promise<void>;
+
+  reset: () => void;
 }
 
 export const useEmergencyStore = create<EmergencyState>()(
@@ -217,6 +219,12 @@ export const useEmergencyStore = create<EmergencyState>()(
           set({ isSyncing: false });
         }
       },
+
+      reset: () => set({
+        alerts: [],
+        secourists: [],
+        isSyncing: false,
+      }),
     }),
     {
       name: 'kendeya-emergency-storage',
