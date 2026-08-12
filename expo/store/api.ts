@@ -1,7 +1,9 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { AppStorage } from './storage';
 
-const API_BASE_URL = 'https://kenndeya-backend-production.up.railway.app/api/v1';
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  'https://kenndeya-backend-production.up.railway.app/api/v1';
 
 const TOKEN_KEY = 'kendeya-access-token';
 const REFRESH_TOKEN_KEY = 'kendeya-refresh-token';
