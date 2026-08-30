@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_API_KEY = Constants.expoConfig?.extra?.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_GROQ_API_KEY;
+const GROQ_MODEL = Constants.expoConfig?.extra?.EXPO_PUBLIC_GROQ_MODEL || process.env.EXPO_PUBLIC_GROQ_MODEL || 'openai/gpt-oss-120b';
 
 export type OrdinogrammeModule = 'triage' | 'maternity' | 'general' | 'vaccination';
 
@@ -95,7 +96,7 @@ export class OrdinogrammeService {
    */
   private async sendMessage(userMessage: string): Promise<OrdinogrammeResponse> {
     if (!GROQ_API_KEY) {
-      throw new Error('GROQ_API_KEY non configurée');
+      throw new Error('IA non configurée : EXPO_PUBLIC_GROQ_API_KEY absente du .env.');
     }
 
     this.conversationHistory.push({
@@ -106,31 +107,55 @@ export class OrdinogrammeService {
     try {
       console.log('[Ordinogramme] Envoi requête à Groq:', userMessage);
 
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: SYSTEM_PROMPT,
-            },
-            ...this.conversationHistory,
-          ],
-          temperature: 0.3,
-          max_tokens: 1000,
-          response_format: { type: 'json_object' },
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages: [
+              {
+                role: 'system',
+                content: SYSTEM_PROMPT,
+              },
+              ...this.conversationHistory,
+            ],
+            temperature: 0.3,
+            max_tokens: 1000,
+            response_format: { type: 'json_object' },
+          }),
+        });
+      } catch (netErr) {
+        console.error('[Ordinogramme] Panne réseau vers Groq:', netErr);
+        throw new Error('IA injoignable : problème réseau.');
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Ordinogramme] Erreur API Groq:', response.status, errorText);
-        throw new Error(`Erreur API Groq: ${response.status}`);
+
+        let providerCode = '';
+        try {
+          providerCode = JSON.parse(errorText)?.error?.code || '';
+        } catch {}
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('IA refuse la clé : EXPO_PUBLIC_GROQ_API_KEY invalide ou révoquée.');
+        }
+        if (response.status === 429) {
+          throw new Error('IA saturée : quota ou rate-limit Groq atteint.');
+        }
+        if (providerCode === 'model_not_found' || response.status === 404) {
+          throw new Error(`IA : le modèle "${GROQ_MODEL}" n'existe plus. Mettez à jour EXPO_PUBLIC_GROQ_MODEL.`);
+        }
+        if (response.status >= 500) {
+          throw new Error('IA en panne côté fournisseur (Groq). Réessayez plus tard.');
+        }
+        throw new Error(`IA a refusé la requête (HTTP ${response.status}).`);
       }
 
       const data = await response.json();
