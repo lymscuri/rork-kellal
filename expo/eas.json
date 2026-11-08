@@ -22,13 +22,17 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://kenndeya-backend-production.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://kenndeya-backend-production.up.railway.app/api/v1",
+        "EXPO_PUBLIC_GROQ_MODEL": "openai/gpt-oss-120b",
+        "EXPO_PUBLIC_GROQ_MODEL_FAST": "openai/gpt-oss-20b"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://kenndeya-backend-production.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://kenndeya-backend-production.up.railway.app/api/v1",
+        "EXPO_PUBLIC_GROQ_MODEL": "openai/gpt-oss-120b",
+        "EXPO_PUBLIC_GROQ_MODEL_FAST": "openai/gpt-oss-20b"
       }
     }
   },
