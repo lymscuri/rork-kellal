@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
 import { UI_LANG } from '@/constants/i18n';
 import { useFirstAidStore } from '@/store/firstaidStore';
-import { anyUnvalidatedFromCache } from '@/store/firstaid/logic';
+import { anyUnvalidatedInList } from '@/store/firstaid/logic';
 import type { FirstAidMeta, ProtocolSummary } from '@/types/firstaid';
 
 const LANG = UI_LANG;
@@ -27,7 +27,6 @@ export default function FirstAidListScreen() {
     fetchMeta,
     fetchProtocols,
     isOffline,
-    cache,
   } = useFirstAidStore();
 
   // Cache servi immédiatement.
@@ -57,8 +56,7 @@ export default function FirstAidListScreen() {
     if (emergencyNumber) void Linking.openURL(`tel:${emergencyNumber}`);
   }, [emergencyNumber]);
 
-  const showTestBanner =
-    !!protocols && anyUnvalidatedFromCache(protocols, cache.protocols, LANG);
+  const showTestBanner = !!protocols && anyUnvalidatedInList(protocols);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>

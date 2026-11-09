@@ -11,13 +11,15 @@ export interface FirstAidMeta {
   lang: string;
 }
 
-// Élément de la liste /firstaid/protocols/ (status ABSENT de la liste côté API).
+// Élément de la liste /firstaid/protocols/ (status renvoyé par l'API, même
+// valeur que dans le détail).
 export interface ProtocolSummary {
   id: string;
   title: string;
   description: string;
   version: number;
   updated_at: string;
+  status: string;
   variants: Partial<Record<VariantKey, string>>;
 }
 

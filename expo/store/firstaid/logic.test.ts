@@ -11,9 +11,9 @@ import {
   isUnvalidated,
   variantKeys,
   defaultVariant,
-  anyUnvalidatedFromCache,
+  anyUnvalidatedInList,
 } from './logic';
-import type { Protocol, ActionBlock, CacheEntry, ProtocolSummary } from '@/types/firstaid';
+import type { Protocol, ActionBlock, ProtocolSummary } from '@/types/firstaid';
 
 const NOW = '2026-11-09T00:00:00.000Z';
 
@@ -132,24 +132,25 @@ describe('variantes et validation', () => {
     expect(isUnvalidated('validated')).toBe(false);
   });
 
-  test('bandeau « non validé » déduit du cache des détails', () => {
-    const summaries: ProtocolSummary[] = [
-      { id: 'p1', title: '', description: '', version: 1, updated_at: '', variants: {} },
-      { id: 'p2', title: '', description: '', version: 1, updated_at: '', variants: {} },
-    ];
-    const entry = (status: string): CacheEntry<Protocol> => ({
-      etag: null,
+  test('bandeau « non validé » déduit des status de la liste elle-même', () => {
+    const summary = (id: string, status: string): ProtocolSummary => ({
+      id,
+      title: '',
+      description: '',
       version: 1,
-      fetchedAt: NOW,
-      data: { status } as unknown as Protocol,
+      updated_at: '',
+      status,
+      variants: {},
     });
-    // p1 non validé en cache -> bandeau
-    expect(anyUnvalidatedFromCache(summaries, { 'p1:fr': entry('draft_unvalidated') }, 'fr')).toBe(true);
+    // au moins un non validé -> bandeau
+    expect(
+      anyUnvalidatedInList([summary('p1', 'draft_unvalidated'), summary('p2', 'validated')]),
+    ).toBe(true);
     // tous validés -> pas de bandeau
     expect(
-      anyUnvalidatedFromCache(summaries, { 'p1:fr': entry('validated'), 'p2:fr': entry('validated') }, 'fr'),
+      anyUnvalidatedInList([summary('p1', 'validated'), summary('p2', 'validated')]),
     ).toBe(false);
-    // rien en cache -> pas de bandeau (statut inconnu, non inventé)
-    expect(anyUnvalidatedFromCache(summaries, {}, 'fr')).toBe(false);
+    // liste vide -> pas de bandeau
+    expect(anyUnvalidatedInList([])).toBe(false);
   });
 });

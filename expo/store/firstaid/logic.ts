@@ -74,17 +74,10 @@ export function resolveBlockEnd(block: Pick<ActionBlock, 'next_question'>): Answ
   return block.next_question ? { kind: 'question', id: block.next_question } : { kind: 'end' };
 }
 
-// Un protocole de la liste est-il non validé ? (status ABSENT de la liste côté API :
-// on s'appuie sur les détails déjà en cache, clés `${id}:${lang}`.)
-export function anyUnvalidatedFromCache(
-  summaries: ProtocolSummary[],
-  cachedProtocols: Record<string, CacheEntry<Protocol>>,
-  lang: string,
-): boolean {
-  return summaries.some((s) => {
-    const entry = cachedProtocols[`${s.id}:${lang}`];
-    return entry ? isUnvalidated(entry.data.status) : false;
-  });
+// Un protocole de la liste est-il non validé ? Le status est désormais porté
+// par chaque item de la liste : on s'appuie directement dessus.
+export function anyUnvalidatedInList(summaries: ProtocolSummary[]): boolean {
+  return summaries.some((s) => isUnvalidated(s.status));
 }
 
 // Décision de rafraîchissement HTTP conditionnel.
