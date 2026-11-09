@@ -418,6 +418,34 @@ export const remindersAPI = {
     apiClient.get('/reminders/stats/'),
 };
 
+// Premiers secours — endpoints PUBLICS (aucun token requis).
+// 304 est une réponse valide (cache à jour) : on l'accepte au lieu de la rejeter.
+const firstaidValidateStatus = (status: number) =>
+  (status >= 200 && status < 300) || status === 304;
+
+export const firstaidAPI = {
+  getMeta: (lang: string, etag?: string | null) =>
+    apiClient.get('/firstaid/meta/', {
+      params: { lang },
+      headers: etag ? { 'If-None-Match': etag } : undefined,
+      validateStatus: firstaidValidateStatus,
+    }),
+
+  listProtocols: (lang: string, etag?: string | null) =>
+    apiClient.get('/firstaid/protocols/', {
+      params: { lang },
+      headers: etag ? { 'If-None-Match': etag } : undefined,
+      validateStatus: firstaidValidateStatus,
+    }),
+
+  getProtocol: (id: string, lang: string, etag?: string | null) =>
+    apiClient.get(`/firstaid/protocols/${id}/`, {
+      params: { lang },
+      headers: etag ? { 'If-None-Match': etag } : undefined,
+      validateStatus: firstaidValidateStatus,
+    }),
+};
+
 export const notificationsAPI = {
   // Envoyer une notification push à tous les utilisateurs
   sendToAll: (data: Record<string, unknown>) =>

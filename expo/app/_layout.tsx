@@ -72,12 +72,14 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     const inAuthGroup = segments[0] === "auth";
+    // Groupes PUBLICS accessibles sans connexion (ne pas rediriger vers le login).
+    const inPublicGroup = inAuthGroup || segments[0] === "firstaid";
     const isIndex = !segments[0];
     console.log('[AuthGuard] isAuthenticated:', isAuthenticated, 'inAuthGroup:', inAuthGroup, 'segments:', segments);
 
     const timer = setTimeout(() => {
       try {
-        if (!isAuthenticated && !inAuthGroup) {
+        if (!isAuthenticated && !inPublicGroup) {
           console.log('[AuthGuard] Redirecting to login');
           router.replace("/auth/login");
         } else if (isAuthenticated && (inAuthGroup || isIndex)) {
@@ -108,6 +110,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerBackTitle: "Retour" }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="firstaid" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
     </Stack>

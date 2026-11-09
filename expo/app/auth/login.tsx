@@ -137,6 +137,19 @@ export default function LoginScreen() {
             </View>
           </Surface>
 
+          {/* Accès public sans connexion */}
+          <Button
+            mode="outlined"
+            onPress={() => router.push('/firstaid')}
+            style={styles.firstaidButton}
+            contentStyle={styles.loginButtonContent}
+            textColor={MedicalColors.urgency}
+            icon={() => <Heart size={20} color={MedicalColors.urgency} />}
+            disabled={isLoading}
+          >
+            Premiers secours
+          </Button>
+
           {/* Info */}
           <View style={styles.infoContainer}>
             <Text style={styles.infoText}>
@@ -226,6 +239,11 @@ const styles = StyleSheet.create({
   },
   loginButtonContent: {
     paddingVertical: 8,
+  },
+  firstaidButton: {
+    marginTop: 16,
+    borderRadius: 8,
+    borderColor: MedicalColors.urgency,
   },
   signupContainer: {
     flexDirection: 'row',
