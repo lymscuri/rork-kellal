@@ -324,6 +324,14 @@ export const emergencyAPI = {
   // Hôpitaux
   listHospitals: () =>
     apiClient.get('/emergency/hospitals/'),
+
+  // Lieux d'urgence autour de moi — PUBLIC (aucun token requis).
+  // Le backend fusionne OpenStreetMap (Overpass côté serveur, en cache) et le
+  // référentiel Hospital. 400 (coordonnées invalides) reste rejeté normalement.
+  places: (lat: number, lon: number, radius: number, lang: string) =>
+    apiClient.get('/emergency/places/', {
+      params: { lat, lon, radius, lang },
+    }),
 };
 
 export const maternityAPI = {

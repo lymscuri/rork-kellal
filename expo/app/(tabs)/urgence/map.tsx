@@ -3,461 +3,216 @@ import { Alert, Linking, Platform, ScrollView, StyleSheet, TouchableOpacity, Vie
 import { ActivityIndicator, Chip, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import {
+  Building2, Clock, Cross, Crosshair, HelpCircle, List, Map as MapIcon,
+  MapPin, Navigation, Phone, RefreshCw, Settings, Stethoscope, TriangleAlert,
+} from "lucide-react-native";
 import { MedicalColors } from "@/constants/colors";
-import { Building2, Clock, Cross, List, Map as MapIcon, MapPin, Navigation, Phone, RefreshCw, Stethoscope } from "lucide-react-native";
+import { UI_LANG } from "@/constants/i18n";
+import { MAP_STRINGS } from "@/constants/mapStrings";
+import { usePreciseLocation } from "@/hooks/usePreciseLocation";
+import { usePlacesStore } from "@/store/placesStore";
+import { effectivePosition, needsRefetch } from "@/store/firstaid/geo";
+import { buildMapHTML, loadLeaflet, type LeafletView } from "@/components/map/leaflet";
+import type { Place, PlaceKind, PlacesData } from "@/types/places";
 
-interface OSMPlace {
-  id: string;
-  name: string;
-  type: "hospital" | "pharmacy" | "clinic";
-  latitude: number;
-  longitude: number;
-  address?: string;
-  phone?: string;
-  is24h?: boolean;
-  hasMaternity?: boolean;
-  distance?: number;
-  openingHours?: string;
-}
+const S = MAP_STRINGS[UI_LANG];
 
-const DEFAULT_LAT = 9.5370;
-const DEFAULT_LON = -13.6785;
-const SEARCH_RADIUS = 5000;
+type Filter = "all" | PlaceKind;
 
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10;
-}
-
-function generateLeafletHTML(userLat: number, userLon: number, places: OSMPlace[]): string {
-  const placesJSON = JSON.stringify(places);
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    body { margin: 0; padding: 0; }
-    #map { width: 100vw; height: 100vh; }
-    #loader {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 9999;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 20px;
-      border-radius: 10px;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div id="loader">Chargement de la carte...</div>
-  <div id="map"></div>
-  <script>
-    // Initialiser la carte avec performances améliorées
-    const map = L.map('map', {
-      preferCanvas: true,
-      zoomAnimation: true,
-      fadeAnimation: true,
-      markerZoomAnimation: true,
-      tap: false
-    }).setView([${userLat}, ${userLon}], 13);
-
-    // Couche de tuiles principale avec fallback
-    const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-      crossOrigin: true,
-      keepBuffer: 4,
-      updateWhenIdle: false,
-      updateWhenZooming: false
-    }).addTo(map);
-
-    // Gestion des erreurs de tuiles avec fallback
-    tileLayer.on('tileerror', function(e) {
-      e.tile.src = 'https://tile.openstreetmap.fr/osmfr/'
-        + e.coords.z + '/' + e.coords.x + '/' + e.coords.y + '.png';
-    });
-
-    // Marqueur utilisateur
-    const userIcon = L.divIcon({
-      className: 'custom-user-marker',
-      html: '<div style="background: #0D6EFD; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
-      iconSize: [22, 22],
-      iconAnchor: [11, 11]
-    });
-
-    L.marker([${userLat}, ${userLon}], { icon: userIcon })
-      .addTo(map)
-      .bindPopup('Vous êtes ici');
-
-    // Marqueurs des établissements
-    const places = ${placesJSON};
-
-    function getMarkerColor(type) {
-      switch(type) {
-        case 'hospital': return '#DC3545';
-        case 'pharmacy': return '#4CAF50';
-        case 'clinic': return '#0D6EFD';
-        default: return '#6C757D';
-      }
-    }
-
-    function getTypeLabel(type) {
-      switch(type) {
-        case 'hospital': return 'Hôpital';
-        case 'pharmacy': return 'Pharmacie';
-        case 'clinic': return 'Clinique';
-        default: return '';
-      }
-    }
-
-    places.forEach(place => {
-      const color = getMarkerColor(place.type);
-      const icon = L.divIcon({
-        className: 'custom-marker',
-        html: '<div style="background: ' + color + '; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
-      });
-
-      const popupContent =
-        '<strong>' + place.name + '</strong><br>' +
-        getTypeLabel(place.type) +
-        (place.distance ? ' • ' + place.distance + ' km' : '') +
-        (place.address ? '<br><small>' + place.address + '</small>' : '') +
-        (place.is24h ? '<br><small style="color: #4CAF50;">24h/24</small>' : '');
-
-      L.marker([place.latitude, place.longitude], { icon: icon })
-        .addTo(map)
-        .bindPopup(popupContent)
-        .on('click', function() {
-          window.ReactNativeWebView?.postMessage(JSON.stringify({
-            type: 'markerClick',
-            place: place
-          }));
-        });
-    });
-
-    // Cacher le loader après le chargement de la carte
-    map.on('load', function() {
-      const loader = document.getElementById('loader');
-      if (loader) loader.style.display = 'none';
-
-      // Précharger les tuiles autour de la position
-      map.flyTo([${userLat}, ${userLon}], 14, { duration: 1 });
-    });
-
-    // Cacher le loader après 3 secondes même si pas complètement chargé
-    setTimeout(function() {
-      const loader = document.getElementById('loader');
-      if (loader) loader.style.display = 'none';
-    }, 3000);
-
-    // Écouter les messages de React Native
-    window.addEventListener('message', function(event) {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'focusPlace' && data.place) {
-          map.setView([data.place.latitude, data.place.longitude], 16);
-        }
-      } catch(e) {
-        console.error('Error parsing message:', e);
-      }
-    });
-  </script>
-</body>
-</html>
-  `;
-}
-
-function buildOverpassQuery(lat: number, lon: number, radius: number): string {
-  const query = `
-[out:json][timeout:25];
-(
-  node["amenity"="hospital"](around:${radius},${lat},${lon});
-  way["amenity"="hospital"](around:${radius},${lat},${lon});
-  relation["amenity"="hospital"](around:${radius},${lat},${lon});
-  node["amenity"="pharmacy"](around:${radius},${lat},${lon});
-  way["amenity"="pharmacy"](around:${radius},${lat},${lon});
-  node["amenity"="clinic"](around:${radius},${lat},${lon});
-  way["amenity"="clinic"](around:${radius},${lat},${lon});
-);
-out center body;
-`;
-  return query.trim();
-}
-
-function parseOSMResults(data: any, userLat: number, userLon: number): OSMPlace[] {
-  if (!data?.elements) return [];
-  const places: OSMPlace[] = [];
-
-  for (const el of data.elements) {
-    const tags = el.tags || {};
-    const name = tags.name || tags["name:fr"];
-    if (!name) continue;
-
-    const lat = el.lat ?? el.center?.lat;
-    const lon = el.lon ?? el.center?.lon;
-    if (lat == null || lon == null) continue;
-
-    const amenity = tags.amenity as string;
-    let type: OSMPlace["type"] = "hospital";
-    if (amenity === "pharmacy") type = "pharmacy";
-    else if (amenity === "clinic") type = "clinic";
-
-    const addressParts: string[] = [];
-    if (tags["addr:street"]) {
-      if (tags["addr:housenumber"]) addressParts.push(tags["addr:housenumber"]);
-      addressParts.push(tags["addr:street"]);
-    }
-    if (tags["addr:city"]) addressParts.push(tags["addr:city"]);
-    const address = addressParts.length > 0 ? addressParts.join(", ") : tags["addr:full"] || undefined;
-
-    const phoneVal = tags.phone || tags["contact:phone"] || undefined;
-    const openingHours = tags.opening_hours || undefined;
-    const is24h = openingHours === "24/7" || tags.emergency === "yes";
-    const hasMaternity = !!tags.healthcare && (tags.healthcare.includes("maternity") || tags.healthcare.includes("birthing"));
-
-    const distance = haversineDistance(userLat, userLon, lat, lon);
-
-    places.push({
-      id: `${el.type}-${el.id}`,
-      name,
-      type,
-      latitude: lat,
-      longitude: lon,
-      address,
-      phone: phoneVal,
-      is24h,
-      hasMaternity,
-      distance,
-      openingHours,
-    });
-  }
-
-  places.sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99));
-  return places;
-}
-
-function getTypeLabel(type: OSMPlace["type"]) {
-  switch (type) {
-    case "hospital": return "Hôpital";
-    case "pharmacy": return "Pharmacie";
-    case "clinic": return "Clinique";
-  }
-}
-
-function getTypeColor(type: OSMPlace["type"]) {
-  switch (type) {
+function kindColor(kind: PlaceKind): string {
+  switch (kind) {
     case "hospital": return MedicalColors.urgency;
     case "pharmacy": return MedicalColors.life;
     case "clinic": return MedicalColors.medical;
+    case "health_center": return "#6F42C1";
   }
 }
 
-function getTypeIcon(type: OSMPlace["type"]) {
-  switch (type) {
-    case "hospital": return Building2;
-    case "pharmacy": return Cross;
-    case "clinic": return Stethoscope;
+function KindIcon({ kind, size, color }: { kind: PlaceKind; size: number; color: string }) {
+  if (kind === "pharmacy") return <Cross size={size} color={color} />;
+  if (kind === "clinic") return <Stethoscope size={size} color={color} />;
+  if (kind === "health_center") return <MapPin size={size} color={color} />;
+  return <Building2 size={size} color={color} />;
+}
+
+// Rendu tri-état des horaires : null -> « horaires inconnus », jamais « fermé ».
+function HoursBadge({ is24h }: { is24h: boolean | null }) {
+  if (is24h === true) {
+    return (
+      <View style={[styles.badge, styles.badgeGreen]}>
+        <Clock size={10} color={MedicalColors.life} />
+        <Text style={styles.badgeGreenText}>{S.open24h}</Text>
+      </View>
+    );
   }
+  const label = is24h === false ? S.closedNight : S.hoursUnknown;
+  return (
+    <View style={[styles.badge, styles.badgeNeutral]}>
+      <Clock size={10} color={MedicalColors.textSecondary} />
+      <Text style={styles.badgeNeutralText}>{label}</Text>
+    </View>
+  );
 }
 
 export default function MapScreen() {
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { status, fix, refresh: refreshLocation, openSettings } = usePreciseLocation();
+  const { getCached, fetchPlaces, isOffline } = usePlacesStore();
+
+  const [data, setData] = useState<PlacesData | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [fetching, setFetching] = useState(false);
-  const [places, setPlaces] = useState<OSMPlace[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedType, setSelectedType] = useState<"all" | "hospital" | "pharmacy" | "clinic">("all");
+  const [selectedType, setSelectedType] = useState<Filter>("all");
+  const [only24h, setOnly24h] = useState(false);
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
-  const [selectedPlace, setSelectedPlace] = useState<OSMPlace | null>(null);
-  const [filters, setFilters] = useState({ emergency24h: false });
-  const mapRef = useRef<any>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [leafletReady, setLeafletReady] = useState(false);
+  const mapRef = useRef<WebView>(null);
 
-  const requestLocation = useCallback(async () => {
-    try {
-      if (Platform.OS === "web") {
-        if ("geolocation" in navigator) {
-          return new Promise<{ latitude: number; longitude: number }>((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-              () => resolve({ latitude: DEFAULT_LAT, longitude: DEFAULT_LON }),
-              { timeout: 10000 }
-            );
-          });
-        }
-        return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
-      }
+  // Position effective : vrai fix, sinon dernier connu (cache), sinon Guinée.
+  const lastKnownFromCache = useRef<{ latitude: number; longitude: number; accuracy: number | null; timestamp: number; approximate: boolean } | null>(null);
+  const pos = useMemo(
+    () => effectivePosition(fix, lastKnownFromCache.current),
+    [fix],
+  );
 
-      try {
-        const Location = await import("expo-location");
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          console.log("Permission de localisation refusée, utilisation position par défaut");
-          return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
-        }
-
-        const currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        return {
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        };
-      } catch (locErr) {
-        console.error("Erreur expo-location:", locErr);
-        return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
-      }
-    } catch (err) {
-      console.error("Erreur de localisation:", err);
-      return { latitude: DEFAULT_LAT, longitude: DEFAULT_LON };
-    }
+  // Charge Leaflet embarqué une fois.
+  useEffect(() => {
+    let alive = true;
+    void loadLeaflet().then(() => { if (alive) setLeafletReady(true); }).catch(() => {});
+    return () => { alive = false; };
   }, []);
 
-  const fetchNearbyPlaces = useCallback(async (lat: number, lon: number) => {
+  // Sert le cache immédiatement pour la cellule courante (sans attendre le réseau).
+  useEffect(() => {
+    if (!pos.known) return;
+    const cached = getCached(pos.lat, pos.lon);
+    if (cached && !data) {
+      setData(cached.data);
+      setFetchedAt(cached.fetchedAt);
+      lastKnownFromCache.current = {
+        latitude: cached.data.center.lat, longitude: cached.data.center.lon,
+        accuracy: null, timestamp: cached.fetchedAt, approximate: true,
+      };
+    }
+  }, [pos.known, pos.lat, pos.lon, getCached, data]);
+
+  const runFetch = useCallback(async (lat: number, lon: number) => {
     setFetching(true);
     setError(null);
-    console.log(`Recherche OpenStreetMap autour de ${lat}, ${lon}...`);
-
-    try {
-      const query = buildOverpassQuery(lat, lon, SEARCH_RADIUS);
-      const response = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(query)}`,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur API: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`OpenStreetMap: ${data.elements?.length ?? 0} résultats trouvés`);
-
-      const parsed = parseOSMResults(data, lat, lon);
-      setPlaces(parsed);
-
-      if (parsed.length === 0) {
-        setError("Aucun établissement trouvé dans un rayon de 5km. Essayez de rafraîchir.");
-      }
-    } catch (err) {
-      console.error("Erreur Overpass API:", err);
-      setError("Impossible de charger les données. Vérifiez votre connexion internet.");
-    } finally {
-      setFetching(false);
+    const fresh = await fetchPlaces(lat, lon);
+    if (fresh) {
+      setData(fresh);
+      setFetchedAt(Date.now());
+    } else if (!data) {
+      setError(S.loadError);
     }
-  }, []);
+    setFetching(false);
+  }, [fetchPlaces, data]);
 
+  // Rafraîchit quand on s'éloigne de plus de 500 m du centre du dernier lot.
   useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const loc = await requestLocation();
-      if (cancelled) return;
-      setLocation(loc);
-      setLoading(false);
-      void fetchNearbyPlaces(loc.latitude, loc.longitude);
-    })();
-
-    return () => { cancelled = true; };
-  }, [requestLocation, fetchNearbyPlaces]);
-
-  const handleRefresh = useCallback(async () => {
-    if (!location) return;
-    void fetchNearbyPlaces(location.latitude, location.longitude);
-  }, [location, fetchNearbyPlaces]);
-
-  const filteredPlaces = useMemo(() => {
-    return places.filter((h) => {
-      if (selectedType !== "all" && h.type !== selectedType) return false;
-      if (filters.emergency24h && !h.is24h) return false;
-      return true;
-    });
-  }, [places, filters, selectedType]);
-
-  const handleCall = useCallback(async (phone?: string) => {
-    if (!phone) return;
-    const cleaned = phone.replace(/\s/g, "");
-    const url = `tel:${cleaned}`;
-    try {
-      if (await Linking.canOpenURL(url)) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert("Erreur", "Impossible d'effectuer l'appel");
-      }
-    } catch (e) {
-      console.error("Erreur appel:", e);
+    if (!pos.known) return;
+    const center = data ? { lat: data.center.lat, lon: data.center.lon } : null;
+    if (needsRefetch(center, { lat: pos.lat, lon: pos.lon })) {
+      void runFetch(pos.lat, pos.lon);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos.known, pos.lat, pos.lon]);
+
+  const handleManualRefresh = useCallback(() => {
+    if (pos.known) void runFetch(pos.lat, pos.lon);
+  }, [pos, runFetch]);
+
+  const places = useMemo(() => data?.places ?? [], [data]);
+
+  const counts = useMemo(() => {
+    const c: Record<Filter, number> = { all: places.length, hospital: 0, clinic: 0, pharmacy: 0, health_center: 0 };
+    for (const p of places) c[p.kind]++;
+    return c;
+  }, [places]);
+
+  const filtered = useMemo(
+    () => places.filter((p) => {
+      if (selectedType !== "all" && p.kind !== selectedType) return false;
+      if (only24h && p.is_24h !== true) return false;
+      return true;
+    }),
+    [places, selectedType, only24h],
+  );
+
+  const selected = useMemo(
+    () => filtered.find((p) => p.id === selectedId) ?? null,
+    [filtered, selectedId],
+  );
+
+  const html = useMemo(() => {
+    if (!leafletReady) return "";
+    const view: LeafletView = {
+      center: { lat: pos.lat, lon: pos.lon },
+      accuracy: pos.accuracy,
+      known: pos.known,
+      places: filtered,
+      youAreHere: S.youAreHere,
+    };
+    try {
+      return buildMapHTMLSync(view);
+    } catch {
+      return "";
+    }
+  }, [leafletReady, pos.lat, pos.lon, pos.accuracy, pos.known, filtered]);
+
+  const onWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as { type?: string; id?: string };
+      if (msg.type === "markerClick" && msg.id) setSelectedId(msg.id);
+    } catch { /* ignore */ }
   }, []);
 
-  const handleOpenMaps = useCallback((place: OSMPlace) => {
+  const handleCall = useCallback(async (phone: string | null) => {
+    if (!phone) return;
+    const url = `tel:${phone.replace(/\s/g, "")}`;
+    try {
+      if (await Linking.canOpenURL(url)) await Linking.openURL(url);
+      else Alert.alert(S.call, phone);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleItinerary = useCallback((p: Place) => {
     const url = Platform.select({
-      ios: `maps:0,0?q=${place.latitude},${place.longitude}(${encodeURIComponent(place.name)})`,
-      android: `geo:${place.latitude},${place.longitude}?q=${place.latitude},${place.longitude}(${encodeURIComponent(place.name)})`,
-      default: `https://www.openstreetmap.org/?mlat=${place.latitude}&mlon=${place.longitude}#map=17/${place.latitude}/${place.longitude}`,
+      ios: `maps:0,0?q=${p.lat},${p.lon}(${encodeURIComponent(p.name)})`,
+      android: `geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${encodeURIComponent(p.name)})`,
+      default: `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`,
     });
     void Linking.openURL(url);
   }, []);
 
-  const handleMarkerPress = useCallback((place: OSMPlace) => {
-    setSelectedPlace(place);
-  }, []);
-
-  const handleFocusPlace = useCallback((place: OSMPlace) => {
-    setSelectedPlace(place);
+  const focusOnMap = useCallback((p: Place) => {
+    setSelectedId(p.id);
     setViewMode("map");
-    // Envoyer un message à la WebView pour centrer sur le lieu
-    mapRef.current?.postMessage(JSON.stringify({
-      type: 'focusPlace',
-      place: { latitude: place.latitude, longitude: place.longitude }
-    }));
+    mapRef.current?.postMessage(JSON.stringify({ type: "focus", lat: p.lat, lon: p.lon }));
   }, []);
 
-  const typeCounts = useMemo(() => {
-    const counts = { all: places.length, hospital: 0, pharmacy: 0, clinic: 0 };
-    for (const p of places) {
-      counts[p.type]++;
-    }
-    return counts;
-  }, [places]);
-
-  const leafletHTML = useMemo(() => {
-    if (!location) return '';
-    return generateLeafletHTML(location.latitude, location.longitude, filteredPlaces);
-  }, [location, filteredPlaces]);
-
-  const handleWebViewMessage = useCallback((event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'markerClick' && data.place) {
-        setSelectedPlace(data.place);
-      }
-    } catch (e) {
-      console.error('Error parsing WebView message:', e);
-    }
+  const recenter = useCallback(() => {
+    mapRef.current?.postMessage(JSON.stringify({ type: "recenter" }));
   }, []);
 
-  if (loading) {
+  // --- États de localisation bloquants (bandeaux clairs, pas de repli silencieux) ---
+  const locationBanner = useMemo(() => {
+    if (status === "denied") return { text: S.permissionDenied, action: openSettings, actionLabel: S.openSettings };
+    if (status === "disabled") return { text: S.servicesDisabled, action: openSettings, actionLabel: S.openSettings };
+    if (!pos.known) return { text: S.positionUnknown, action: refreshLocation, actionLabel: S.retry };
+    if (pos.approximate) return { text: S.positionApproximate, action: null, actionLabel: null };
+    return null;
+  }, [status, pos.known, pos.approximate, openSettings, refreshLocation]);
+
+  // Écran de localisation initiale (avant toute position et sans cache).
+  if (status === "idle" || (status === "unknown" && !pos.known && !data)) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={MedicalColors.urgency} />
-        <Text style={styles.loadingText}>Localisation en cours...</Text>
+        <Text style={styles.loadingText}>{S.locating}</Text>
       </View>
     );
   }
@@ -466,48 +221,27 @@ export default function MapScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Surface style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          <Chip
-            selected={selectedType === "all"}
-            onPress={() => setSelectedType("all")}
-            style={[styles.filterChip, selectedType === "all" && styles.filterChipActive]}
-            textStyle={selectedType === "all" ? styles.filterChipTextActive : undefined}
-          >
-            Tout ({typeCounts.all})
-          </Chip>
-          <Chip
-            selected={selectedType === "hospital"}
-            onPress={() => setSelectedType("hospital")}
-            style={[styles.filterChip, selectedType === "hospital" && styles.filterChipActive]}
-            textStyle={selectedType === "hospital" ? styles.filterChipTextActive : undefined}
-          >
-            Hôpitaux ({typeCounts.hospital})
-          </Chip>
-          <Chip
-            selected={selectedType === "pharmacy"}
-            onPress={() => setSelectedType("pharmacy")}
-            style={[styles.filterChip, selectedType === "pharmacy" && styles.filterChipActive]}
-            textStyle={selectedType === "pharmacy" ? styles.filterChipTextActive : undefined}
-          >
-            Pharmacies ({typeCounts.pharmacy})
-          </Chip>
-          <Chip
-            selected={selectedType === "clinic"}
-            onPress={() => setSelectedType("clinic")}
-            style={[styles.filterChip, selectedType === "clinic" && styles.filterChipActive]}
-            textStyle={selectedType === "clinic" ? styles.filterChipTextActive : undefined}
-          >
-            Cliniques ({typeCounts.clinic})
-          </Chip>
+          {(["all", "hospital", "clinic", "pharmacy", "health_center"] as Filter[]).map((f) => (
+            <Chip
+              key={f}
+              selected={selectedType === f}
+              onPress={() => setSelectedType(f)}
+              style={[styles.filterChip, selectedType === f && styles.filterChipActive]}
+              textStyle={selectedType === f ? styles.filterChipTextActive : undefined}
+            >
+              {(f === "all" ? S.all : S.kind[f])} ({counts[f]})
+            </Chip>
+          ))}
         </ScrollView>
 
         <View style={styles.secondaryFilters}>
           <TouchableOpacity
-            style={[styles.secondaryFilter, filters.emergency24h && styles.secondaryFilterActive]}
-            onPress={() => setFilters((f) => ({ ...f, emergency24h: !f.emergency24h }))}
+            style={[styles.secondaryFilter, only24h && styles.secondaryFilterActive]}
+            onPress={() => setOnly24h((v) => !v)}
           >
-            <Clock size={14} color={filters.emergency24h ? MedicalColors.white : MedicalColors.textSecondary} />
-            <Text style={[styles.secondaryFilterText, filters.emergency24h && styles.secondaryFilterTextActive]}>
-              Urgences 24h
+            <Clock size={14} color={only24h ? MedicalColors.white : MedicalColors.textSecondary} />
+            <Text style={[styles.secondaryFilterText, only24h && styles.secondaryFilterTextActive]}>
+              {S.emergency24h}
             </Text>
           </TouchableOpacity>
 
@@ -526,7 +260,7 @@ export default function MapScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.refreshBtn} onPress={handleRefresh} disabled={fetching}>
+          <TouchableOpacity style={styles.refreshBtn} onPress={handleManualRefresh} disabled={fetching}>
             {fetching ? (
               <ActivityIndicator size="small" color={MedicalColors.medical} />
             ) : (
@@ -536,81 +270,113 @@ export default function MapScreen() {
         </View>
       </Surface>
 
-      {fetching && places.length === 0 ? (
+      {/* Bandeau d'état de localisation : clair et honnête. */}
+      {locationBanner && (
+        <Surface style={styles.locBanner}>
+          <TriangleAlert size={16} color={MedicalColors.urgencyDark} />
+          <Text style={styles.locBannerText}>{locationBanner.text}</Text>
+          {locationBanner.action && (
+            <TouchableOpacity style={styles.locBannerBtn} onPress={locationBanner.action}>
+              {locationBanner.actionLabel === S.openSettings && <Settings size={13} color={MedicalColors.white} />}
+              <Text style={styles.locBannerBtnText}>{locationBanner.actionLabel}</Text>
+            </TouchableOpacity>
+          )}
+        </Surface>
+      )}
+
+      {/* Précision + traçabilité du lot. */}
+      {(pos.accuracy !== null || data) && (
+        <View style={styles.metaRow}>
+          {pos.accuracy !== null && (
+            <Text style={styles.metaText}>{S.accuracy(Math.round(pos.accuracy))}</Text>
+          )}
+          {data && fetchedAt && (
+            <Text style={styles.metaSource}>
+              {isOffline ? S.offlineNotice(new Date(fetchedAt).toISOString()) : S.sourceLabel(data.source, data.generated_at)}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {fetching && !data ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={MedicalColors.medical} />
-          <Text style={styles.loadingText}>Recherche des établissements...</Text>
-          <Text style={styles.loadingSubtext}>Données OpenStreetMap</Text>
+          <Text style={styles.loadingText}>{S.searching}</Text>
         </View>
       ) : viewMode === "map" ? (
         <View style={styles.mapContainer}>
-          {location && leafletHTML ? (
+          {html ? (
             <WebView
               ref={mapRef}
               style={styles.map}
-              originWhitelist={['*']}
-              source={{ html: leafletHTML }}
-              onMessage={handleWebViewMessage}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
+              originWhitelist={["*"]}
+              source={{ html }}
+              onMessage={onWebViewMessage}
+              javaScriptEnabled
+              domStorageEnabled
             />
           ) : (
-            <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: MedicalColors.background }]}>
+            <View style={[styles.map, styles.mapPlaceholder]}>
               <MapPin color={MedicalColors.medical} size={40} />
-              <Text style={{ marginTop: 12, color: MedicalColors.textSecondary }}>Carte en chargement...</Text>
+              <Text style={styles.loadingSubtext}>{S.locating}</Text>
             </View>
           )}
+
+          <TouchableOpacity style={styles.recenterBtn} onPress={recenter}>
+            <Crosshair size={20} color={MedicalColors.medical} />
+          </TouchableOpacity>
 
           {error && (
             <View style={styles.mapErrorBanner}>
               <Text style={styles.mapErrorText}>{error}</Text>
-              <TouchableOpacity onPress={handleRefresh}>
-                <Text style={styles.retryText}>Réessayer</Text>
+              <TouchableOpacity onPress={handleManualRefresh}>
+                <Text style={styles.retryText}>{S.retry}</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {selectedPlace && (
+          {selected && (
             <View style={styles.placeCard}>
-              <TouchableOpacity style={styles.placeCardClose} onPress={() => setSelectedPlace(null)}>
+              <TouchableOpacity style={styles.placeCardClose} onPress={() => setSelectedId(null)}>
                 <Text style={styles.placeCardCloseText}>✕</Text>
               </TouchableOpacity>
               <View style={styles.placeCardContent}>
-                <View style={[styles.placeCardIcon, { backgroundColor: getTypeColor(selectedPlace.type) }]}>
-                  {(() => { const Icon = getTypeIcon(selectedPlace.type); return <Icon size={20} color={MedicalColors.white} />; })()}
+                <View style={[styles.placeCardIcon, { backgroundColor: kindColor(selected.kind) }]}>
+                  <KindIcon kind={selected.kind} size={20} color={MedicalColors.white} />
                 </View>
                 <View style={styles.placeCardInfo}>
-                  <Text style={styles.placeCardName} numberOfLines={1}>{selectedPlace.name}</Text>
+                  <Text style={styles.placeCardName} numberOfLines={1}>{selected.name}</Text>
                   <Text style={styles.placeCardType}>
-                    {getTypeLabel(selectedPlace.type)}{selectedPlace.distance != null ? ` • ${selectedPlace.distance} km` : ""}
+                    {S.kind[selected.kind]} • {selected.distance_m} m
                   </Text>
-                  {selectedPlace.address && <Text style={styles.placeCardAddress} numberOfLines={1}>{selectedPlace.address}</Text>}
+                  {selected.address && <Text style={styles.placeCardAddress} numberOfLines={1}>{selected.address}</Text>}
                   <View style={styles.placeCardBadges}>
-                    {selectedPlace.is24h && (
-                      <View style={styles.badge24h}>
-                        <Text style={styles.badge24hText}>24h/24</Text>
+                    <HoursBadge is24h={selected.is_24h} />
+                    {selected.has_maternity === true && (
+                      <View style={[styles.badge, styles.badgeNeutral]}>
+                        <Text style={styles.badgeNeutralText}>{S.maternity}</Text>
                       </View>
                     )}
                   </View>
                 </View>
               </View>
               <View style={styles.placeCardActions}>
-                {selectedPlace.phone && (
-                  <TouchableOpacity style={styles.actionBtnCall} onPress={() => handleCall(selectedPlace.phone)}>
+                {selected.phone && (
+                  <TouchableOpacity style={styles.actionBtnCall} onPress={() => handleCall(selected.phone)}>
                     <Phone size={14} color={MedicalColors.white} />
-                    <Text style={styles.actionBtnCallText}>Appeler</Text>
+                    <Text style={styles.actionBtnCallText}>{S.call}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={styles.actionBtnNav} onPress={() => handleOpenMaps(selectedPlace)}>
+                <TouchableOpacity style={styles.actionBtnNav} onPress={() => handleItinerary(selected)}>
                   <Navigation size={14} color={MedicalColors.medical} />
-                  <Text style={styles.actionBtnNavText}>Itinéraire</Text>
+                  <Text style={styles.actionBtnNavText}>{S.itinerary}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
 
           <View style={styles.mapResultsBadge}>
-            <Text style={styles.mapResultsText}>{filteredPlaces.length} établissement(s)</Text>
+            <Text style={styles.mapResultsText}>{S.results(filtered.length)}</Text>
           </View>
         </View>
       ) : (
@@ -618,469 +384,163 @@ export default function MapScreen() {
           {error && (
             <Surface style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity onPress={handleRefresh}>
-                <Text style={styles.retryText}>Réessayer</Text>
+              <TouchableOpacity onPress={handleManualRefresh}>
+                <Text style={styles.retryText}>{S.retry}</Text>
               </TouchableOpacity>
             </Surface>
           )}
 
-          {filteredPlaces.map((place) => {
-            const IconComponent = getTypeIcon(place.type);
-            const typeColor = getTypeColor(place.type);
-
-            return (
-              <TouchableOpacity key={place.id} onPress={() => handleFocusPlace(place)} activeOpacity={0.7}>
-                <Surface style={styles.hospitalCard}>
-                  <View style={styles.hospitalCardContent}>
-                    <View style={[styles.hospitalIcon, { backgroundColor: typeColor }]}>
-                      <IconComponent size={22} color={MedicalColors.white} />
-                    </View>
-
-                    <View style={styles.hospitalInfo}>
-                      <Text style={styles.hospitalName} numberOfLines={2}>{place.name}</Text>
-                      <Text style={styles.hospitalType}>{getTypeLabel(place.type)}</Text>
-                      {place.address && <Text style={styles.hospitalAddress} numberOfLines={1}>{place.address}</Text>}
-                      <View style={styles.hospitalBadges}>
-                        {place.is24h && (
-                          <View style={[styles.badge, styles.badgeGreen]}>
-                            <Clock size={10} color={MedicalColors.life} />
-                            <Text style={styles.badgeGreenText}>24h/24</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-
-                    {place.distance != null && (
-                      <View style={styles.distanceContainer}>
-                        <Text style={styles.distanceValue}>{place.distance}</Text>
-                        <Text style={styles.distanceUnit}>km</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.hospitalActions}>
-                    {place.phone && (
-                      <TouchableOpacity style={styles.hospitalActionCall} onPress={() => handleCall(place.phone)}>
-                        <Phone size={14} color={MedicalColors.white} />
-                        <Text style={styles.hospitalActionCallText}>Appeler</Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.hospitalActionNav, !place.phone && styles.hospitalActionNavFull]}
-                      onPress={() => handleOpenMaps(place)}
-                    >
-                      <Navigation size={14} color={MedicalColors.medical} />
-                      <Text style={styles.hospitalActionNavText}>Itinéraire</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Surface>
-              </TouchableOpacity>
-            );
-          })}
-
-          {filteredPlaces.length === 0 && !fetching && !error && (
-            <View style={styles.emptyContainer}>
-              <MapPin size={48} color={MedicalColors.textSecondary} />
-              <Text style={styles.emptyText}>Aucun établissement trouvé</Text>
-              <Text style={styles.emptySubtext}>Essayez de modifier vos filtres</Text>
+          {filtered.length === 0 && !fetching && (
+            <View style={styles.emptyBox}>
+              <HelpCircle size={28} color={MedicalColors.textSecondary} />
+              <Text style={styles.emptyText}>{S.empty}</Text>
             </View>
           )}
 
-          <View style={styles.bottomSpacer} />
+          {filtered.map((place) => (
+            <TouchableOpacity key={place.id} onPress={() => focusOnMap(place)} activeOpacity={0.7}>
+              <Surface style={styles.hospitalCard}>
+                <View style={styles.hospitalCardContent}>
+                  <View style={[styles.hospitalIcon, { backgroundColor: kindColor(place.kind) }]}>
+                    <KindIcon kind={place.kind} size={22} color={MedicalColors.white} />
+                  </View>
+                  <View style={styles.hospitalInfo}>
+                    <Text style={styles.hospitalName} numberOfLines={2}>{place.name}</Text>
+                    <Text style={styles.hospitalType}>{S.kind[place.kind]} • {place.distance_m} m</Text>
+                    {place.address && <Text style={styles.hospitalAddress} numberOfLines={1}>{place.address}</Text>}
+                    <View style={styles.hospitalBadges}>
+                      <HoursBadge is24h={place.is_24h} />
+                      {place.has_emergency === true && (
+                        <View style={[styles.badge, styles.badgeRed]}>
+                          <Text style={styles.badgeRedText}>{S.hasEmergency}</Text>
+                        </View>
+                      )}
+                      {place.has_maternity === true && (
+                        <View style={[styles.badge, styles.badgeNeutral]}>
+                          <Text style={styles.badgeNeutralText}>{S.maternity}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.hospitalActions}>
+                  {place.phone && (
+                    <TouchableOpacity style={styles.actionBtnCall} onPress={() => handleCall(place.phone)}>
+                      <Phone size={14} color={MedicalColors.white} />
+                      <Text style={styles.actionBtnCallText}>{S.call}</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={styles.actionBtnNav} onPress={() => handleItinerary(place)}>
+                    <Navigation size={14} color={MedicalColors.medical} />
+                    <Text style={styles.actionBtnNavText}>{S.itinerary}</Text>
+                  </TouchableOpacity>
+                </View>
+              </Surface>
+            </TouchableOpacity>
+          ))}
+
+          {data && fetchedAt && (
+            <Text style={styles.listSource}>
+              {isOffline ? S.offlineNotice(new Date(fetchedAt).toISOString()) : S.sourceLabel(data.source, data.generated_at)}
+            </Text>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
   );
 }
 
+// buildMapHTML a besoin du source Leaflet déjà chargé : on le mémorise au module
+// après loadLeaflet(). Wrapper synchrone pour useMemo.
+let leafletSrc: { js: string; css: string } | null = null;
+void loadLeaflet().then((s) => { leafletSrc = s; });
+function buildMapHTMLSync(view: LeafletView): string {
+  if (!leafletSrc) throw new Error("leaflet not loaded");
+  return buildMapHTML(leafletSrc, view);
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: MedicalColors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: MedicalColors.background,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: MedicalColors.textSecondary,
-  },
-  loadingSubtext: {
-    marginTop: 4,
-    fontSize: 13,
-    color: MedicalColors.textSecondary,
-    opacity: 0.7,
-  },
-  filtersContainer: {
-    paddingVertical: 10,
-    backgroundColor: MedicalColors.white,
-    borderBottomColor: MedicalColors.border,
-    borderBottomWidth: 1,
-  },
-  filtersScroll: {
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  filterChip: {
-    backgroundColor: MedicalColors.background,
-  },
-  filterChipActive: {
-    backgroundColor: MedicalColors.urgency,
-  },
-  filterChipTextActive: {
-    color: MedicalColors.white,
-  },
-  secondaryFilters: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    marginTop: 8,
-    gap: 8,
-  },
-  secondaryFilter: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: MedicalColors.background,
-    gap: 4,
-  },
-  secondaryFilterActive: {
-    backgroundColor: MedicalColors.medical,
-  },
-  secondaryFilterText: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-  },
-  secondaryFilterTextActive: {
-    color: MedicalColors.white,
-  },
-  viewToggle: {
-    flexDirection: "row",
-    backgroundColor: MedicalColors.background,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  viewToggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  viewToggleBtnActive: {
-    backgroundColor: MedicalColors.medical,
-  },
-  refreshBtn: {
-    marginLeft: "auto",
-    padding: 6,
-  },
-  mapContainer: {
-    flex: 1,
-    position: "relative",
-  },
-  map: {
-    flex: 1,
-  },
-  mapErrorBanner: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    right: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 10,
-    backgroundColor: MedicalColors.urgencyLight,
-    borderRadius: 10,
-  },
-  mapErrorText: {
-    fontSize: 12,
-    color: MedicalColors.urgencyDark,
-    flex: 1,
-  },
-  mapResultsBadge: {
-    position: "absolute",
-    top: 12,
-    alignSelf: "center",
-    backgroundColor: MedicalColors.white,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  mapResultsText: {
-    fontSize: 12,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-  },
-  placeCard: {
-    position: "absolute",
-    bottom: 20,
-    left: 12,
-    right: 12,
-    backgroundColor: MedicalColors.white,
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  placeCardClose: {
-    position: "absolute",
-    top: 8,
-    right: 12,
-    zIndex: 10,
-    padding: 4,
-  },
-  placeCardCloseText: {
-    fontSize: 16,
-    color: MedicalColors.textSecondary,
-    fontWeight: "600" as const,
-  },
-  placeCardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  placeCardIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  placeCardInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  placeCardName: {
-    fontSize: 15,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-    paddingRight: 20,
-  },
-  placeCardType: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 1,
-  },
-  placeCardAddress: {
-    fontSize: 11,
-    color: MedicalColors.textSecondary,
-    marginTop: 2,
-  },
-  placeCardBadges: {
-    flexDirection: "row",
-    gap: 4,
-    marginTop: 4,
-  },
-  badge24h: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: MedicalColors.lifeLight,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 2,
-  },
-  badge24hText: {
-    fontSize: 10,
-    fontWeight: "600" as const,
-    color: MedicalColors.life,
-  },
-  placeCardActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  actionBtnCall: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    backgroundColor: MedicalColors.urgency,
-    borderRadius: 10,
-    gap: 6,
-  },
-  actionBtnCallText: {
-    color: MedicalColors.white,
-    fontWeight: "600" as const,
-    fontSize: 13,
-  },
-  actionBtnNav: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    backgroundColor: MedicalColors.medicalLight,
-    borderRadius: 10,
-    gap: 6,
-  },
-  actionBtnNavText: {
-    color: MedicalColors.medical,
-    fontWeight: "600" as const,
-    fontSize: 13,
-  },
-  listContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-    backgroundColor: MedicalColors.urgencyLight,
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  errorText: {
-    fontSize: 13,
-    color: MedicalColors.urgencyDark,
-    flex: 1,
-  },
-  retryText: {
-    fontSize: 13,
-    fontWeight: "700" as const,
-    color: MedicalColors.urgency,
-    marginLeft: 12,
-  },
-  hospitalCard: {
-    backgroundColor: MedicalColors.white,
-    borderRadius: 14,
-    marginBottom: 10,
-    overflow: "hidden",
-  },
-  hospitalCardContent: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 14,
-  },
-  hospitalIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  hospitalInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  hospitalName: {
-    fontSize: 15,
-    fontWeight: "700" as const,
-    color: MedicalColors.text,
-  },
-  hospitalType: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 1,
-  },
-  hospitalAddress: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-    marginTop: 3,
-  },
-  hospitalBadges: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-    marginTop: 6,
-  },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 3,
-  },
-  badgeGreen: {
-    backgroundColor: MedicalColors.lifeLight,
-  },
-  badgeGreenText: {
-    fontSize: 10,
-    fontWeight: "600" as const,
-    color: MedicalColors.life,
-  },
-  distanceContainer: {
-    alignItems: "center",
-    marginLeft: 8,
-    paddingTop: 2,
-  },
-  distanceValue: {
-    fontSize: 18,
-    fontWeight: "700" as const,
-    color: MedicalColors.medical,
-  },
-  distanceUnit: {
-    fontSize: 11,
-    color: MedicalColors.textSecondary,
-  },
-  hospitalActions: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: MedicalColors.border,
-  },
-  hospitalActionCall: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    backgroundColor: MedicalColors.urgency,
-    gap: 6,
-  },
-  hospitalActionCallText: {
-    color: MedicalColors.white,
-    fontWeight: "600" as const,
-    fontSize: 13,
-  },
-  hospitalActionNav: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    backgroundColor: MedicalColors.medicalLight,
-    gap: 6,
-  },
-  hospitalActionNavFull: {
-    flex: 2,
-  },
-  hospitalActionNavText: {
-    color: MedicalColors.medical,
-    fontWeight: "600" as const,
-    fontSize: 13,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 48,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600" as const,
-    color: MedicalColors.text,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: MedicalColors.textSecondary,
-    marginTop: 4,
-  },
-  bottomSpacer: {
-    height: 24,
-  },
+  container: { flex: 1, backgroundColor: MedicalColors.background },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: MedicalColors.background, padding: 24 },
+  loadingText: { marginTop: 14, fontSize: 15, color: MedicalColors.textSecondary },
+  loadingSubtext: { marginTop: 8, fontSize: 13, color: MedicalColors.textSecondary },
+
+  filtersContainer: { paddingTop: 8, paddingBottom: 6, backgroundColor: MedicalColors.white, elevation: 2 },
+  filtersScroll: { paddingHorizontal: 12, gap: 8 },
+  filterChip: { marginRight: 6, backgroundColor: MedicalColors.background },
+  filterChipActive: { backgroundColor: MedicalColors.medicalLight },
+  filterChipTextActive: { color: MedicalColors.medicalDark, fontWeight: "600" },
+  secondaryFilters: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 8, gap: 8 },
+  secondaryFilter: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: MedicalColors.background },
+  secondaryFilterActive: { backgroundColor: MedicalColors.urgency },
+  secondaryFilterText: { fontSize: 12, color: MedicalColors.textSecondary },
+  secondaryFilterTextActive: { color: MedicalColors.white, fontWeight: "600" },
+  viewToggle: { flexDirection: "row", borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: MedicalColors.border, marginLeft: "auto" },
+  viewToggleBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+  viewToggleBtnActive: { backgroundColor: MedicalColors.medical },
+  refreshBtn: { padding: 6, borderRadius: 8, borderWidth: 1, borderColor: MedicalColors.border },
+
+  locBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: MedicalColors.urgencyLight },
+  locBannerText: { flex: 1, fontSize: 12.5, color: MedicalColors.urgencyDark },
+  locBannerBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: MedicalColors.urgency, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  locBannerBtnText: { color: MedicalColors.white, fontSize: 12, fontWeight: "600" },
+
+  metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 4, backgroundColor: MedicalColors.white },
+  metaText: { fontSize: 11, color: MedicalColors.textSecondary },
+  metaSource: { fontSize: 10.5, color: MedicalColors.textSecondary, fontStyle: "italic" },
+
+  mapContainer: { flex: 1 },
+  map: { flex: 1 },
+  mapPlaceholder: { justifyContent: "center", alignItems: "center", backgroundColor: MedicalColors.background },
+  recenterBtn: { position: "absolute", right: 14, bottom: 150, backgroundColor: MedicalColors.white, padding: 10, borderRadius: 24, elevation: 4, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+
+  mapErrorBanner: { position: "absolute", top: 10, left: 12, right: 12, backgroundColor: MedicalColors.urgencyLight, padding: 10, borderRadius: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  mapErrorText: { flex: 1, fontSize: 12, color: MedicalColors.urgencyDark },
+  retryText: { fontSize: 12, fontWeight: "700", color: MedicalColors.urgency, marginLeft: 8 },
+
+  mapResultsBadge: { position: "absolute", top: 10, left: 12, backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  mapResultsText: { color: MedicalColors.white, fontSize: 12, fontWeight: "600" },
+
+  placeCard: { position: "absolute", left: 12, right: 12, bottom: 16, backgroundColor: MedicalColors.white, borderRadius: 12, padding: 12, elevation: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  placeCardClose: { position: "absolute", top: 8, right: 10, zIndex: 2, padding: 4 },
+  placeCardCloseText: { fontSize: 16, color: MedicalColors.textSecondary },
+  placeCardContent: { flexDirection: "row", gap: 12 },
+  placeCardIcon: { width: 44, height: 44, borderRadius: 10, justifyContent: "center", alignItems: "center" },
+  placeCardInfo: { flex: 1, paddingRight: 20 },
+  placeCardName: { fontSize: 15, fontWeight: "700", color: MedicalColors.text },
+  placeCardType: { fontSize: 12.5, color: MedicalColors.textSecondary, marginTop: 2 },
+  placeCardAddress: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
+  placeCardBadges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  placeCardActions: { flexDirection: "row", gap: 8, marginTop: 12 },
+
+  listContainer: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
+  errorBanner: { padding: 12, borderRadius: 8, backgroundColor: MedicalColors.urgencyLight, marginBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  errorText: { flex: 1, fontSize: 12.5, color: MedicalColors.urgencyDark },
+  emptyBox: { alignItems: "center", paddingVertical: 40, gap: 10 },
+  emptyText: { fontSize: 13, color: MedicalColors.textSecondary },
+
+  hospitalCard: { borderRadius: 12, padding: 12, marginBottom: 10, backgroundColor: MedicalColors.white, elevation: 1 },
+  hospitalCardContent: { flexDirection: "row", gap: 12 },
+  hospitalIcon: { width: 46, height: 46, borderRadius: 10, justifyContent: "center", alignItems: "center" },
+  hospitalInfo: { flex: 1 },
+  hospitalName: { fontSize: 15, fontWeight: "700", color: MedicalColors.text },
+  hospitalType: { fontSize: 12.5, color: MedicalColors.textSecondary, marginTop: 2 },
+  hospitalAddress: { fontSize: 12, color: MedicalColors.textSecondary, marginTop: 2 },
+  hospitalBadges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  hospitalActions: { flexDirection: "row", gap: 8, marginTop: 10 },
+
+  badge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  badgeGreen: { backgroundColor: MedicalColors.lifeLight },
+  badgeGreenText: { fontSize: 10.5, color: MedicalColors.lifeDark, fontWeight: "600" },
+  badgeRed: { backgroundColor: MedicalColors.urgencyLight },
+  badgeRedText: { fontSize: 10.5, color: MedicalColors.urgencyDark, fontWeight: "600" },
+  badgeNeutral: { backgroundColor: MedicalColors.background },
+  badgeNeutralText: { fontSize: 10.5, color: MedicalColors.textSecondary, fontWeight: "600" },
+
+  actionBtnCall: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: MedicalColors.life, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  actionBtnCallText: { color: MedicalColors.white, fontSize: 13, fontWeight: "600" },
+  actionBtnNav: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: MedicalColors.medicalLight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  actionBtnNavText: { color: MedicalColors.medicalDark, fontSize: 13, fontWeight: "600" },
+
+  listSource: { fontSize: 10.5, color: MedicalColors.textSecondary, fontStyle: "italic", textAlign: "center", paddingVertical: 14 },
 });
