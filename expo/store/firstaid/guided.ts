@@ -19,15 +19,16 @@ export type TextKey =
   | 'switchingTo'
   | 'notCovered'
   | 'reAsk'
+  | 'notUnderstood' // intent unclear : « je n'ai pas compris »
+  | 'tapButtons' // 503 en phase question : inviter à taper sur les boutons
   | 'chooseAge'
   | 'precisionQuestion'
   | 'protocolEnded';
 
-// Nombre de mots en dessous duquel le texte cumulé est jugé « court » (2b).
-export const PRECISION_WORD_THRESHOLD = 8;
+// Nombre maximal de tours de clarification demandés au modèle (miroir backend).
+export const CLARIFY_MAX_TURNS = 3;
 
-// Compte les mots d'un texte (espaces Unicode). Utilisé pour décider si une
-// question de précision est posée quand le scénario est null.
+// Compte les mots d'un texte (espaces Unicode).
 export function wordCount(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/u).length : 0;
@@ -86,7 +87,12 @@ export type GuidedBubble =
       source: string;
     }
   | { kind: 'protocols'; items: { id: string; title: string }[] }
-  | { kind: 'callButton'; number: string };
+  | { kind: 'callButton'; number: string }
+  // Question de clarification du modèle (déjà validée par le backend) — SEUL
+  // texte venant du serveur-modèle affiché tel quel.
+  | { kind: 'modelText'; text: string }
+  // Signe d'alerte reconnu dans un message libre : « Signe d'alerte : <label> ».
+  | { kind: 'redFlag'; label: string };
 
 export type GuidedPhase =
   | { kind: 'idle' }
@@ -94,7 +100,7 @@ export type GuidedPhase =
   | { kind: 'variant'; pendingBlockId: string }
   | { kind: 'question'; qid: string }
   | { kind: 'block'; blockId: string; stepIndex: number }
-  // Question de précision fixe posée une fois quand le scénario est null.
+  // Clarification menée par le modèle : on attend la réponse de l'utilisateur.
   | { kind: 'precision' }
   | { kind: 'end' }
   | { kind: 'no_protocol' };
@@ -104,20 +110,32 @@ export interface GuidedState {
   variant: VariantKey | null;
   // L'âge n'est demandé qu'une fois par protocole : mémorisé ici.
   variantAsked: boolean;
-  // La question de précision n'est posée qu'une fois par conversation.
-  precisionAsked: boolean;
+  // Nombre de clarifications déjà posées dans la conversation (0..CLARIFY_MAX_TURNS).
+  clarifyTurn: number;
   phase: GuidedPhase;
 }
 
+// Intention renvoyée par /intent/ pendant un protocole (résultat déjà résolu
+// côté écran à partir du champ `target`). Aucun texte médical ici.
+export type IntentOutcome =
+  | { kind: 'answer'; key: string }
+  | { kind: 'red_flag'; label: string; switchTo?: string }
+  | { kind: 'switch'; id: string }
+  | { kind: 'off_topic' }
+  | { kind: 'unclear' };
+
 export type GuidedEvent =
-  // wordCount = nombre de mots du texte cumulé classifié (décision de précision).
-  | { type: 'classified'; protocol: Protocol | null; wordCount?: number }
-  | { type: 'unavailable' } // 503 classifier_unavailable ou hors ligne
+  | { type: 'classified'; protocol: Protocol | null }
+  // Résultat de /clarify/ : une question (modèle) ou null → repli.
+  | { type: 'clarified'; question: string | null }
+  | { type: 'unavailable' } // 503 classifier_unavailable ou hors ligne (classify/clarify)
   | { type: 'chooseVariant'; variant: VariantKey }
-  | { type: 'answer'; key: string } // clé d'option (bouton ou /answer/ résolu)
-  | { type: 'answerUnresolved' } // /answer/ a renvoyé null → reposer
+  | { type: 'answer'; key: string } // clé d'option (tap bouton ou intent answer:)
   | { type: 'next' } // étape suivante / fin de bloc
-  | { type: 'freeOutOfContext' } // message libre hors question (bloc/fin)
+  // Résultat de /intent/ (texte libre pendant un protocole).
+  | { type: 'intent'; outcome: IntentOutcome }
+  // 503/hors ligne pendant un protocole (phase question/block).
+  | { type: 'intentUnavailable' }
   | { type: 'switchLoaded'; protocol: Protocol };
 
 export type GuidedEffect = { type: 'loadProtocol'; id: string };
@@ -139,7 +157,7 @@ export function initialGuided(): GuidedState {
     protocolId: null,
     variant: null,
     variantAsked: false,
-    precisionAsked: false,
+    clarifyTurn: 0,
     phase: { kind: 'idle' },
   };
 }
@@ -198,7 +216,7 @@ function startProtocol(
   protocol: Protocol,
   variant: VariantKey | null,
   variantAsked: boolean,
-  precisionAsked: boolean,
+  clarifyTurn: number,
 ): GuidedResult {
   const entry = protocol.decision_tree.entry;
   return {
@@ -206,20 +224,20 @@ function startProtocol(
       protocolId: protocol.id,
       variant,
       variantAsked,
-      precisionAsked,
+      clarifyTurn,
       phase: { kind: 'question', qid: entry },
     },
     bubbles: [emergencyBubble(protocol.emergency_number), questionPrompt(protocol, entry)],
   };
 }
 
-// Question de précision fixe, posée une seule fois par conversation quand le
-// scénario est null : aucun bouton d'appel ni liste ici — le message suivant
-// sera reclassifié avec le contexte. precisionAsked passe à true.
-function precisionQuestion(state: GuidedState): GuidedResult {
+// Question de clarification du modèle (déjà validée par le backend) : affichée
+// telle quelle, phase precision, turn incrémenté. Ni bouton d'appel ni liste —
+// le message suivant sera reclassifié avec le contexte.
+function clarifyQuestion(state: GuidedState, question: string): GuidedResult {
   return {
-    state: { ...state, protocolId: null, precisionAsked: true, phase: { kind: 'precision' } },
-    bubbles: [{ kind: 'say', textKey: 'precisionQuestion' }],
+    state: { ...state, protocolId: null, clarifyTurn: state.clarifyTurn + 1, phase: { kind: 'precision' } },
+    bubbles: [{ kind: 'modelText', text: question }],
   };
 }
 
@@ -229,7 +247,7 @@ function fallback(ctx: GuidedCtx, state: GuidedState, textKey: TextKey): GuidedR
       protocolId: null,
       variant: null,
       variantAsked: false,
-      precisionAsked: state.precisionAsked,
+      clarifyTurn: state.clarifyTurn,
       phase: { kind: 'no_protocol' },
     },
     bubbles: [
@@ -238,6 +256,16 @@ function fallback(ctx: GuidedCtx, state: GuidedState, textKey: TextKey): GuidedR
       { kind: 'protocols', items: ctx.protocols },
     ],
   };
+}
+
+// Repose la bulle en cours (question ou étape de bloc) sans changer d'état.
+function rePoseCurrent(protocol: Protocol, state: GuidedState): GuidedBubble[] {
+  if (state.phase.kind === 'question') return [questionPrompt(protocol, state.phase.qid)];
+  if (state.phase.kind === 'block') {
+    const b = stepBubble(protocol, state.variant, state.phase.blockId, state.phase.stepIndex);
+    return b ? [b] : [];
+  }
+  return [];
 }
 
 // Entre dans un bloc. Si le bloc a des variantes et que l'âge n'a pas encore été
@@ -284,15 +312,18 @@ export function reduceGuided(
 ): GuidedResult {
   switch (event.type) {
     case 'classified': {
-      // Jamais de variante à l'entrée : directement la 1re question.
-      if (event.protocol) return startProtocol(event.protocol, null, false, state.precisionAsked);
-      // Scénario null : on pose UNE question de précision (2b) si on ne l'a pas
-      // encore posée ET (texte cumulé court OU premier null de la conversation).
-      // Comme precisionAsked ne devient vrai qu'après l'avoir posée, le premier
-      // null la déclenche toujours ; un second null retombe sur le repli.
-      const short = (event.wordCount ?? Infinity) < PRECISION_WORD_THRESHOLD;
-      if (!state.precisionAsked && (short || !state.precisionAsked)) {
-        return precisionQuestion(state);
+      // Scénario reconnu : démarrage direct (jamais de variante à l'entrée). Le
+      // cas null est traité par le flux via /clarify/ (événement 'clarified').
+      if (event.protocol) return startProtocol(event.protocol, null, false, state.clarifyTurn);
+      return fallback(ctx, state, 'noProtocol');
+    }
+
+    case 'clarified': {
+      // Résultat de /clarify/. Une question valide → on la pose (turn+1), tant
+      // qu'on n'a pas atteint CLARIFY_MAX_TURNS. Sinon (question null ou quota) →
+      // repli « pas de protocole validé ».
+      if (event.question !== null && state.clarifyTurn < CLARIFY_MAX_TURNS) {
+        return clarifyQuestion(state, event.question);
       }
       return fallback(ctx, state, 'noProtocol');
     }
@@ -306,7 +337,7 @@ export function reduceGuided(
         state.variant !== null && variantKeys(event.protocol).includes(state.variant)
           ? state.variant
           : null;
-      return startProtocol(event.protocol, keep, keep !== null, state.precisionAsked);
+      return startProtocol(event.protocol, keep, keep !== null, state.clarifyTurn);
     }
 
     case 'chooseVariant': {
@@ -339,21 +370,6 @@ export function reduceGuided(
       };
     }
 
-    case 'answerUnresolved': {
-      // /answer/ n'a pas tranché : on repose la question (ou l'âge).
-      if (!protocol) return { state, bubbles: [] };
-      if (state.phase.kind === 'question') {
-        return { state, bubbles: [{ kind: 'say', textKey: 'reAsk' }, questionPrompt(protocol, state.phase.qid)] };
-      }
-      if (state.phase.kind === 'variant') {
-        return {
-          state,
-          bubbles: [{ kind: 'say', textKey: 'reAsk' }, variantPrompt(protocol, state.phase.pendingBlockId)],
-        };
-      }
-      return { state, bubbles: [] };
-    }
-
     case 'next': {
       if (!protocol || state.phase.kind !== 'block') return { state, bubbles: [] };
       const { blockId, stepIndex } = state.phase;
@@ -367,20 +383,73 @@ export function reduceGuided(
       return applyTargetEnd(protocol, state, blockId);
     }
 
-    case 'freeOutOfContext': {
-      // Message libre hors question (phase bloc/fin) : rappel 442, AUCUN appel au modèle,
-      // puis on repose la bulle en cours.
-      const bubbles: GuidedBubble[] = [
-        { kind: 'say', textKey: 'notCovered' },
-        { kind: 'callButton', number: ctx.emergencyNumber },
-      ];
-      if (protocol && state.phase.kind === 'block') {
-        const b = stepBubble(protocol, state.variant, state.phase.blockId, state.phase.stepIndex);
-        if (b) bubbles.push(b);
-      } else if (protocol && state.phase.kind === 'question') {
-        bubbles.push(questionPrompt(protocol, state.phase.qid));
+    case 'intent': {
+      // Texte libre pendant un protocole (phase question/block). /intent/ a résolu
+      // une intention parmi des options fixes. Aucun texte médical ici.
+      if (!protocol) return { state, bubbles: [] };
+      const o = event.outcome;
+      switch (o.kind) {
+        case 'answer':
+          // Équivaut à un tap sur ce bouton : on réapplique la logique d'arbre.
+          return reduceGuided(ctx, state, { type: 'answer', key: o.key }, protocol);
+        case 'switch':
+          return {
+            state,
+            bubbles: [{ kind: 'say', textKey: 'switchingTo' }],
+            effect: { type: 'loadProtocol', id: o.id },
+          };
+        case 'red_flag': {
+          // « Signe d'alerte : <label> » + 442. Si le red flag bascule vers un
+          // autre protocole publiable, on l'annonce et on le charge.
+          const bubbles: GuidedBubble[] = [
+            { kind: 'redFlag', label: o.label },
+            { kind: 'callButton', number: ctx.emergencyNumber },
+          ];
+          if (o.switchTo) {
+            bubbles.push({ kind: 'say', textKey: 'switchingTo' });
+            return { state, bubbles, effect: { type: 'loadProtocol', id: o.switchTo } };
+          }
+          // Pas de bascule : on repose la bulle en cours.
+          return { state, bubbles: [...bubbles, ...rePoseCurrent(protocol, state)] };
+        }
+        case 'off_topic':
+          // Hors sujet : « ce point n'est pas couvert » + 442, puis on repose.
+          return {
+            state,
+            bubbles: [
+              { kind: 'say', textKey: 'notCovered' },
+              { kind: 'callButton', number: ctx.emergencyNumber },
+              ...rePoseCurrent(protocol, state),
+            ],
+          };
+        case 'unclear':
+        default:
+          // Pas tranché : « je n'ai pas compris » puis on repose.
+          return {
+            state,
+            bubbles: [{ kind: 'say', textKey: 'notUnderstood' }, ...rePoseCurrent(protocol, state)],
+          };
       }
-      return { state, bubbles };
+    }
+
+    case 'intentUnavailable': {
+      // 503/hors ligne pendant un protocole. En phase question : les boutons
+      // restent, on invite à taper dessus. En phase block : comme off_topic.
+      if (!protocol) return { state, bubbles: [] };
+      if (state.phase.kind === 'question') {
+        return {
+          state,
+          bubbles: [{ kind: 'say', textKey: 'tapButtons' }, ...rePoseCurrent(protocol, state)],
+        };
+      }
+      return {
+        state,
+        bubbles: [
+          { kind: 'say', textKey: 'notCovered' },
+          { kind: 'callButton', number: ctx.emergencyNumber },
+          ...rePoseCurrent(protocol, state),
+        ],
+      };
     }
 
     default:

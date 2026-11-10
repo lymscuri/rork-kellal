@@ -453,15 +453,31 @@ export const firstaidAPI = {
       validateStatus: firstaidValidateStatus,
     }),
 
-  // POST publics : le modèle ne fait que RECONNAÎTRE (id de scénario / clé d'option).
-  // 503 (classifier_unavailable) est accepté pour être traité comme un repli applicatif.
+  // POST publics : le modèle ne fait que RECONNAÎTRE (id de scénario, question de
+  // clarification validée, ou intention parmi des options fixes). 503
+  // (classifier_unavailable) est accepté pour être traité comme un repli applicatif.
   classify: (text: string, lang: string) =>
     apiClient.post('/firstaid/classify/', { text, lang }, {
       validateStatus: (s) => (s >= 200 && s < 300) || s === 503,
     }),
 
-  answer: (text: string, lang: string, options: Record<string, string>) =>
-    apiClient.post('/firstaid/answer/', { text, lang, options }, {
+  // Clarification menée par le modèle (garde-fous serveur) : UNE question ou null.
+  clarify: (text: string, lang: string, turn: number) =>
+    apiClient.post('/firstaid/clarify/', { text, lang, turn }, {
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 503,
+    }),
+
+  // Intention pendant un protocole : answer:/red_flag:/switch:/off_topic/unclear.
+  intent: (
+    text: string,
+    lang: string,
+    protocolId: string,
+    phase: 'question' | 'block',
+    questionOptions: Record<string, string> | null,
+  ) =>
+    apiClient.post('/firstaid/intent/', {
+      text, lang, protocol_id: protocolId, phase, question_options: questionOptions,
+    }, {
       validateStatus: (s) => (s >= 200 && s < 300) || s === 503,
     }),
 };

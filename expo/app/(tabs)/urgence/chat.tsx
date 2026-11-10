@@ -7,10 +7,14 @@ import {
   Ban,
   X,
   ChevronRight,
+  RotateCcw,
+  ClipboardCopy,
 } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Linking,
@@ -31,7 +35,7 @@ import { firstaidAPI } from '@/store/api';
 import { useFirstAidStore } from '@/store/firstaidStore';
 import { detectLang } from '@/store/firstaid/lang';
 import { STRINGS, withNumber } from '@/store/firstaid/strings';
-import { isUnvalidated, variantKeys, formatSource } from '@/store/firstaid/logic';
+import { isUnvalidated, formatSource } from '@/store/firstaid/logic';
 import {
   ASSISTANT_FREE_ANSWERS,
   buildFreeAnswerPrompt,
@@ -41,11 +45,12 @@ import {
   reduceGuided,
   initialGuided,
   buildClassifyContext,
-  wordCount,
+  CLARIFY_MAX_TURNS,
   type GuidedBubble,
   type GuidedEvent,
   type GuidedState,
   type GuidedCtx,
+  type IntentOutcome,
 } from '@/store/firstaid/guided';
 import { FirstAidCountdown } from '@/components/FirstAidCountdown';
 import type { Protocol, ProtocolSummary, SourceRef, VariantKey } from '@/types/firstaid';
@@ -109,7 +114,28 @@ export default function EmergencyChatScreen() {
   const inputRef = useRef<TextInput>(null);
   const inputValueRef = useRef('');
 
+  // Miroir des messages (pour l'export, sans re-créer le callback à chaque bulle).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  // Journal des appels backend pour l'export de test (route, code, champs clés).
+  const debugLogRef = useRef<string[]>([]);
+  const logCall = useCallback((route: string, http: number | string, fields: Record<string, unknown>) => {
+    const parts = Object.entries(fields)
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`);
+    debugLogRef.current.push(`[${route} → ${http}] ${parts.join(' ')}`.trim());
+  }, []);
+
   const L = STRINGS[convLang];
+
+  // Outils de test visibles tant que l'API n'est pas la PRODUCTION FINALE.
+  // Aujourd'hui tout est staging (y compris l'hôte Railway « -production »,
+  // qui est un environnement de test) : les outils sont donc toujours visibles.
+  // Le jour où un hôte de production final existe, l'ajouter à PROD_HOSTS.
+  const PROD_HOSTS: string[] = [];
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+  const showTestTools = !PROD_HOSTS.some((h) => apiUrl.includes(h));
 
   // Charge méta + liste (numéro d'urgence, boutons de repli), cache d'abord.
   useEffect(() => {
@@ -193,13 +219,14 @@ export default function EmergencyChatScreen() {
 
   // Flux de classification (phase idle / no_protocol / precision).
   // On classifie le CONTEXTE : concaténation des 3 derniers messages utilisateur
-  // (2a). Le wordCount du contexte sert à décider la question de précision (2b).
+  // (2a). Sur scenario null, on enchaîne sur /clarify/ (dialogue mené par le modèle).
   const classifyFlow = useCallback(
     async (text: string, lang: UiLang) => {
       const context = buildClassifyContext(userHistoryRef.current);
       const toClassify = context || text;
       try {
         const res = await firstaidAPI.classify(toClassify, lang);
+        logCall('classify', res.status, { scenario: res.data?.data?.scenario, confidence: res.data?.data?.confidence });
         if (res.status === 503) {
           dispatch({ type: 'unavailable' });
           return;
@@ -215,11 +242,23 @@ export default function EmergencyChatScreen() {
           dispatch({ type: 'unavailable' });
           return;
         }
-        // scenario null : la machine décide question de précision vs repli.
-        dispatch({ type: 'classified', protocol: null, wordCount: wordCount(toClassify) });
+        // scenario null → on demande au modèle UNE question de clarification.
+        const turn = guidedRef.current.clarifyTurn + 1;
+        if (turn > CLARIFY_MAX_TURNS) {
+          dispatch({ type: 'clarified', question: null }); // quota atteint → repli
+          return;
+        }
+        const cres = await firstaidAPI.clarify(toClassify, lang, turn);
+        logCall('clarify', cres.status, { turn, question: cres.data?.data?.question, source: cres.data?.data?.source });
+        if (cres.status === 503) {
+          dispatch({ type: 'unavailable' });
+          return;
+        }
+        const question = cres.data?.data?.question ?? null;
+        dispatch({ type: 'clarified', question });
         if (ASSISTANT_FREE_ANSWERS) void runFreeAnswer(text, lang);
       } catch (e) {
-        console.warn('[chat] classify indisponible/hors ligne:', e);
+        console.warn('[chat] classify/clarify indisponible/hors ligne:', e);
         dispatch({ type: 'unavailable' });
       }
     },
@@ -227,48 +266,51 @@ export default function EmergencyChatScreen() {
     [fetchProtocol, runFreeAnswer],
   );
 
-  // Options de la bulle de choix en cours (question ou variante) pour /answer/.
-  const currentOptions = useCallback((): Record<string, string> | null => {
+  // Options de la question en cours (clé → libellé) pour /intent/ en phase question.
+  const questionOptions = useCallback((): Record<string, string> | null => {
     const p = protocolRef.current;
     const phase = guidedRef.current.phase;
-    if (!p) return null;
-    if (phase.kind === 'question') {
-      const q = p.decision_tree.questions[phase.qid];
-      if (!q) return null;
-      return Object.fromEntries(Object.entries(q.answers).map(([k, a]) => [k, a.label]));
-    }
-    if (phase.kind === 'variant') {
-      return Object.fromEntries(variantKeys(p).map((k) => [k, p.variants[k] as string]));
-    }
-    return null;
+    if (!p || phase.kind !== 'question') return null;
+    const q = p.decision_tree.questions[phase.qid];
+    if (!q) return null;
+    return Object.fromEntries(Object.entries(q.answers).map(([k, a]) => [k, a.label]));
   }, []);
 
-  // Réponse libre tapée pendant une bulle de choix → /answer/ (reconnaissance).
-  const answerFlow = useCallback(
+  // Texte libre tapé pendant un protocole (phase question/block) → /intent/.
+  // Le serveur choisit UNE intention parmi des options fixes ; on la rejoue dans
+  // la machine à états. En 503/hors ligne → repli local (intentUnavailable).
+  const intentFlow = useCallback(
     async (text: string, lang: UiLang) => {
-      const options = currentOptions();
-      const phase = guidedRef.current.phase;
-      if (!options || Object.keys(options).length < 2) {
-        dispatch({ type: 'answerUnresolved' });
-        return;
-      }
+      const p = protocolRef.current;
+      const phaseKind = guidedRef.current.phase.kind;
+      if (!p || (phaseKind !== 'question' && phaseKind !== 'block')) return;
+      const phase: 'question' | 'block' = phaseKind === 'question' ? 'question' : 'block';
+      const qOpts = phase === 'question' ? questionOptions() : null;
       try {
-        const res = await firstaidAPI.answer(text, lang, options);
-        const key = res.status === 503 ? null : (res.data?.data?.answer ?? null);
-        if (key && phase.kind === 'variant') {
-          dispatch({ type: 'chooseVariant', variant: key as VariantKey });
-        } else if (key && phase.kind === 'question') {
-          dispatch({ type: 'answer', key });
-        } else {
-          dispatch({ type: 'answerUnresolved' });
+        const res = await firstaidAPI.intent(text, lang, p.id, phase, qOpts);
+        logCall('intent', res.status, { phase, intent: res.data?.data?.intent, confidence: res.data?.data?.confidence });
+        if (res.status === 503) {
+          dispatch({ type: 'intentUnavailable' });
+          return;
         }
+        const d = res.data?.data;
+        const target = d?.target;
+        let outcome: IntentOutcome;
+        if (d?.intent === 'off_topic') outcome = { kind: 'off_topic' };
+        else if (!target) outcome = { kind: 'unclear' };
+        else if (target.kind === 'answer') outcome = { kind: 'answer', key: String(target.key) };
+        else if (target.kind === 'switch') outcome = { kind: 'switch', id: String(target.id) };
+        else if (target.kind === 'red_flag') {
+          outcome = { kind: 'red_flag', label: String(target.label), switchTo: target.switch_to };
+        } else outcome = { kind: 'unclear' };
+        dispatch({ type: 'intent', outcome });
       } catch (e) {
-        console.warn('[chat] answer indisponible/hors ligne:', e);
-        dispatch({ type: 'answerUnresolved' });
+        console.warn('[chat] intent indisponible/hors ligne:', e);
+        dispatch({ type: 'intentUnavailable' });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentOptions],
+    [questionOptions],
   );
 
   const onSend = useCallback(
@@ -299,12 +341,11 @@ export default function EmergencyChatScreen() {
       setIsSending(true);
       try {
         const phase = guidedRef.current.phase.kind;
-        if (phase === 'question' || phase === 'variant') {
-          await answerFlow(text, lang);
-        } else if (phase === 'block' || phase === 'end') {
-          dispatch({ type: 'freeOutOfContext' });
+        if (phase === 'question' || phase === 'block') {
+          // Texte libre pendant un protocole → /intent/ (answer/red_flag/switch/…).
+          await intentFlow(text, lang);
         } else {
-          // idle / no_protocol / precision : classification (avec contexte).
+          // idle / precision / no_protocol / end / variant : classification (+ clarify).
           await classifyFlow(text, lang);
         }
       } finally {
@@ -312,13 +353,57 @@ export default function EmergencyChatScreen() {
         scrollToEnd();
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inputText, isSending, answerFlow, classifyFlow, scrollToEnd],
+    [inputText, isSending, intentFlow, classifyFlow, scrollToEnd],
   );
 
   const call = useCallback((number: string) => {
     if (number) void Linking.openURL(`tel:${number}`);
   }, []);
+
+  // Outil de test : nouvelle conversation (vide bulles, contexte, machine, turn).
+  const newConversation = useCallback(() => {
+    userHistoryRef.current = [];
+    debugLogRef.current = [];
+    const fresh = initialGuided();
+    guidedRef.current = fresh;
+    setGuided(fresh);
+    protocolRef.current = null;
+    setProtocol(null);
+    setMessages([makeMsg('assistant', { kind: 'welcome' })]);
+    inputValueRef.current = '';
+    setInputText('');
+  }, []);
+
+  // Outil de test (staging) : copie un export texte de la conversation + log des
+  // appels backend dans le presse-papiers.
+  const copyTranscript = useCallback(() => {
+    const lines = messagesRef.current.map((m) => {
+      const b = m.bubble;
+      const who = m.role === 'user' ? 'USER' : 'ASSISTANT';
+      let detail = '';
+      if (b.kind === 'user' || b.kind === 'free' || b.kind === 'modelText') detail = b.text;
+      else if (b.kind === 'say') detail = withNumber(L[b.textKey], emergencyNumber);
+      else if (b.kind === 'redFlag') detail = `${L.redFlags}: ${b.label}`;
+      else if (b.kind === 'prompt') detail = (b.textKey ? L[b.textKey] : b.text ?? '') + ' [' + b.options.map((o) => o.key).join(',') + ']';
+      else if (b.kind === 'step') detail = `${b.blockTitle} — ${b.text}`;
+      else if (b.kind === 'callButton' || b.kind === 'emergency') detail = `☎ ${b.number}`;
+      else if (b.kind === 'protocols') detail = b.items.map((i) => i.id).join(', ');
+      else if (b.kind === 'welcome') detail = L.intro;
+      return `${who} <${b.kind}> ${detail}`.trim();
+    });
+    const out = [
+      '=== Conversation Kendeya (export de test) ===',
+      `API: ${process.env.EXPO_PUBLIC_API_URL ?? '(défaut)'}`,
+      '',
+      ...lines,
+      '',
+      '=== Appels backend ===',
+      ...debugLogRef.current,
+    ].join('\n');
+    void Clipboard.setStringAsync(out).then(() => {
+      Alert.alert(L.copied);
+    });
+  }, [emergencyNumber, L]);
 
   const onOption = useCallback(
     (bubble: Extract<GuidedBubble, { kind: 'prompt' }>, key: string) => {
@@ -354,6 +439,18 @@ export default function EmergencyChatScreen() {
       guided.phase.kind === 'block' ||
       guided.phase.kind === 'end');
 
+  // Placeholder du champ selon la phase (§3).
+  const phasePlaceholder = (() => {
+    switch (guided.phase.kind) {
+      case 'precision': return L.placeholders.precision;
+      case 'question':
+      case 'variant': return L.placeholders.question;
+      case 'block': return L.placeholders.block;
+      case 'end': return L.placeholders.end;
+      default: return L.placeholders.idle; // idle / no_protocol
+    }
+  })();
+
   const renderBubble = useCallback(
     (msg: ChatMsg) => {
       const b = msg.bubble;
@@ -380,6 +477,30 @@ export default function EmergencyChatScreen() {
           <View style={[styles.row, styles.rowAssistant]}>
             <View style={[styles.bubble, styles.assistantBubble]}>
               <Text style={styles.assistantText}>{b.text}</Text>
+            </View>
+          </View>
+        );
+      }
+      // Question de clarification du modèle (validée backend) — affichée telle quelle.
+      if (b.kind === 'modelText') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble]}>
+              <Text style={styles.assistantText}>{b.text}</Text>
+            </View>
+          </View>
+        );
+      }
+      // Signe d'alerte reconnu dans un texte libre : « Signe d'alerte : <label> ».
+      if (b.kind === 'redFlag') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.redFlagBubble]}>
+              <View style={styles.redFlagHeader}>
+                <AlertTriangle color={MedicalColors.urgencyDark} size={16} />
+                <Text style={styles.redFlagLabel}>{L.redFlags}</Text>
+              </View>
+              <Text style={styles.redFlagText}>{b.label}</Text>
             </View>
           </View>
         );
@@ -493,7 +614,25 @@ export default function EmergencyChatScreen() {
           <Text style={styles.headerTitle}>{L.headerTitle}</Text>
           <Text style={styles.headerSubtitle}>{L.headerSubtitle}</Text>
         </View>
-        <View style={{ width: 32 }} />
+        <View style={styles.headerActions}>
+          {showTestTools ? (
+            <TouchableOpacity
+              onPress={copyTranscript}
+              onLongPress={copyTranscript}
+              style={styles.headerBtn}
+              accessibilityLabel={L.copyTranscript}
+            >
+              <ClipboardCopy size={20} color={MedicalColors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={newConversation}
+            style={styles.headerBtn}
+            accessibilityLabel={L.newConversation}
+          >
+            <RotateCcw size={20} color={MedicalColors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {guidedActive && protocol && isUnvalidated(protocol.status) ? (
@@ -526,7 +665,7 @@ export default function EmergencyChatScreen() {
           <TextInput
             ref={inputRef}
             style={styles.input}
-            placeholder={L.placeholder}
+            placeholder={phasePlaceholder}
             placeholderTextColor={MedicalColors.textSecondary}
             value={inputText}
             onChangeText={(t) => {
@@ -650,6 +789,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   backButton: { padding: 4 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerBtn: { padding: 4 },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: MedicalColors.text },
   headerSubtitle: { fontSize: 12, color: MedicalColors.textSecondary },
@@ -675,6 +816,15 @@ const styles = StyleSheet.create({
     borderColor: MedicalColors.border,
   },
   assistantText: { color: MedicalColors.text, fontSize: 15, lineHeight: 21 },
+  redFlagBubble: {
+    backgroundColor: MedicalColors.urgencyLight,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: MedicalColors.urgency,
+  },
+  redFlagHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  redFlagLabel: { color: MedicalColors.urgencyDark, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  redFlagText: { color: MedicalColors.urgencyDark, fontSize: 15, lineHeight: 21, fontWeight: '600' },
   emergencyBubble: {
     flexDirection: 'row',
     alignItems: 'center',

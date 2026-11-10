@@ -166,14 +166,14 @@ describe('switch_to', () => {
   });
 
   test('switch_to CONSERVE la variante si le protocole cible la déclare', () => {
-    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, precisionAsked: false, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, clarifyTurn: 0, phase: { kind: 'question' as const, qid: 'q_breathing' } };
     const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: UNCONSCIOUS }, UNCONSCIOUS);
     expect(r.state.variant).toBe('adult');
     expect(r.state.variantAsked).toBe(true);
   });
 
   test('switch_to REDEMANDE l\'âge si la variante n\'existe pas dans la cible', () => {
-    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, precisionAsked: false, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, clarifyTurn: 0, phase: { kind: 'question' as const, qid: 'q_breathing' } };
     const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: NOADULT }, NOADULT);
     expect(r.state.variant).toBeNull();
     expect(r.state.variantAsked).toBe(false);
@@ -184,17 +184,27 @@ describe('switch_to', () => {
   });
 });
 
-describe('message libre hors question (bloc) → rappel 442, AUCUN appel modèle', () => {
-  test('freeOutOfContext ne produit aucun effet et repose la bulle courante', () => {
+describe('texte libre hors sujet pendant un bloc → rappel 442, on repose l’étape', () => {
+  test('intent off_topic en phase block : 442 + repose l’étape, phase inchangée', () => {
     let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
     s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state; // q_breaths
     s = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC).state; // variant{cpr}
     s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state; // bloc cpr
-    const r = reduceGuided(CTX, s, { type: 'freeOutOfContext' }, CARDIAC);
-    expect(r.effect).toBeUndefined(); // aucun appel réseau/modèle
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'off_topic' } }, CARDIAC);
+    expect(r.effect).toBeUndefined();
     expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'step']); // 442 + repose l'étape
     expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('notCovered');
     expect(r.state.phase.kind).toBe('block'); // phase inchangée
+  });
+
+  test('intentUnavailable en phase block → comme off_topic', () => {
+    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state;
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC).state;
+    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state;
+    const r = reduceGuided(CTX, s, { type: 'intentUnavailable' }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'step']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('notCovered');
   });
 });
 
@@ -208,44 +218,123 @@ describe('repli', () => {
     expect(protos.kind === 'protocols' && protos.items.length).toBe(2);
   });
 
-  test('1er scenario null → question de précision (une seule bulle), pas de repli', () => {
-    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null);
-    expect(kinds(r.bubbles)).toEqual(['say']);
-    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('precisionQuestion');
-    expect(r.state.phase).toEqual({ kind: 'precision' });
-    expect(r.state.precisionAsked).toBe(true);
-  });
-
-  test('2e scenario null → repli « pas de protocole validé » + appel + liste', () => {
-    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null).state;
-    const r = reduceGuided(CTX, s, { type: 'classified', protocol: null, wordCount: 6 }, null);
+  test('scenario null (classified) → repli direct « pas de protocole validé »', () => {
+    // La boucle de clarification est pilotée par le flux (événement clarified) ;
+    // un classified null isolé retombe sur le repli.
+    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null }, null);
     expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'protocols']);
     expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('noProtocol');
-    expect(r.state.phase).toEqual({ kind: 'no_protocol' });
-    expect(r.state.precisionAsked).toBe(true);
+  });
+});
+
+describe('clarification (clarify) en boucle', () => {
+  test('tour 1 : question du modèle → bulle modelText, phase precision, turn=1', () => {
+    const r = reduceGuided(CTX, initialGuided(), { type: 'clarified', question: 'La personne respire-t-elle ?' }, null);
+    expect(kinds(r.bubbles)).toEqual(['modelText']);
+    expect(r.bubbles[0].kind === 'modelText' && r.bubbles[0].text).toBe('La personne respire-t-elle ?');
+    expect(r.state.phase).toEqual({ kind: 'precision' });
+    expect(r.state.clarifyTurn).toBe(1);
   });
 
-  test('premier null même avec texte long → on pose quand même la précision (premier null)', () => {
-    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 25 }, null);
-    expect(kinds(r.bubbles)).toEqual(['say']);
-    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('precisionQuestion');
+  test('null → clarify 1 → clarify 2 → clarify 3 → repli', () => {
+    let s = reduceGuided(CTX, initialGuided(), { type: 'clarified', question: 'Q1 ?' }, null).state;
+    expect(s.clarifyTurn).toBe(1);
+    s = reduceGuided(CTX, s, { type: 'clarified', question: 'Q2 ?' }, null).state;
+    expect(s.clarifyTurn).toBe(2);
+    // 3e question : turn passe à 3 (dernière question permise).
+    const r3 = reduceGuided(CTX, s, { type: 'clarified', question: 'Q3 ?' }, null);
+    expect(kinds(r3.bubbles)).toEqual(['modelText']);
+    expect(r3.state.clarifyTurn).toBe(3);
+    // 4e clarification demandée alors que turn=3 → repli (quota atteint).
+    const r4 = reduceGuided(CTX, r3.state, { type: 'clarified', question: 'Q4 ?' }, null);
+    expect(kinds(r4.bubbles)).toEqual(['say', 'callButton', 'protocols']);
+    expect(r4.bubbles[0].kind === 'say' && r4.bubbles[0].textKey).toBe('noProtocol');
   });
 
-  test('null → classified sur un protocole : pas de repli, on démarre', () => {
-    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null).state;
+  test('question null → repli immédiat', () => {
+    const r = reduceGuided(CTX, initialGuided(), { type: 'clarified', question: null }, null);
+    expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'protocols']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('noProtocol');
+  });
+
+  test('clarifyTurn conservé quand on finit par démarrer un protocole', () => {
+    const s = reduceGuided(CTX, initialGuided(), { type: 'clarified', question: 'Q1 ?' }, null).state;
     const r = reduceGuided(CTX, s, { type: 'classified', protocol: CARDIAC }, CARDIAC);
-    // bulle d'appel + question d'entrée (démarrage du protocole), precisionAsked conservé.
     expect(kinds(r.bubbles)).toEqual(['emergency', 'prompt']);
-    expect(r.state.precisionAsked).toBe(true);
+    expect(r.state.clarifyTurn).toBe(1);
     expect(r.state.phase.kind).toBe('question');
   });
+});
 
-  test('answerUnresolved → repose la question', () => {
-    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    const r = reduceGuided(CTX, s, { type: 'answerUnresolved' }, CARDIAC);
+// Protocole minimal pour tester /intent/ : une question d'entrée + un bloc +
+// un red flag qui bascule, dans un contexte à deux protocoles publiables.
+function intentFixture() {
+  // On réutilise CARDIAC (phase question à l'entrée). On construit des états.
+  const entry = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC);
+  return entry.state; // phase question q_breathing
+}
+
+describe('texte libre pendant un protocole (intent)', () => {
+  test('answer: → même effet qu’un tap sur le bouton (avance dans l’arbre)', () => {
+    const s = intentFixture();
+    const viaIntent = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'answer', key: 'no' } }, CARDIAC);
+    const viaTap = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC);
+    expect(kinds(viaIntent.bubbles)).toEqual(kinds(viaTap.bubbles));
+    expect(viaIntent.state.phase).toEqual(viaTap.state.phase);
+  });
+
+  test('red_flag sans bascule → bulle redFlag + 442 + on repose la question', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'red_flag', label: 'Lèvres bleues' } }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['redFlag', 'callButton', 'prompt']);
+    expect(r.bubbles[0].kind === 'redFlag' && r.bubbles[0].label).toBe('Lèvres bleues');
+    expect(r.state.phase).toEqual(s.phase); // inchangé
+  });
+
+  test('red_flag avec switch → bulle redFlag + 442 + annonce + effet loadProtocol', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'red_flag', label: 'X', switchTo: 'unconscious' } }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['redFlag', 'callButton', 'say']);
+    expect(r.bubbles[2].kind === 'say' && r.bubbles[2].textKey).toBe('switchingTo');
+    expect(r.effect).toEqual({ type: 'loadProtocol', id: 'unconscious' });
+  });
+
+  test('switch: → annonce + effet loadProtocol', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'switch', id: 'unconscious' } }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['say']);
+    expect(r.effect).toEqual({ type: 'loadProtocol', id: 'unconscious' });
+  });
+
+  test('off_topic → « pas couvert » + 442 + on repose', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'off_topic' } }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'prompt']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('notCovered');
+  });
+
+  test('unclear → « je n’ai pas compris » + on repose', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intent', outcome: { kind: 'unclear' } }, CARDIAC);
     expect(kinds(r.bubbles)).toEqual(['say', 'prompt']);
-    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('reAsk');
-    const p = r.bubbles[1];
-    expect(p.kind === 'prompt' && p.choiceKind).toBe('question');
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('notUnderstood');
+  });
+
+  test('intentUnavailable en phase question → inviter à taper sur les boutons + repose', () => {
+    const s = intentFixture();
+    const r = reduceGuided(CTX, s, { type: 'intentUnavailable' }, CARDIAC);
+    expect(kinds(r.bubbles)).toEqual(['say', 'prompt']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('tapButtons');
+  });
+});
+
+describe('reset (nouvelle conversation)', () => {
+  test('initialGuided remet tout à zéro', () => {
+    const s = reduceGuided(CTX, initialGuided(), { type: 'clarified', question: 'Q ?' }, null).state;
+    expect(s.clarifyTurn).toBe(1);
+    const fresh = initialGuided();
+    expect(fresh).toEqual({
+      protocolId: null, variant: null, variantAsked: false, clarifyTurn: 0, phase: { kind: 'idle' },
+    });
   });
 });

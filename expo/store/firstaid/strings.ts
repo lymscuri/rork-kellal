@@ -18,10 +18,22 @@ export interface ChatStrings {
   switchingTo: string; // annonce de bascule switch_to (une phrase, pas le modèle)
   notCovered: string; // message libre hors question pendant le mode guidé
   reAsk: string; // « je repose la question »
+  notUnderstood: string; // intent unclear : « je n'ai pas compris »
+  tapButtons: string; // 503 en phase question : inviter à taper sur les boutons
   stepLabel: (n: number, total: number) => string;
   protocolEnded: string;
   testBanner: string;
-  placeholder: string;
+  // Placeholder du champ de saisie selon la phase du dialogue (§3).
+  placeholders: {
+    idle: string;
+    precision: string;
+    question: string;
+    block: string;
+    end: string;
+  };
+  newConversation: string; // bouton « Nouvelle conversation »
+  copyTranscript: string; // info-bulle « Copier la conversation »
+  copied: string; // confirmation « Copié »
   headerTitle: string;
   headerSubtitle: string;
   intro: string;
@@ -45,10 +57,21 @@ export const STRINGS: Record<UiLang, ChatStrings> = {
     switchingTo: 'Je bascule sur le protocole adapté.',
     notCovered: `Ce point n'est pas couvert par le protocole, appelez le ${EMERGENCY_PLACEHOLDER}.`,
     reAsk: 'Je repose la question.',
+    notUnderstood: "Je n'ai pas compris.",
+    tapButtons: 'Appuyez sur un des boutons pour répondre.',
     stepLabel: (n, total) => `Étape ${n} / ${total}`,
     protocolEnded: 'Fin du protocole.',
     testBanner: 'Données de test, non validées médicalement',
-    placeholder: "Décrivez la situation d'urgence…",
+    placeholders: {
+      idle: "Décrivez la situation…",
+      precision: 'Répondez à la question…',
+      question: 'Tapez une réponse ou appuyez sur un bouton',
+      block: 'Une question ? Tapez-la ici',
+      end: 'Décrivez une nouvelle situation…',
+    },
+    newConversation: 'Nouvelle conversation',
+    copyTranscript: 'Copier la conversation',
+    copied: 'Conversation copiée',
     headerTitle: 'Assistant Urgence',
     headerSubtitle: 'Premiers secours',
     intro: "Décrivez la situation d'urgence. Je lance le protocole adapté.",
@@ -68,10 +91,21 @@ export const STRINGS: Record<UiLang, ChatStrings> = {
     switchingTo: 'Switching to the appropriate protocol.',
     notCovered: `This point is not covered by the protocol, call ${EMERGENCY_PLACEHOLDER}.`,
     reAsk: 'Let me ask again.',
+    notUnderstood: "I didn't understand.",
+    tapButtons: 'Tap one of the buttons to answer.',
     stepLabel: (n, total) => `Step ${n} / ${total}`,
     protocolEnded: 'End of protocol.',
     testBanner: 'Test data, not medically validated',
-    placeholder: 'Describe the emergency…',
+    placeholders: {
+      idle: 'Describe the situation…',
+      precision: 'Answer the question…',
+      question: 'Type an answer or tap a button',
+      block: 'A question? Type it here',
+      end: 'Describe a new situation…',
+    },
+    newConversation: 'New conversation',
+    copyTranscript: 'Copy conversation',
+    copied: 'Conversation copied',
     headerTitle: 'Emergency Assistant',
     headerSubtitle: 'First aid',
     intro: 'Describe the emergency. I will start the right protocol.',
