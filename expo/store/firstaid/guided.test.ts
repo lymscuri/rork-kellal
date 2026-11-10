@@ -166,14 +166,14 @@ describe('switch_to', () => {
   });
 
   test('switch_to CONSERVE la variante si le protocole cible la déclare', () => {
-    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, precisionAsked: false, phase: { kind: 'question' as const, qid: 'q_breathing' } };
     const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: UNCONSCIOUS }, UNCONSCIOUS);
     expect(r.state.variant).toBe('adult');
     expect(r.state.variantAsked).toBe(true);
   });
 
   test('switch_to REDEMANDE l\'âge si la variante n\'existe pas dans la cible', () => {
-    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, precisionAsked: false, phase: { kind: 'question' as const, qid: 'q_breathing' } };
     const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: NOADULT }, NOADULT);
     expect(r.state.variant).toBeNull();
     expect(r.state.variantAsked).toBe(false);
@@ -208,10 +208,36 @@ describe('repli', () => {
     expect(protos.kind === 'protocols' && protos.items.length).toBe(2);
   });
 
-  test('scenario null → « pas de protocole validé » + appel + liste', () => {
-    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null }, null);
+  test('1er scenario null → question de précision (une seule bulle), pas de repli', () => {
+    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null);
+    expect(kinds(r.bubbles)).toEqual(['say']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('precisionQuestion');
+    expect(r.state.phase).toEqual({ kind: 'precision' });
+    expect(r.state.precisionAsked).toBe(true);
+  });
+
+  test('2e scenario null → repli « pas de protocole validé » + appel + liste', () => {
+    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null).state;
+    const r = reduceGuided(CTX, s, { type: 'classified', protocol: null, wordCount: 6 }, null);
     expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'protocols']);
     expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('noProtocol');
+    expect(r.state.phase).toEqual({ kind: 'no_protocol' });
+    expect(r.state.precisionAsked).toBe(true);
+  });
+
+  test('premier null même avec texte long → on pose quand même la précision (premier null)', () => {
+    const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 25 }, null);
+    expect(kinds(r.bubbles)).toEqual(['say']);
+    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('precisionQuestion');
+  });
+
+  test('null → classified sur un protocole : pas de repli, on démarre', () => {
+    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: null, wordCount: 3 }, null).state;
+    const r = reduceGuided(CTX, s, { type: 'classified', protocol: CARDIAC }, CARDIAC);
+    // bulle d'appel + question d'entrée (démarrage du protocole), precisionAsked conservé.
+    expect(kinds(r.bubbles)).toEqual(['emergency', 'prompt']);
+    expect(r.state.precisionAsked).toBe(true);
+    expect(r.state.phase.kind).toBe('question');
   });
 
   test('answerUnresolved → repose la question', () => {

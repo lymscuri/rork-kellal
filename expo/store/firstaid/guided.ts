@@ -20,7 +20,42 @@ export type TextKey =
   | 'notCovered'
   | 'reAsk'
   | 'chooseAge'
+  | 'precisionQuestion'
   | 'protocolEnded';
+
+// Nombre de mots en dessous duquel le texte cumulé est jugé « court » (2b).
+export const PRECISION_WORD_THRESHOLD = 8;
+
+// Compte les mots d'un texte (espaces Unicode). Utilisé pour décider si une
+// question de précision est posée quand le scénario est null.
+export function wordCount(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/u).length : 0;
+}
+
+// Longueur maximale du contexte envoyé au classifieur (2a).
+export const CLASSIFY_CONTEXT_MAX = 1000;
+
+// Construit le texte de contexte pour /classify/ : les 3 derniers messages
+// utilisateur de la conversation (dans l'ordre), joints par « . », tronqués à
+// CLASSIFY_CONTEXT_MAX caractères en retirant le plus ancien d'abord. Une
+// conversation neuve (historique vide) classifie le seul message courant.
+export function buildClassifyContext(userMessages: string[]): string {
+  const recent = userMessages
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0)
+    .slice(-3);
+  // Retire le plus ancien tant que la concaténation dépasse la limite.
+  while (recent.length > 1 && recent.join('. ').length > CLASSIFY_CONTEXT_MAX) {
+    recent.shift();
+  }
+  let joined = recent.join('. ');
+  if (joined.length > CLASSIFY_CONTEXT_MAX) {
+    // Un seul message trop long : on tronque par la fin (on garde le début).
+    joined = joined.slice(0, CLASSIFY_CONTEXT_MAX);
+  }
+  return joined;
+}
 
 export interface OptionButton {
   key: string;
@@ -59,6 +94,8 @@ export type GuidedPhase =
   | { kind: 'variant'; pendingBlockId: string }
   | { kind: 'question'; qid: string }
   | { kind: 'block'; blockId: string; stepIndex: number }
+  // Question de précision fixe posée une fois quand le scénario est null.
+  | { kind: 'precision' }
   | { kind: 'end' }
   | { kind: 'no_protocol' };
 
@@ -67,11 +104,14 @@ export interface GuidedState {
   variant: VariantKey | null;
   // L'âge n'est demandé qu'une fois par protocole : mémorisé ici.
   variantAsked: boolean;
+  // La question de précision n'est posée qu'une fois par conversation.
+  precisionAsked: boolean;
   phase: GuidedPhase;
 }
 
 export type GuidedEvent =
-  | { type: 'classified'; protocol: Protocol | null }
+  // wordCount = nombre de mots du texte cumulé classifié (décision de précision).
+  | { type: 'classified'; protocol: Protocol | null; wordCount?: number }
   | { type: 'unavailable' } // 503 classifier_unavailable ou hors ligne
   | { type: 'chooseVariant'; variant: VariantKey }
   | { type: 'answer'; key: string } // clé d'option (bouton ou /answer/ résolu)
@@ -95,7 +135,13 @@ export interface GuidedResult {
 }
 
 export function initialGuided(): GuidedState {
-  return { protocolId: null, variant: null, variantAsked: false, phase: { kind: 'idle' } };
+  return {
+    protocolId: null,
+    variant: null,
+    variantAsked: false,
+    precisionAsked: false,
+    phase: { kind: 'idle' },
+  };
 }
 
 // Un bloc a-t-il besoin d'une variante (steps par âge) ?
@@ -152,17 +198,40 @@ function startProtocol(
   protocol: Protocol,
   variant: VariantKey | null,
   variantAsked: boolean,
+  precisionAsked: boolean,
 ): GuidedResult {
   const entry = protocol.decision_tree.entry;
   return {
-    state: { protocolId: protocol.id, variant, variantAsked, phase: { kind: 'question', qid: entry } },
+    state: {
+      protocolId: protocol.id,
+      variant,
+      variantAsked,
+      precisionAsked,
+      phase: { kind: 'question', qid: entry },
+    },
     bubbles: [emergencyBubble(protocol.emergency_number), questionPrompt(protocol, entry)],
   };
 }
 
-function fallback(ctx: GuidedCtx, textKey: TextKey): GuidedResult {
+// Question de précision fixe, posée une seule fois par conversation quand le
+// scénario est null : aucun bouton d'appel ni liste ici — le message suivant
+// sera reclassifié avec le contexte. precisionAsked passe à true.
+function precisionQuestion(state: GuidedState): GuidedResult {
   return {
-    state: { protocolId: null, variant: null, variantAsked: false, phase: { kind: 'no_protocol' } },
+    state: { ...state, protocolId: null, precisionAsked: true, phase: { kind: 'precision' } },
+    bubbles: [{ kind: 'say', textKey: 'precisionQuestion' }],
+  };
+}
+
+function fallback(ctx: GuidedCtx, state: GuidedState, textKey: TextKey): GuidedResult {
+  return {
+    state: {
+      protocolId: null,
+      variant: null,
+      variantAsked: false,
+      precisionAsked: state.precisionAsked,
+      phase: { kind: 'no_protocol' },
+    },
     bubbles: [
       { kind: 'say', textKey },
       { kind: 'callButton', number: ctx.emergencyNumber },
@@ -214,13 +283,22 @@ export function reduceGuided(
   protocol: Protocol | null,
 ): GuidedResult {
   switch (event.type) {
-    case 'classified':
+    case 'classified': {
       // Jamais de variante à l'entrée : directement la 1re question.
-      if (event.protocol) return startProtocol(event.protocol, null, false);
-      return fallback(ctx, 'noProtocol');
+      if (event.protocol) return startProtocol(event.protocol, null, false, state.precisionAsked);
+      // Scénario null : on pose UNE question de précision (2b) si on ne l'a pas
+      // encore posée ET (texte cumulé court OU premier null de la conversation).
+      // Comme precisionAsked ne devient vrai qu'après l'avoir posée, le premier
+      // null la déclenche toujours ; un second null retombe sur le repli.
+      const short = (event.wordCount ?? Infinity) < PRECISION_WORD_THRESHOLD;
+      if (!state.precisionAsked && (short || !state.precisionAsked)) {
+        return precisionQuestion(state);
+      }
+      return fallback(ctx, state, 'noProtocol');
+    }
 
     case 'unavailable':
-      return fallback(ctx, 'assistantUnavailable');
+      return fallback(ctx, state, 'assistantUnavailable');
 
     case 'switchLoaded': {
       // Conserver l'âge si le protocole cible déclare la même variante, sinon redemander.
@@ -228,7 +306,7 @@ export function reduceGuided(
         state.variant !== null && variantKeys(event.protocol).includes(state.variant)
           ? state.variant
           : null;
-      return startProtocol(event.protocol, keep, keep !== null);
+      return startProtocol(event.protocol, keep, keep !== null, state.precisionAsked);
     }
 
     case 'chooseVariant': {

@@ -40,6 +40,8 @@ import {
 import {
   reduceGuided,
   initialGuided,
+  buildClassifyContext,
+  wordCount,
   type GuidedBubble,
   type GuidedEvent,
   type GuidedState,
@@ -97,6 +99,15 @@ export default function EmergencyChatScreen() {
   guidedRef.current = guided;
   protocolRef.current = protocol;
   convLangRef.current = convLang;
+
+  // Historique des messages utilisateur de la conversation (pour le contexte de
+  // classification sur les 3 derniers). Vide = nouvelle conversation.
+  const userHistoryRef = useRef<string[]>([]);
+
+  // Référence au champ (pour blur()) et miroir SYNCHRONE de sa valeur : lu à
+  // l'envoi pour ne pas dépendre de l'état React (mot en composition perdu).
+  const inputRef = useRef<TextInput>(null);
+  const inputValueRef = useRef('');
 
   const L = STRINGS[convLang];
 
@@ -180,11 +191,15 @@ export default function EmergencyChatScreen() {
     [appendBubbles],
   );
 
-  // Flux de classification (phase idle / no_protocol).
+  // Flux de classification (phase idle / no_protocol / precision).
+  // On classifie le CONTEXTE : concaténation des 3 derniers messages utilisateur
+  // (2a). Le wordCount du contexte sert à décider la question de précision (2b).
   const classifyFlow = useCallback(
     async (text: string, lang: UiLang) => {
+      const context = buildClassifyContext(userHistoryRef.current);
+      const toClassify = context || text;
       try {
-        const res = await firstaidAPI.classify(text, lang);
+        const res = await firstaidAPI.classify(toClassify, lang);
         if (res.status === 503) {
           dispatch({ type: 'unavailable' });
           return;
@@ -200,8 +215,8 @@ export default function EmergencyChatScreen() {
           dispatch({ type: 'unavailable' });
           return;
         }
-        // scenario null
-        dispatch({ type: 'classified', protocol: null });
+        // scenario null : la machine décide question de précision vs repli.
+        dispatch({ type: 'classified', protocol: null, wordCount: wordCount(toClassify) });
         if (ASSISTANT_FREE_ANSWERS) void runFreeAnswer(text, lang);
       } catch (e) {
         console.warn('[chat] classify indisponible/hors ligne:', e);
@@ -257,11 +272,23 @@ export default function EmergencyChatScreen() {
   );
 
   const onSend = useCallback(
+    // `raw` = texte capturé à la source (nativeEvent.text du clavier, ou la
+    // valeur du champ au tap). On NE lit PAS l'état React `inputText` : sur
+    // Android un mot encore en composition clavier n'y est pas encore reflété,
+    // ce qui tronquait le message (« je suis blessé » -> « je suis »).
     async (raw?: string) => {
-      const text = (raw ?? inputText).trim();
+      // Priorité : valeur explicite -> miroir ref (synchro) -> état (dernier recours).
+      const source = raw ?? inputValueRef.current ?? inputText;
+      const text = source.trim();
       if (!text || isSending) return;
+      // On ne vide le champ qu'APRÈS avoir capturé le texte.
+      inputValueRef.current = '';
       setInputText('');
+      inputRef.current?.blur();
+      // La bulle affiche exactement le texte envoyé.
       setMessages((prev) => [...prev, makeMsg('user', { kind: 'user', text })]);
+      // Historique pour le contexte de classification (3 derniers messages).
+      userHistoryRef.current = [...userHistoryRef.current, text];
 
       // La langue du dernier message utilisateur fixe toute la suite.
       const detected = detectLang(text);
@@ -277,6 +304,7 @@ export default function EmergencyChatScreen() {
         } else if (phase === 'block' || phase === 'end') {
           dispatch({ type: 'freeOutOfContext' });
         } else {
+          // idle / no_protocol / precision : classification (avec contexte).
           await classifyFlow(text, lang);
         }
       } finally {
@@ -496,19 +524,28 @@ export default function EmergencyChatScreen() {
 
         <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
+            ref={inputRef}
             style={styles.input}
             placeholder={L.placeholder}
             placeholderTextColor={MedicalColors.textSecondary}
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={(t) => {
+              inputValueRef.current = t;
+              setInputText(t);
+            }}
             multiline
             maxLength={500}
             editable={!isSending}
-            onSubmitEditing={() => onSend()}
+            // On lit le texte de l'ÉVÉNEMENT (committé, mot de composition inclus).
+            onSubmitEditing={(e) => onSend(e.nativeEvent.text)}
           />
           <TouchableOpacity
             style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
-            onPress={() => onSend()}
+            // blur() commite un éventuel mot en composition ; onSend lit le miroir.
+            onPress={() => {
+              inputRef.current?.blur();
+              onSend();
+            }}
             disabled={!inputText.trim() || isSending}
           >
             <Send size={20} color={inputText.trim() && !isSending ? MedicalColors.white : MedicalColors.textSecondary} />

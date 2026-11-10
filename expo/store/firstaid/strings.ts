@@ -12,6 +12,7 @@ export interface ChatStrings {
   callEmergency: string;
   chooseSituation: string;
   chooseAge: string;
+  precisionQuestion: string; // question de précision fixe quand le scénario est null
   noProtocol: string; // « je n'ai pas de protocole validé pour cette situation »
   assistantUnavailable: string; // 503 / hors ligne
   switchingTo: string; // annonce de bascule switch_to (une phrase, pas le modèle)
@@ -37,6 +38,8 @@ export const STRINGS: Record<UiLang, ChatStrings> = {
     callEmergency: `Appeler les secours · ${EMERGENCY_PLACEHOLDER}`,
     chooseSituation: 'Choisissez la situation :',
     chooseAge: "Quel est l'âge de la personne ?",
+    precisionQuestion:
+      'Pour vous guider, dites-moi : la personne est-elle consciente ? Respire-t-elle normalement ? Y a-t-il du sang ?',
     noProtocol: "Je n'ai pas de protocole validé pour cette situation.",
     assistantUnavailable: "Assistant indisponible. Choisissez une situation dans la liste.",
     switchingTo: 'Je bascule sur le protocole adapté.',
@@ -58,6 +61,8 @@ export const STRINGS: Record<UiLang, ChatStrings> = {
     callEmergency: `Call emergency services · ${EMERGENCY_PLACEHOLDER}`,
     chooseSituation: 'Choose the situation:',
     chooseAge: 'How old is the person?',
+    precisionQuestion:
+      'To guide you, tell me: is the person conscious? Are they breathing normally? Is there any blood?',
     noProtocol: "I don't have a validated protocol for this situation.",
     assistantUnavailable: 'Assistant unavailable. Pick a situation from the list.',
     switchingTo: 'Switching to the appropriate protocol.',
