@@ -66,7 +66,7 @@ const UNCONSCIOUS = {
   ...CARDIAC,
   id: 'unconscious_breathing',
   title: 'Inconsciente qui respire',
-  variants: {},
+  variants: { adult: 'Adulte', child: 'Enfant', infant: 'Nourrisson' },
   decision_tree: {
     entry: 'q_u',
     questions: {
@@ -74,6 +74,13 @@ const UNCONSCIOUS = {
     },
   },
   action_blocks: { pls: { id: 'pls', title: 'PLS', next_question: null, steps: [step(1, 'Mettez en PLS')] } },
+} as unknown as Protocol;
+
+// Variante sans « adult » : sert à vérifier qu'un switch depuis adult redemande l'âge.
+const NOADULT = {
+  ...UNCONSCIOUS,
+  id: 'noadult',
+  variants: { child: 'Enfant', infant: 'Nourrisson' },
 } as unknown as Protocol;
 
 const CTX: GuidedCtx = {
@@ -87,73 +94,89 @@ const CTX: GuidedCtx = {
 
 const kinds = (bubbles: GuidedBubble[]) => bubbles.map((b) => b.kind);
 
-describe('parcours complet classify → variante → question → bloc → next_question → fin', () => {
-  test('classify avec protocole → appel + choix de variante', () => {
+describe('entrée directe sur l\'arbre, âge demandé au 1er bloc à variantes', () => {
+  test('classify → appel + PREMIÈRE QUESTION (pas de variante à l\'entrée)', () => {
     const r = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC);
     expect(kinds(r.bubbles)).toEqual(['emergency', 'prompt']);
-    expect(r.state.phase).toEqual({ kind: 'variant' });
-    const prompt = r.bubbles[1];
-    expect(prompt.kind === 'prompt' && prompt.choiceKind).toBe('variant');
-    expect(prompt.kind === 'prompt' && prompt.options.map((o) => o.key)).toEqual(['adult', 'child', 'infant']);
-  });
-
-  test('variante → première question de l\'arbre', () => {
-    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    const r = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC);
     expect(r.state.phase).toEqual({ kind: 'question', qid: 'q_breathing' });
-    expect(r.state.variant).toBe('adult');
-    const p = r.bubbles[0];
+    expect(r.state.variant).toBeNull();
+    expect(r.state.variantAsked).toBe(false);
+    const p = r.bubbles[1];
+    expect(p.kind === 'prompt' && p.choiceKind).toBe('question');
     expect(p.kind === 'prompt' && p.text).toBe('La personne respire-t-elle normalement ?');
   });
 
-  test('question → bloc → next (étape 2) → next_question → bloc plat → fin', () => {
+  test('« no » → question suivante, PUIS entrée cpr → bulle d\'âge', () => {
     let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state;
-    // réponse "non" → q_breaths
+    // "non" → q_breaths (rescue breaths), toujours aucune variante demandée
     let r = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC);
     expect(r.state.phase).toEqual({ kind: 'question', qid: 'q_breaths' });
+    expect(r.state.variantAsked).toBe(false);
     s = r.state;
-    // "oui" → bloc cpr, étape 1/2
+    // "oui" → bloc cpr (à variantes) → on demande l'âge AVANT d'entrer
     r = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC);
+    expect(r.state.phase).toEqual({ kind: 'variant', pendingBlockId: 'cpr' });
+    const prompt = r.bubbles[0];
+    expect(prompt.kind === 'prompt' && prompt.choiceKind).toBe('variant');
+    expect(prompt.kind === 'prompt' && prompt.options.map((o) => o.key)).toEqual(['adult', 'child', 'infant']);
+    s = r.state;
+    // âge choisi → on entre enfin dans cpr, étape 1/2
+    r = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC);
     expect(r.state.phase).toEqual({ kind: 'block', blockId: 'cpr', stepIndex: 0 });
+    expect(r.state.variant).toBe('adult');
+    expect(r.state.variantAsked).toBe(true);
     const st0 = r.bubbles[0];
-    expect(st0.kind === 'step' && st0.stepTotal).toBe(2);
     expect(st0.kind === 'step' && st0.text).toBe('Compressions');
-    s = r.state;
-    // next → étape 2/2 (isLast)
-    r = reduceGuided(CTX, s, { type: 'next' }, CARDIAC);
-    const st1 = r.bubbles[0];
-    expect(st1.kind === 'step' && st1.stepIndex).toBe(1);
-    expect(st1.kind === 'step' && st1.isLast).toBe(true);
-    s = r.state;
-    // next (dernière) → next_question q_aed
-    r = reduceGuided(CTX, s, { type: 'next' }, CARDIAC);
+  });
+
+  test('âge demandé une seule fois : le 2e bloc à variantes (aed) ne redemande pas', () => {
+    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state; // q_breaths
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC).state; // variant{cpr}
+    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state; // cpr step0
+    s = reduceGuided(CTX, s, { type: 'next' }, CARDIAC).state; // cpr step1
+    let r = reduceGuided(CTX, s, { type: 'next' }, CARDIAC); // fin cpr → next_question q_aed
     expect(r.state.phase).toEqual({ kind: 'question', qid: 'q_aed' });
     s = r.state;
-    // "non" → bloc cont (plat, 1 étape, isLast) puis next → fin
-    r = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC);
-    expect(r.state.phase).toEqual({ kind: 'block', blockId: 'cont', stepIndex: 0 });
-    s = r.state;
-    r = reduceGuided(CTX, s, { type: 'next' }, CARDIAC);
-    expect(r.state.phase).toEqual({ kind: 'end' });
-    expect(kinds(r.bubbles)).toEqual(['say']);
-    expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('protocolEnded');
+    // "oui" → bloc aed (à variantes) mais variantAsked=true → PAS de nouvelle bulle d'âge
+    r = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC);
+    expect(r.state.phase).toEqual({ kind: 'block', blockId: 'aed', stepIndex: 0 });
+    expect(r.bubbles[0].kind).toBe('step');
+  });
+
+  test('protocole sans variantes (bloc plat) : aucune bulle d\'âge', () => {
+    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state; // q_breaths
+    const r = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC); // → bloc compressions (plat)
+    expect(r.state.phase).toEqual({ kind: 'block', blockId: 'compressions', stepIndex: 0 });
+    expect(r.bubbles[0].kind).toBe('step');
   });
 });
 
 describe('switch_to', () => {
   test('réponse → effet loadProtocol + annonce, puis switchLoaded repart sur l\'autre protocole', () => {
-    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state;
+    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
     const r = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC); // q_breathing "oui" → switch
     expect(r.effect).toEqual({ type: 'loadProtocol', id: 'unconscious_breathing' });
     expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('switchingTo');
-    // chargement effectué par l'écran :
     const r2 = reduceGuided(CTX, r.state, { type: 'switchLoaded', protocol: UNCONSCIOUS }, UNCONSCIOUS);
     expect(r2.state.protocolId).toBe('unconscious_breathing');
-    // pas de variantes → directement la question d'entrée
     expect(r2.state.phase).toEqual({ kind: 'question', qid: 'q_u' });
     expect(kinds(r2.bubbles)).toEqual(['emergency', 'prompt']);
+  });
+
+  test('switch_to CONSERVE la variante si le protocole cible la déclare', () => {
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: UNCONSCIOUS }, UNCONSCIOUS);
+    expect(r.state.variant).toBe('adult');
+    expect(r.state.variantAsked).toBe(true);
+  });
+
+  test('switch_to REDEMANDE l\'âge si la variante n\'existe pas dans la cible', () => {
+    const s = { protocolId: 'cardiac_arrest', variant: 'adult' as const, variantAsked: true, phase: { kind: 'question' as const, qid: 'q_breathing' } };
+    const r = reduceGuided(CTX, s, { type: 'switchLoaded', protocol: NOADULT }, NOADULT);
+    expect(r.state.variant).toBeNull();
+    expect(r.state.variantAsked).toBe(false);
   });
 
   test('red flag avec switch_to : la cible est bien portée par le protocole', () => {
@@ -164,9 +187,9 @@ describe('switch_to', () => {
 describe('message libre hors question (bloc) → rappel 442, AUCUN appel modèle', () => {
   test('freeOutOfContext ne produit aucun effet et repose la bulle courante', () => {
     let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC).state; // bloc cpr
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'no' }, CARDIAC).state; // q_breaths
+    s = reduceGuided(CTX, s, { type: 'answer', key: 'yes' }, CARDIAC).state; // variant{cpr}
+    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state; // bloc cpr
     const r = reduceGuided(CTX, s, { type: 'freeOutOfContext' }, CARDIAC);
     expect(r.effect).toBeUndefined(); // aucun appel réseau/modèle
     expect(kinds(r.bubbles)).toEqual(['say', 'callButton', 'step']); // 442 + repose l'étape
@@ -192,10 +215,11 @@ describe('repli', () => {
   });
 
   test('answerUnresolved → repose la question', () => {
-    let s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
-    s = reduceGuided(CTX, s, { type: 'chooseVariant', variant: 'adult' }, CARDIAC).state;
+    const s = reduceGuided(CTX, initialGuided(), { type: 'classified', protocol: CARDIAC }, CARDIAC).state;
     const r = reduceGuided(CTX, s, { type: 'answerUnresolved' }, CARDIAC);
     expect(kinds(r.bubbles)).toEqual(['say', 'prompt']);
     expect(r.bubbles[0].kind === 'say' && r.bubbles[0].textKey).toBe('reAsk');
+    const p = r.bubbles[1];
+    expect(p.kind === 'prompt' && p.choiceKind).toBe('question');
   });
 });

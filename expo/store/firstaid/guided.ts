@@ -55,7 +55,8 @@ export type GuidedBubble =
 
 export type GuidedPhase =
   | { kind: 'idle' }
-  | { kind: 'variant' }
+  // Choix d'âge demandé AVANT d'entrer dans le bloc à variantes mémorisé.
+  | { kind: 'variant'; pendingBlockId: string }
   | { kind: 'question'; qid: string }
   | { kind: 'block'; blockId: string; stepIndex: number }
   | { kind: 'end' }
@@ -64,6 +65,8 @@ export type GuidedPhase =
 export interface GuidedState {
   protocolId: string | null;
   variant: VariantKey | null;
+  // L'âge n'est demandé qu'une fois par protocole : mémorisé ici.
+  variantAsked: boolean;
   phase: GuidedPhase;
 }
 
@@ -92,7 +95,13 @@ export interface GuidedResult {
 }
 
 export function initialGuided(): GuidedState {
-  return { protocolId: null, variant: null, phase: { kind: 'idle' } };
+  return { protocolId: null, variant: null, variantAsked: false, phase: { kind: 'idle' } };
+}
+
+// Un bloc a-t-il besoin d'une variante (steps par âge) ?
+function blockNeedsVariant(protocol: Protocol, blockId: string): boolean {
+  const block = protocol.action_blocks[blockId];
+  return !!block && !!block.variants;
 }
 
 // ---- Constructeurs de bulles ----
@@ -100,9 +109,9 @@ function emergencyBubble(number: string): GuidedBubble {
   return { kind: 'emergency', number };
 }
 
-function variantPrompt(protocol: Protocol): GuidedBubble {
+function variantPrompt(protocol: Protocol, pendingBlockId: string): GuidedBubble {
   const options = variantKeys(protocol).map((k) => ({ key: k, label: protocol.variants[k] as string }));
-  return { kind: 'prompt', choiceKind: 'variant', refId: 'variant', textKey: 'chooseAge', options };
+  return { kind: 'prompt', choiceKind: 'variant', refId: pendingBlockId, textKey: 'chooseAge', options };
 }
 
 function questionPrompt(protocol: Protocol, qid: string): GuidedBubble {
@@ -136,24 +145,24 @@ function stepBubble(
   };
 }
 
-// Démarre (ou redémarre) un protocole : bulle d'appel + variante ou 1re question.
-function startProtocol(protocol: Protocol): GuidedResult {
-  const bubbles: GuidedBubble[] = [emergencyBubble(protocol.emergency_number)];
-  if (variantKeys(protocol).length > 0) {
-    bubbles.push(variantPrompt(protocol));
-    return { state: { protocolId: protocol.id, variant: null, phase: { kind: 'variant' } }, bubbles };
-  }
+// Démarre (ou redémarre) un protocole : bulle d'appel puis DIRECTEMENT la 1re
+// question de l'arbre. La variante n'est jamais demandée à l'entrée.
+// `variant`/`variantAsked` permettent de conserver l'âge lors d'un switch_to.
+function startProtocol(
+  protocol: Protocol,
+  variant: VariantKey | null,
+  variantAsked: boolean,
+): GuidedResult {
   const entry = protocol.decision_tree.entry;
-  bubbles.push(questionPrompt(protocol, entry));
   return {
-    state: { protocolId: protocol.id, variant: null, phase: { kind: 'question', qid: entry } },
-    bubbles,
+    state: { protocolId: protocol.id, variant, variantAsked, phase: { kind: 'question', qid: entry } },
+    bubbles: [emergencyBubble(protocol.emergency_number), questionPrompt(protocol, entry)],
   };
 }
 
 function fallback(ctx: GuidedCtx, textKey: TextKey): GuidedResult {
   return {
-    state: { protocolId: null, variant: null, phase: { kind: 'no_protocol' } },
+    state: { protocolId: null, variant: null, variantAsked: false, phase: { kind: 'no_protocol' } },
     bubbles: [
       { kind: 'say', textKey },
       { kind: 'callButton', number: ctx.emergencyNumber },
@@ -162,33 +171,37 @@ function fallback(ctx: GuidedCtx, textKey: TextKey): GuidedResult {
   };
 }
 
-// Entre dans un bloc ; s'il est vide, enchaîne directement sur sa sortie.
-function enterBlock(
-  protocol: Protocol,
-  variant: VariantKey | null,
-  blockId: string,
-): GuidedResult {
-  const bubble = stepBubble(protocol, variant, blockId, 0);
+// Entre dans un bloc. Si le bloc a des variantes et que l'âge n'a pas encore été
+// demandé pour ce protocole, on demande l'âge d'abord (une seule fois), en
+// mémorisant le bloc cible. Sinon on affiche la 1re étape.
+function enterBlock(protocol: Protocol, state: GuidedState, blockId: string): GuidedResult {
+  if (blockNeedsVariant(protocol, blockId) && state.variant === null && !state.variantAsked) {
+    return {
+      state: { ...state, protocolId: protocol.id, phase: { kind: 'variant', pendingBlockId: blockId } },
+      bubbles: [variantPrompt(protocol, blockId)],
+    };
+  }
+  const bubble = stepBubble(protocol, state.variant, blockId, 0);
   if (bubble) {
     return {
-      state: { protocolId: protocol.id, variant, phase: { kind: 'block', blockId, stepIndex: 0 } },
+      state: { ...state, protocolId: protocol.id, phase: { kind: 'block', blockId, stepIndex: 0 } },
       bubbles: [bubble],
     };
   }
-  return applyTargetEnd(protocol, variant, blockId);
+  return applyTargetEnd(protocol, state, blockId);
 }
 
-function applyTargetEnd(protocol: Protocol, variant: VariantKey | null, blockId: string): GuidedResult {
+function applyTargetEnd(protocol: Protocol, state: GuidedState, blockId: string): GuidedResult {
   const block = protocol.action_blocks[blockId];
   const end = resolveBlockEnd(block ?? { next_question: null });
   if (end.kind === 'question') {
     return {
-      state: { protocolId: protocol.id, variant, phase: { kind: 'question', qid: end.id } },
+      state: { ...state, protocolId: protocol.id, phase: { kind: 'question', qid: end.id } },
       bubbles: [questionPrompt(protocol, end.id)],
     };
   }
   return {
-    state: { protocolId: protocol.id, variant, phase: { kind: 'end' } },
+    state: { ...state, protocolId: protocol.id, phase: { kind: 'end' } },
     bubbles: [{ kind: 'say', textKey: 'protocolEnded' }],
   };
 }
@@ -202,22 +215,27 @@ export function reduceGuided(
 ): GuidedResult {
   switch (event.type) {
     case 'classified':
-      if (event.protocol) return startProtocol(event.protocol);
+      // Jamais de variante à l'entrée : directement la 1re question.
+      if (event.protocol) return startProtocol(event.protocol, null, false);
       return fallback(ctx, 'noProtocol');
 
     case 'unavailable':
       return fallback(ctx, 'assistantUnavailable');
 
-    case 'switchLoaded':
-      return startProtocol(event.protocol);
+    case 'switchLoaded': {
+      // Conserver l'âge si le protocole cible déclare la même variante, sinon redemander.
+      const keep =
+        state.variant !== null && variantKeys(event.protocol).includes(state.variant)
+          ? state.variant
+          : null;
+      return startProtocol(event.protocol, keep, keep !== null);
+    }
 
     case 'chooseVariant': {
+      // Âge choisi : on entre enfin dans le bloc mémorisé, une fois pour toutes.
       if (!protocol || state.phase.kind !== 'variant') return { state, bubbles: [] };
-      const entry = protocol.decision_tree.entry;
-      return {
-        state: { protocolId: protocol.id, variant: event.variant, phase: { kind: 'question', qid: entry } },
-        bubbles: [questionPrompt(protocol, entry)],
-      };
+      const pending = state.phase.pendingBlockId;
+      return enterBlock(protocol, { ...state, variant: event.variant, variantAsked: true }, pending);
     }
 
     case 'answer': {
@@ -230,7 +248,7 @@ export function reduceGuided(
           effect: { type: 'loadProtocol', id: target.to },
         };
       }
-      if (target.kind === 'block') return enterBlock(protocol, state.variant, target.id);
+      if (target.kind === 'block') return enterBlock(protocol, state, target.id);
       if (target.kind === 'question') {
         return {
           state: { ...state, phase: { kind: 'question', qid: target.id } },
@@ -244,13 +262,16 @@ export function reduceGuided(
     }
 
     case 'answerUnresolved': {
-      // /answer/ n'a pas tranché : on repose la question (ou la variante).
+      // /answer/ n'a pas tranché : on repose la question (ou l'âge).
       if (!protocol) return { state, bubbles: [] };
       if (state.phase.kind === 'question') {
         return { state, bubbles: [{ kind: 'say', textKey: 'reAsk' }, questionPrompt(protocol, state.phase.qid)] };
       }
       if (state.phase.kind === 'variant') {
-        return { state, bubbles: [{ kind: 'say', textKey: 'reAsk' }, variantPrompt(protocol)] };
+        return {
+          state,
+          bubbles: [{ kind: 'say', textKey: 'reAsk' }, variantPrompt(protocol, state.phase.pendingBlockId)],
+        };
       }
       return { state, bubbles: [] };
     }
@@ -265,7 +286,7 @@ export function reduceGuided(
           bubbles: [nextBubble],
         };
       }
-      return applyTargetEnd(protocol, state.variant, blockId);
+      return applyTargetEnd(protocol, state, blockId);
     }
 
     case 'freeOutOfContext': {
