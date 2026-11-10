@@ -444,6 +444,18 @@ export const firstaidAPI = {
       headers: etag ? { 'If-None-Match': etag } : undefined,
       validateStatus: firstaidValidateStatus,
     }),
+
+  // POST publics : le modèle ne fait que RECONNAÎTRE (id de scénario / clé d'option).
+  // 503 (classifier_unavailable) est accepté pour être traité comme un repli applicatif.
+  classify: (text: string, lang: string) =>
+    apiClient.post('/firstaid/classify/', { text, lang }, {
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 503,
+    }),
+
+  answer: (text: string, lang: string, options: Record<string, string>) =>
+    apiClient.post('/firstaid/answer/', { text, lang, options }, {
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 503,
+    }),
 };
 
 export const notificationsAPI = {

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { AlertTriangle, Phone, ChevronRight, X, Ban, RotateCcw } from 'lucide-react-native';
-import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,11 @@ import {
   TouchableOpacity,
   Linking,
   Modal,
-  Vibration,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
+import { FirstAidCountdown } from '@/components/FirstAidCountdown';
 import { UI_LANG } from '@/constants/i18n';
 import { useFirstAidStore } from '@/store/firstaidStore';
 import {
@@ -316,7 +316,7 @@ function BlockView({
       <Text style={styles.stepText}>{step.text}</Text>
 
       {step.timer_seconds ? (
-        <Countdown key={`${blockId}-${stepIndex}`} seconds={step.timer_seconds} />
+        <FirstAidCountdown key={`${blockId}-${stepIndex}`} seconds={step.timer_seconds} />
       ) : null}
 
       {/* Traçabilité (source) en petit, reste visible */}
@@ -332,41 +332,6 @@ function BlockView({
         <Text style={styles.nextBtnText}>{isLast ? 'Terminer' : 'Étape suivante'}</Text>
         <ChevronRight color={MedicalColors.white} size={20} />
       </TouchableOpacity>
-    </View>
-  );
-}
-
-// ---- Compte à rebours visible + vibration à la fin ----
-function Countdown({ seconds }: { seconds: number }) {
-  const [remaining, setRemaining] = useState(seconds);
-  const firedRef = useRef(false);
-
-  useEffect(() => {
-    setRemaining(seconds);
-    firedRef.current = false;
-    const interval = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(interval);
-          if (!firedRef.current) {
-            firedRef.current = true;
-            Vibration.vibrate(800);
-          }
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [seconds]);
-
-  const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
-  const ss = String(remaining % 60).padStart(2, '0');
-  return (
-    <View style={styles.timerWrap}>
-      <Text style={styles.timerText}>
-        {mm}:{ss}
-      </Text>
     </View>
   );
 }
@@ -478,14 +443,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   nextBtnText: { color: MedicalColors.white, fontSize: 18, fontWeight: '800' },
-  timerWrap: {
-    alignSelf: 'center',
-    backgroundColor: MedicalColors.dark,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  timerText: { color: MedicalColors.white, fontSize: 40, fontWeight: '800', letterSpacing: 2 },
   endCard: {
     backgroundColor: MedicalColors.card,
     borderRadius: 16,

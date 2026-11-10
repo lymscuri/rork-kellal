@@ -1,463 +1,716 @@
-import { generateText } from '@/services/ai';
 import { useRouter } from 'expo-router';
+import {
+  ChevronLeft,
+  Send,
+  Phone,
+  AlertTriangle,
+  Ban,
+  X,
+  ChevronRight,
+} from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking, Alert } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MedicalColors } from '@/constants/colors';
-import { Send, ChevronLeft, Heart, Droplet, Thermometer, Baby, AlertCircle, Bug, MessageSquare, Phone } from 'lucide-react-native';
+import { UI_LANG, type UiLang } from '@/constants/i18n';
+import { generateText } from '@/services/ai';
+import { firstaidAPI } from '@/store/api';
+import { useFirstAidStore } from '@/store/firstaidStore';
+import { detectLang } from '@/store/firstaid/lang';
+import { STRINGS, withNumber } from '@/store/firstaid/strings';
+import { isUnvalidated, variantKeys, formatSource } from '@/store/firstaid/logic';
+import {
+  ASSISTANT_FREE_ANSWERS,
+  buildFreeAnswerPrompt,
+  stripMarkdown,
+} from '@/store/firstaid/freeAnswer';
+import {
+  reduceGuided,
+  initialGuided,
+  type GuidedBubble,
+  type GuidedEvent,
+  type GuidedState,
+  type GuidedCtx,
+} from '@/store/firstaid/guided';
+import { FirstAidCountdown } from '@/components/FirstAidCountdown';
+import type { Protocol, ProtocolSummary, SourceRef, VariantKey } from '@/types/firstaid';
 
-interface ChatMessage {
+type ChatBubble =
+  | { kind: 'user'; text: string }
+  | { kind: 'welcome' }
+  | { kind: 'free'; text: string }
+  | GuidedBubble;
+
+interface ChatMsg {
   id: string;
   role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  options?: string[]; // Options de réponse rapide
+  ts: string;
+  bubble: ChatBubble;
 }
 
-const QUICK_START_OPTIONS = [
-  { label: 'Arrêt Cardiaque', icon: Heart, color: '#DC3545', bgColor: '#FFEBEE' },
-  { label: 'Hémorragie', icon: Droplet, color: '#E53935', bgColor: '#FFCDD2' },
-  { label: 'Fièvre Élevée', icon: Thermometer, color: '#FF6B6B', bgColor: '#FFEBEE' },
-  { label: 'Urgence Obstétricale', icon: Baby, color: '#9B59B6', bgColor: '#F3E5F5' },
-  { label: 'Perte de Conscience', icon: AlertCircle, color: '#FF5722', bgColor: '#FBE9E7' },
-  { label: 'Morsure/Envenimation', icon: Bug, color: '#795548', bgColor: '#EFEBE9' },
-  { label: 'Autre (chat libre)', icon: MessageSquare, color: '#607D8B', bgColor: '#ECEFF1' },
-];
+let msgSeq = 0;
+function makeMsg(role: 'user' | 'assistant', bubble: ChatBubble): ChatMsg {
+  msgSeq += 1;
+  return { id: `m${Date.now()}_${msgSeq}`, role, ts: new Date().toISOString(), bubble };
+}
 
 export default function EmergencyChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const flatListRef = useRef<FlatList<ChatMsg>>(null);
+
+  const { fetchProtocol, fetchProtocols, fetchMeta, getCachedList, getCachedMeta } =
+    useFirstAidStore();
+
+  const [messages, setMessages] = useState<ChatMsg[]>([makeMsg('assistant', { kind: 'welcome' })]);
   const [inputText, setInputText] = useState('');
-  const flatListRef = useRef<FlatList>(null);
   const [isSending, setIsSending] = useState(false);
-  const [showQuickStart, setShowQuickStart] = useState(true);
 
-  const getSystemContext = useCallback(() => {
-    let context = "Tu es un assistant de premiers secours expert pour la Guinée. ";
-    context += "Quand l'utilisateur choisit une situation d'urgence, guide-le avec des questions structurées.\n\n";
-    context += "Pour chaque réponse, termine TOUJOURS ton message par une ligne spéciale :\n";
-    context += "[OPTIONS: option1 | option2 | option3 | option4]\n\n";
-    context += "Ces options seront affichées comme boutons cliquables.\n";
-    context += "Si c'est le diagnostic final, termine par :\n";
-    context += "[OPTIONS: Nouvelle urgence | Appeler SAMU 442]\n\n";
-    context += "Contexte : Guinée, paludisme fréquent, ressources limitées, serpents venimeux locaux.\n";
-    context += "Si urgence critique → mentionner SAMU 442.\n";
-    context += "Réponds de manière concise et structurée. Sois empathique et rassurant.";
-    return context;
-  }, []);
+  const [convLang, setConvLang] = useState<UiLang>(UI_LANG);
+  const [emergencyNumber, setEmergencyNumber] = useState<string>(
+    () => getCachedMeta(UI_LANG)?.emergency_number ?? '',
+  );
+  const [summaries, setSummaries] = useState<ProtocolSummary[]>(() => getCachedList(UI_LANG) ?? []);
 
+  const [guided, setGuided] = useState<GuidedState>(initialGuided());
+  const [protocol, setProtocol] = useState<Protocol | null>(null);
+  const [showRedFlags, setShowRedFlags] = useState(false);
+  const [showDoNot, setShowDoNot] = useState(false);
+
+  // Refs pour les flux asynchrones (évite les closures périmées).
+  const guidedRef = useRef(guided);
+  const protocolRef = useRef(protocol);
+  const convLangRef = useRef(convLang);
+  guidedRef.current = guided;
+  protocolRef.current = protocol;
+  convLangRef.current = convLang;
+
+  const L = STRINGS[convLang];
+
+  // Charge méta + liste (numéro d'urgence, boutons de repli), cache d'abord.
   useEffect(() => {
-    const welcomeMessage: ChatMessage = {
-      id: 'welcome',
-      role: 'assistant',
-      content: "Bonjour ! Je suis votre assistant de premiers secours. Choisissez votre situation d'urgence ou décrivez-la librement.",
-      timestamp: new Date().toISOString(),
-    };
-    setMessages([welcomeMessage]);
-  }, []);
-
-  const parseOptionsFromContent = (content: string): { cleanContent: string; options: string[] } => {
-    const optionsMatch = content.match(/\[OPTIONS:\s*([^\]]+)\]/i);
-
-    if (optionsMatch) {
-      const optionsString = optionsMatch[1];
-      const options = optionsString.split('|').map(opt => opt.trim()).filter(Boolean);
-      const cleanContent = content.replace(/\[OPTIONS:\s*[^\]]+\]/i, '').trim();
-
-      return { cleanContent, options };
-    }
-
-    return { cleanContent: content, options: [] };
-  };
-
-  const handleSendMessage = useCallback(async (text?: string) => {
-    const messageText = text || inputText.trim();
-    if (!messageText || isSending) return;
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: messageText,
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
-    setIsSending(true);
-    setShowQuickStart(false);
-
-    try {
-      const systemContext = getSystemContext();
-      const conversationHistory = messages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
-
-      const response = await generateText({
-        messages: [
-          { role: 'assistant', content: systemContext },
-          ...conversationHistory,
-          { role: 'user', content: messageText },
-        ],
-      });
-
-      // Parser les options dans la réponse
-      const { cleanContent, options } = parseOptionsFromContent(response || '');
-
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: cleanContent || "Je n'ai pas pu traiter votre demande. Rendez-vous aux urgences les plus proches si nécessaire.",
-        timestamp: new Date().toISOString(),
-        options: options.length > 0 ? options : undefined,
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
-      console.error('AI Error:', error);
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: "Je rencontre des difficultés techniques. Rendez-vous aux urgences les plus proches si nécessaire.",
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsSending(false);
-    }
-  }, [inputText, isSending, messages, getSystemContext]);
-
-  const handleQuickOption = useCallback((option: string) => {
-    // Vérifier si c'est le bouton SAMU
-    if (option.toLowerCase().includes('samu') || option.includes('442')) {
-      Alert.alert(
-        'Appeler SAMU 442',
-        'Voulez-vous appeler le SAMU (442) maintenant ?',
-        [
-          { text: 'Annuler', style: 'cancel' },
-          {
-            text: 'Appeler',
-            onPress: async () => {
-              const url = 'tel:442';
-              const canOpen = await Linking.canOpenURL(url);
-              if (canOpen) {
-                await Linking.openURL(url);
-              } else {
-                Alert.alert('Erreur', "Impossible d'effectuer l'appel");
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-
-    // Vérifier si c'est "Nouvelle urgence"
-    if (option.toLowerCase().includes('nouvelle')) {
-      setMessages([{
-        id: 'welcome-' + Date.now(),
-        role: 'assistant',
-        content: "Bonjour ! Je suis votre assistant de premiers secours. Choisissez votre situation d'urgence ou décrivez-la librement.",
-        timestamp: new Date().toISOString(),
-      }]);
-      setShowQuickStart(true);
-      return;
-    }
-
-    // Envoyer l'option comme message
-    handleSendMessage(option);
-  }, [handleSendMessage]);
+    void (async () => {
+      const m = await fetchMeta(UI_LANG);
+      if (m?.emergency_number) setEmergencyNumber(m.emergency_number);
+      const list = await fetchProtocols(UI_LANG);
+      if (list) setSummaries(list);
+    })();
+  }, [fetchMeta, fetchProtocols]);
 
   const scrollToEnd = useCallback(() => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 150);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 120);
   }, []);
 
-  const renderMessage = useCallback(({ item }: { item: ChatMessage }) => (
-    <View style={[styles.messageContainer, item.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
-      <View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-        <Text style={[styles.messageText, item.role === 'user' ? styles.userText : styles.assistantText]}>
-          {item.content}
-        </Text>
-      </View>
-      <Text style={styles.timestamp}>
-        {new Date(item.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-      </Text>
+  const appendBubbles = useCallback((bubbles: ChatBubble[]) => {
+    if (bubbles.length === 0) return;
+    setMessages((prev) => [...prev, ...bubbles.map((b) => makeMsg('assistant', b))]);
+  }, []);
 
-      {/* Boutons de réponse rapide */}
-      {item.role === 'assistant' && item.options && item.options.length > 0 && (
-        <View style={styles.quickOptionsContainer}>
-          {item.options.map((option, index) => {
-            const isSamuButton = option.toLowerCase().includes('samu') || option.includes('442');
-            return (
+  const ctx = useCallback(
+    (): GuidedCtx => ({
+      lang: convLangRef.current,
+      emergencyNumber,
+      protocols: summaries.map((s) => ({ id: s.id, title: s.title })),
+    }),
+    [emergencyNumber, summaries],
+  );
+
+  // Dispatch central : applique la machine à états et affiche les bulles/effets.
+  const dispatch = useCallback(
+    (event: GuidedEvent) => {
+      const proto =
+        event.type === 'classified' || event.type === 'switchLoaded'
+          ? event.protocol
+          : protocolRef.current;
+      const res = reduceGuided(ctx(), guidedRef.current, event, proto);
+      guidedRef.current = res.state;
+      setGuided(res.state);
+      if (event.type === 'classified' || event.type === 'switchLoaded') {
+        protocolRef.current = event.protocol;
+        setProtocol(event.protocol);
+      }
+      appendBubbles(res.bubbles);
+      if (res.effect?.type === 'loadProtocol') void loadAndSwitch(res.effect.id);
+      scrollToEnd();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ctx, appendBubbles, scrollToEnd],
+  );
+
+  // switch_to : charge le protocole cible puis relance la machine dessus.
+  const loadAndSwitch = useCallback(
+    async (id: string) => {
+      const p = await fetchProtocol(id, convLangRef.current);
+      if (p) dispatch({ type: 'switchLoaded', protocol: p });
+      else dispatch({ type: 'unavailable' });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fetchProtocol],
+  );
+
+  // Filet de sécurité Groq (désactivé par défaut).
+  const runFreeAnswer = useCallback(
+    async (userText: string, lang: UiLang) => {
+      try {
+        const raw = await generateText({
+          messages: [
+            { role: 'assistant', content: buildFreeAnswerPrompt(lang) },
+            { role: 'user', content: userText },
+          ],
+        });
+        const clean = stripMarkdown(raw || '');
+        if (clean) appendBubbles([{ kind: 'free', text: clean }]);
+      } catch (e) {
+        console.warn('[chat] free answer indisponible:', e);
+      }
+    },
+    [appendBubbles],
+  );
+
+  // Flux de classification (phase idle / no_protocol).
+  const classifyFlow = useCallback(
+    async (text: string, lang: UiLang) => {
+      try {
+        const res = await firstaidAPI.classify(text, lang);
+        if (res.status === 503) {
+          dispatch({ type: 'unavailable' });
+          return;
+        }
+        const data = res.data?.data;
+        if (data?.emergency_number) setEmergencyNumber(data.emergency_number);
+        if (data?.scenario && data.protocol?.id) {
+          const full = await fetchProtocol(data.protocol.id, lang);
+          if (full) {
+            dispatch({ type: 'classified', protocol: full });
+            return;
+          }
+          dispatch({ type: 'unavailable' });
+          return;
+        }
+        // scenario null
+        dispatch({ type: 'classified', protocol: null });
+        if (ASSISTANT_FREE_ANSWERS) void runFreeAnswer(text, lang);
+      } catch (e) {
+        console.warn('[chat] classify indisponible/hors ligne:', e);
+        dispatch({ type: 'unavailable' });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fetchProtocol, runFreeAnswer],
+  );
+
+  // Options de la bulle de choix en cours (question ou variante) pour /answer/.
+  const currentOptions = useCallback((): Record<string, string> | null => {
+    const p = protocolRef.current;
+    const phase = guidedRef.current.phase;
+    if (!p) return null;
+    if (phase.kind === 'question') {
+      const q = p.decision_tree.questions[phase.qid];
+      if (!q) return null;
+      return Object.fromEntries(Object.entries(q.answers).map(([k, a]) => [k, a.label]));
+    }
+    if (phase.kind === 'variant') {
+      return Object.fromEntries(variantKeys(p).map((k) => [k, p.variants[k] as string]));
+    }
+    return null;
+  }, []);
+
+  // Réponse libre tapée pendant une bulle de choix → /answer/ (reconnaissance).
+  const answerFlow = useCallback(
+    async (text: string, lang: UiLang) => {
+      const options = currentOptions();
+      const phase = guidedRef.current.phase;
+      if (!options || Object.keys(options).length < 2) {
+        dispatch({ type: 'answerUnresolved' });
+        return;
+      }
+      try {
+        const res = await firstaidAPI.answer(text, lang, options);
+        const key = res.status === 503 ? null : (res.data?.data?.answer ?? null);
+        if (key && phase.kind === 'variant') {
+          dispatch({ type: 'chooseVariant', variant: key as VariantKey });
+        } else if (key && phase.kind === 'question') {
+          dispatch({ type: 'answer', key });
+        } else {
+          dispatch({ type: 'answerUnresolved' });
+        }
+      } catch (e) {
+        console.warn('[chat] answer indisponible/hors ligne:', e);
+        dispatch({ type: 'answerUnresolved' });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentOptions],
+  );
+
+  const onSend = useCallback(
+    async (raw?: string) => {
+      const text = (raw ?? inputText).trim();
+      if (!text || isSending) return;
+      setInputText('');
+      setMessages((prev) => [...prev, makeMsg('user', { kind: 'user', text })]);
+
+      // La langue du dernier message utilisateur fixe toute la suite.
+      const detected = detectLang(text);
+      const lang = detected ?? convLangRef.current ?? UI_LANG;
+      convLangRef.current = lang;
+      setConvLang(lang);
+
+      setIsSending(true);
+      try {
+        const phase = guidedRef.current.phase.kind;
+        if (phase === 'question' || phase === 'variant') {
+          await answerFlow(text, lang);
+        } else if (phase === 'block' || phase === 'end') {
+          dispatch({ type: 'freeOutOfContext' });
+        } else {
+          await classifyFlow(text, lang);
+        }
+      } finally {
+        setIsSending(false);
+        scrollToEnd();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inputText, isSending, answerFlow, classifyFlow, scrollToEnd],
+  );
+
+  const call = useCallback((number: string) => {
+    if (number) void Linking.openURL(`tel:${number}`);
+  }, []);
+
+  const onOption = useCallback(
+    (bubble: Extract<GuidedBubble, { kind: 'prompt' }>, key: string) => {
+      if (isSending) return;
+      if (bubble.choiceKind === 'variant') dispatch({ type: 'chooseVariant', variant: key as VariantKey });
+      else dispatch({ type: 'answer', key });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isSending],
+  );
+
+  const startFromProtocol = useCallback(
+    async (id: string) => {
+      if (isSending) return;
+      setIsSending(true);
+      try {
+        const p = await fetchProtocol(id, convLangRef.current);
+        if (p) dispatch({ type: 'classified', protocol: p });
+        else dispatch({ type: 'unavailable' });
+      } finally {
+        setIsSending(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fetchProtocol, isSending],
+  );
+
+  // Mode guidé actif avec un protocole chargé (pour FAB/bannière).
+  const guidedActive =
+    protocol != null &&
+    (guided.phase.kind === 'variant' ||
+      guided.phase.kind === 'question' ||
+      guided.phase.kind === 'block' ||
+      guided.phase.kind === 'end');
+
+  const renderBubble = useCallback(
+    (msg: ChatMsg) => {
+      const b = msg.bubble;
+      if (b.kind === 'user') {
+        return (
+          <View style={[styles.row, styles.rowUser]}>
+            <View style={[styles.bubble, styles.userBubble]}>
+              <Text style={styles.userText}>{b.text}</Text>
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'welcome') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble]}>
+              <Text style={styles.assistantText}>{L.intro}</Text>
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'free') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble]}>
+              <Text style={styles.assistantText}>{b.text}</Text>
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'emergency') {
+        return (
+          <TouchableOpacity style={styles.emergencyBubble} onPress={() => call(b.number)} activeOpacity={0.85}>
+            <Phone color={MedicalColors.white} size={26} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.emergencyLabel}>{withNumber(L.callEmergency, b.number).replace(` · ${b.number}`, '')}</Text>
+              <Text style={styles.emergencyNumber}>{b.number}</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      }
+      if (b.kind === 'callButton') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <TouchableOpacity style={styles.callBtn} onPress={() => call(b.number)} activeOpacity={0.85}>
+              <Phone color={MedicalColors.white} size={18} />
+              <Text style={styles.callBtnText}>{withNumber(L.callEmergency, b.number)}</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      if (b.kind === 'say') {
+        const text = withNumber(L[b.textKey], emergencyNumber);
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble]}>
+              <Text style={styles.assistantText}>{text}</Text>
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'prompt') {
+        const title = b.textKey ? L[b.textKey] : b.text ?? '';
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble, styles.promptBubble]}>
+              <Text style={styles.promptText}>{title}</Text>
+              {b.options.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={styles.optionBtn}
+                  onPress={() => onOption(b, opt.key)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.optionText}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'step') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble, styles.stepBubble]}>
+              <Text style={styles.stepBlockTitle}>{b.blockTitle}</Text>
+              <Text style={styles.stepCounter}>{L.stepLabel(b.stepNumber, b.stepTotal)}</Text>
+              <Text style={styles.stepText}>{b.text}</Text>
+              {b.timerSeconds ? (
+                <FirstAidCountdown key={`${b.blockId}-${b.stepIndex}`} seconds={b.timerSeconds} />
+              ) : null}
+              {b.source ? <Text style={styles.source}>{b.source}</Text> : null}
               <TouchableOpacity
-                key={index}
-                style={[
-                  styles.quickOptionButton,
-                  isSamuButton && styles.samuButton,
-                ]}
-                onPress={() => handleQuickOption(option)}
-                activeOpacity={0.7}
+                style={styles.nextBtn}
+                onPress={() => !isSending && dispatch({ type: 'next' })}
+                activeOpacity={0.85}
               >
-                {isSamuButton && <Phone size={14} color={MedicalColors.white} />}
-                <Text style={[
-                  styles.quickOptionText,
-                  isSamuButton && styles.samuButtonText,
-                ]}>
-                  {option}
-                </Text>
+                <Text style={styles.nextBtnText}>{b.isLast ? L.finish : L.next}</Text>
+                <ChevronRight color={MedicalColors.white} size={18} />
               </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  ), [handleQuickOption]);
+            </View>
+          </View>
+        );
+      }
+      if (b.kind === 'protocols') {
+        return (
+          <View style={[styles.row, styles.rowAssistant]}>
+            <View style={[styles.bubble, styles.assistantBubble, styles.promptBubble]}>
+              <Text style={styles.promptText}>{L.chooseSituation}</Text>
+              {b.items.map((it) => (
+                <TouchableOpacity
+                  key={it.id}
+                  style={styles.optionBtn}
+                  onPress={() => startFromProtocol(it.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.optionText}>{it.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        );
+      }
+      return null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [L, emergencyNumber, isSending, call, onOption, startFromProtocol],
+  );
 
   return (
     <View style={styles.container}>
-      <View style={[styles.contextHeader, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ChevronLeft size={24} color={MedicalColors.text} />
-          </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Assistant Urgence</Text>
-            <Text style={styles.headerSubtitle}>IA de premiers secours</Text>
-          </View>
-          <View style={styles.placeholder} />
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ChevronLeft size={24} color={MedicalColors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle}>{L.headerTitle}</Text>
+          <Text style={styles.headerSubtitle}>{L.headerSubtitle}</Text>
         </View>
+        <View style={{ width: 32 }} />
       </View>
+
+      {guidedActive && protocol && isUnvalidated(protocol.status) ? (
+        <View style={styles.testBanner}>
+          <Text style={styles.testBannerText}>{L.testBanner}</Text>
+        </View>
+      ) : null}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={0}
+        style={styles.flex}
       >
         <FlatList
           ref={flatListRef}
           data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messagesList}
+          renderItem={({ item }) => renderBubble(item)}
+          keyExtractor={(it) => it.id}
+          contentContainerStyle={styles.list}
           onContentSizeChange={scrollToEnd}
-          onLayout={scrollToEnd}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          ListFooterComponent={
-            showQuickStart && messages.length === 1 ? (
-              <View style={styles.quickStartContainer}>
-                <Text style={styles.quickStartTitle}>Choisissez votre situation :</Text>
-                <View style={styles.quickStartGrid}>
-                  {QUICK_START_OPTIONS.map((option, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[styles.quickStartButton, { backgroundColor: option.bgColor }]}
-                      onPress={() => handleSendMessage(option.label)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.quickStartIcon, { backgroundColor: option.color }]}>
-                        <option.icon size={20} color={MedicalColors.white} />
-                      </View>
-                      <Text style={[styles.quickStartLabel, { color: option.color }]}>
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : null
-          }
         />
 
-        {isSending && (
-          <View style={styles.loadingContainer}>
+        {isSending ? (
+          <View style={styles.loadingRow}>
             <ActivityIndicator color={MedicalColors.urgency} size="small" />
-            <Text style={styles.loadingText}>{"L'assistant réfléchit..."}</Text>
           </View>
-        )}
+        ) : null}
 
-        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
             style={styles.input}
-            placeholder="Décrivez la situation d'urgence..."
+            placeholder={L.placeholder}
             placeholderTextColor={MedicalColors.textSecondary}
             value={inputText}
             onChangeText={setInputText}
             multiline
             maxLength={500}
             editable={!isSending}
-            onFocus={scrollToEnd}
-            onSubmitEditing={() => handleSendMessage()}
+            onSubmitEditing={() => onSend()}
           />
           <TouchableOpacity
-            style={[styles.sendButton, (!inputText.trim() || isSending) && styles.sendButtonDisabled]}
-            onPress={() => handleSendMessage()}
+            style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
+            onPress={() => onSend()}
             disabled={!inputText.trim() || isSending}
           >
             <Send size={20} color={inputText.trim() && !isSending ? MedicalColors.white : MedicalColors.textSecondary} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* « Signes d'alerte » toujours visible pendant le mode guidé */}
+      {guidedActive && protocol && protocol.red_flags.length > 0 ? (
+        <TouchableOpacity style={styles.fab} onPress={() => setShowRedFlags(true)} activeOpacity={0.85}>
+          <AlertTriangle color={MedicalColors.white} size={18} />
+          <Text style={styles.fabText}>{L.redFlags}</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <GuidedListModal
+        visible={showRedFlags}
+        title={L.redFlags}
+        onClose={() => setShowRedFlags(false)}
+        items={(protocol?.red_flags ?? []).map((rf) => ({
+          text: rf.text,
+          source: rf.source,
+          onPress: rf.switch_to
+            ? () => {
+                setShowRedFlags(false);
+                void loadAndSwitch(rf.switch_to as string);
+              }
+            : undefined,
+        }))}
+      />
+      <GuidedListModal
+        visible={showDoNot}
+        title={L.doNot}
+        onClose={() => setShowDoNot(false)}
+        items={(protocol?.do_not ?? []).map((d) => ({ text: d.text, source: d.source }))}
+      />
+
+      {/* Accès « À ne pas faire » pendant le mode guidé */}
+      {guidedActive && protocol && protocol.do_not.length > 0 ? (
+        <TouchableOpacity style={styles.doNotFab} onPress={() => setShowDoNot(true)} activeOpacity={0.85}>
+          <Ban color={MedicalColors.white} size={16} />
+          <Text style={styles.fabText}>{L.doNot}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
 
+function GuidedListModal({
+  visible,
+  title,
+  items,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  items: { text: string; source: SourceRef; onPress?: () => void }[];
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <X color={MedicalColors.white} size={24} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            {items.map((it, i) => {
+              const Row = it.onPress ? TouchableOpacity : View;
+              return (
+                <Row key={i} style={styles.modalItem} {...(it.onPress ? { onPress: it.onPress, activeOpacity: 0.8 } : {})}>
+                  <Text style={styles.modalItemText}>{it.text}</Text>
+                  {formatSource(it.source) ? <Text style={styles.source}>{formatSource(it.source)}</Text> : null}
+                  {it.onPress ? (
+                    <View style={styles.modalItemLink}>
+                      <ChevronRight color={MedicalColors.urgency} size={16} />
+                    </View>
+                  ) : null}
+                </Row>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: MedicalColors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  contextHeader: {
-    paddingHorizontal: 16,
+  container: { flex: 1, backgroundColor: MedicalColors.background },
+  flex: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
     paddingBottom: 12,
     backgroundColor: MedicalColors.white,
     borderBottomColor: MedicalColors.border,
     borderBottomWidth: 1,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+  backButton: { padding: 4 },
+  headerTitleWrap: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: MedicalColors.text },
+  headerSubtitle: { fontSize: 12, color: MedicalColors.textSecondary },
+  testBanner: {
+    backgroundColor: MedicalColors.warningLight,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: MedicalColors.warning,
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold' as const,
-    color: MedicalColors.text,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-  },
-  placeholder: {
-    width: 32,
-  },
-  messagesList: {
-    padding: 16,
-    gap: 12,
-  },
-  messageContainer: {
-    maxWidth: '85%',
-  },
-  userMessage: {
-    alignSelf: 'flex-end',
-  },
-  assistantMessage: {
-    alignSelf: 'flex-start',
-  },
-  messageBubble: {
-    padding: 12,
-    borderRadius: 16,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-  },
-  userBubble: {
-    backgroundColor: MedicalColors.urgency,
-    borderBottomRightRadius: 4,
-  },
+  testBannerText: { color: MedicalColors.dark, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  list: { padding: 16, gap: 12 },
+  row: { maxWidth: '88%' },
+  rowUser: { alignSelf: 'flex-end' },
+  rowAssistant: { alignSelf: 'flex-start' },
+  bubble: { padding: 12, borderRadius: 16 },
+  userBubble: { backgroundColor: MedicalColors.urgency, borderBottomRightRadius: 4 },
+  userText: { color: MedicalColors.white, fontSize: 15, lineHeight: 20 },
   assistantBubble: {
     backgroundColor: MedicalColors.white,
     borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
   },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  userText: {
-    color: MedicalColors.white,
-  },
-  assistantText: {
-    color: MedicalColors.text,
-  },
-  timestamp: {
-    fontSize: 10,
-    color: MedicalColors.textSecondary,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  quickOptionsContainer: {
-    marginTop: 8,
-    gap: 6,
-  },
-  quickOptionButton: {
+  assistantText: { color: MedicalColors.text, fontSize: 15, lineHeight: 21 },
+  emergencyBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: MedicalColors.medicalLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 14,
+    backgroundColor: MedicalColors.urgency,
     borderRadius: 16,
-    alignSelf: 'flex-start',
+    padding: 16,
   },
-  quickOptionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: MedicalColors.medical,
+  emergencyLabel: { color: MedicalColors.white, fontSize: 14, fontWeight: '600' },
+  emergencyNumber: { color: MedicalColors.white, fontSize: 32, fontWeight: '800', letterSpacing: 1 },
+  callBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: MedicalColors.urgency,
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
   },
-  samuButton: {
-    backgroundColor: '#DC3545',
+  callBtnText: { color: MedicalColors.white, fontSize: 15, fontWeight: '700' },
+  promptBubble: { gap: 10 },
+  promptText: { color: MedicalColors.text, fontSize: 17, fontWeight: '700', lineHeight: 23 },
+  optionBtn: {
+    backgroundColor: MedicalColors.medicalLight,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: MedicalColors.medical,
   },
-  samuButtonText: {
-    color: MedicalColors.white,
-  },
-  loadingContainer: {
+  optionText: { color: MedicalColors.medicalDark, fontSize: 16, fontWeight: '700' },
+  stepBubble: { gap: 8 },
+  stepBlockTitle: { color: MedicalColors.urgencyDark, fontSize: 15, fontWeight: '700' },
+  stepCounter: { color: MedicalColors.textSecondary, fontSize: 13, fontWeight: '600' },
+  stepText: { color: MedicalColors.text, fontSize: 20, fontWeight: '700', lineHeight: 28 },
+  source: { color: MedicalColors.textSecondary, fontSize: 11, marginTop: 2 },
+  nextBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
-    gap: 8,
+    gap: 6,
+    backgroundColor: MedicalColors.urgency,
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 4,
   },
-  loadingText: {
-    fontSize: 12,
-    color: MedicalColors.textSecondary,
-  },
-  inputContainer: {
+  nextBtnText: { color: MedicalColors.white, fontSize: 16, fontWeight: '800' },
+  loadingRow: { alignItems: 'center', paddingVertical: 6 },
+  inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    gap: 12,
     paddingHorizontal: 16,
     paddingTop: 8,
-    gap: 12,
     backgroundColor: MedicalColors.white,
     borderTopColor: MedicalColors.border,
     borderTopWidth: 1,
   },
   input: {
     flex: 1,
-    backgroundColor: MedicalColors.white,
-    maxHeight: 100,
     minHeight: 44,
-    fontSize: 15,
+    maxHeight: 100,
     borderRadius: 22,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 12 : 10,
     paddingBottom: Platform.OS === 'ios' ? 12 : 10,
-    borderWidth: 1,
-    borderColor: MedicalColors.border,
-    color: '#000000',
+    fontSize: 15,
+    color: '#000',
     textAlignVertical: 'top',
   },
-  sendButton: {
+  sendBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -466,37 +719,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  sendButtonDisabled: {
-    backgroundColor: MedicalColors.border,
-  },
-  quickStartContainer: {
-    marginTop: 16,
-  },
-  quickStartTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: MedicalColors.text,
-    marginBottom: 12,
-  },
-  quickStartGrid: {
-    gap: 10,
-  },
-  quickStartButton: {
+  sendBtnDisabled: { backgroundColor: MedicalColors.border },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 96,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
+    gap: 8,
+    backgroundColor: MedicalColors.urgencyDark,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 28,
+    elevation: 6,
   },
-  quickStartIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  doNotFab: {
+    position: 'absolute',
+    left: 16,
+    bottom: 96,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    backgroundColor: MedicalColors.dark,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    elevation: 6,
   },
-  quickStartLabel: {
-    fontSize: 15,
-    fontWeight: '600',
+  fabText: { color: MedicalColors.white, fontSize: 14, fontWeight: '800' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: MedicalColors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    overflow: 'hidden',
   },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: MedicalColors.urgency,
+  },
+  modalTitle: { color: MedicalColors.white, fontSize: 18, fontWeight: '800' },
+  modalBody: { padding: 16, gap: 12 },
+  modalItem: {
+    backgroundColor: MedicalColors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: MedicalColors.border,
+  },
+  modalItemText: { color: MedicalColors.text, fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  modalItemLink: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
 });
